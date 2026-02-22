@@ -1,0 +1,15 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.json
+!package.json
+.vscode/settings.json
+.idea/
+output/*.md
+output/*.html
+.DS_Store
+Thumbs.db
+contracts/*.pdf
+contracts/*.docx
