@@ -40,3 +40,12 @@ REPORT_FILENAME: str        = os.getenv("REPORT_FILENAME", "informe_auditoria_co
 
 ENABLE_LLM: bool            = _bool(os.getenv("ENABLE_LLM", "true"))
 LOG_LEVEL: str              = os.getenv("LOG_LEVEL", "INFO")
+
+# ── Telegram Bot ──────────────────────────────────────────────────────────────
+TELEGRAM_TOKEN: str         = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_ADMIN_ID: int      = int(os.getenv("TELEGRAM_ADMIN_ID", "0"))
+SESSION_TIMEOUT_HOURS: int  = int(os.getenv("SESSION_TIMEOUT_HOURS", "8"))
+
+# ── Email (Gmail SMTP) ────────────────────────────────────────────────────────
+EMAIL_SENDER: str           = os.getenv("EMAIL_SENDER", "")
+EMAIL_PASSWORD: str         = os.getenv("EMAIL_PASSWORD", "")

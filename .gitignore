@@ -13,3 +13,4 @@ output/*.html
 Thumbs.db
 contracts/*.pdf
 contracts/*.docx
+data/
