@@ -82,8 +82,8 @@ async def indexar_contrato(
 
     except Exception as e:
         await update.message.reply_text(
-            f"❌ Error al indexar el contrato:\n`{str(e)[:300]}`",
-            parse_mode="Markdown",
+            f"❌ Error al indexar el contrato:\n<code>{str(e)[:300]}</code>",
+            parse_mode="HTML",
         )
         return False
     finally:
@@ -134,12 +134,12 @@ async def responder_pregunta(
         registrar_pregunta(user_id)
         _log(user_id, "pregunta", pregunta[:200])
 
-        await update.message.reply_text(f"💬 {texto}", parse_mode="Markdown")
+        await update.message.reply_text(f"💬 {texto}")
 
     except Exception as e:
         await update.message.reply_text(
-            f"❌ Error al generar la respuesta:\n`{str(e)[:200]}`",
-            parse_mode="Markdown",
+            f"❌ Error al generar la respuesta:\n<code>{str(e)[:200]}</code>",
+            parse_mode="HTML",
         )
 
 

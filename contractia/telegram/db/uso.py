@@ -6,9 +6,10 @@ from .database import get_conn
 
 # Límites por rol: {rol: {accion: max_por_dia}}
 LIMITES: dict = {
-    "basico":  {"auditorias": 0,   "preguntas": 10},
-    "auditor": {"auditorias": 3,   "preguntas": 30},
-    "admin":   {"auditorias": 999, "preguntas": 999},
+    "pendiente": {"auditorias": 0,   "preguntas": 0},
+    "basico":    {"auditorias": 0,   "preguntas": 10},
+    "auditor":   {"auditorias": 3,   "preguntas": 30},
+    "admin":     {"auditorias": 999, "preguntas": 999},
 }
 
 

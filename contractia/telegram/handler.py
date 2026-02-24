@@ -344,6 +344,52 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         activar_usuario(target_id)
         await query.message.reply_text(f"✅ Usuario `{target_id}` activado.", parse_mode="Markdown")
 
+    elif data.startswith("aprobar_") and rol == "admin":
+        partes = data.split("_")
+        accion = partes[1]          # basico | auditor | admin | rechazar
+        target_id = int(partes[2])
+        usuario_target = get_usuario(target_id)
+        if not usuario_target:
+            await query.message.reply_text("Usuario no encontrado.")
+            return
+
+        if accion == "rechazar":
+            suspender_usuario(target_id)
+            await query.message.edit_text(
+                f"🚫 Solicitud de `{usuario_target['email']}` rechazada. Cuenta suspendida.",
+                parse_mode="Markdown",
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=(
+                        "❌ Tu solicitud de acceso a *ContractIA* fue rechazada.\n"
+                        "Contacta al administrador si crees que es un error."
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+        else:
+            nuevo_rol = accion  # basico | auditor | admin
+            cambiar_rol(target_id, nuevo_rol)
+            await query.message.edit_text(
+                f"✅ *{usuario_target['email']}* aprobado con rol *{nuevo_rol.capitalize()}*.",
+                parse_mode="Markdown",
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=target_id,
+                    text=(
+                        f"✅ *¡Tu cuenta fue aprobada!*\n\n"
+                        f"Nivel asignado: *{nuevo_rol.capitalize()}*\n\n"
+                        f"Usa /login para ingresar con la contraseña que recibiste por email."
+                    ),
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
+
 
 # ── FLUJOS DE REGISTRO ────────────────────────────────────────────────────────
 
@@ -420,7 +466,8 @@ async def _handle_registro_codigo(update: Update, context: ContextTypes.DEFAULT_
         conn.execute("UPDATE codigos_verificacion SET usado=1 WHERE telegram_id=?", (user_id,))
 
     password = generar_password()
-    rol = "admin" if user_id == TELEGRAM_ADMIN_ID else "basico"
+    es_admin = user_id == TELEGRAM_ADMIN_ID
+    rol = "admin" if es_admin else "pendiente"
     crear_usuario(user_id, email, password, rol)
 
     try:
@@ -429,17 +476,27 @@ async def _handle_registro_codigo(update: Update, context: ContextTypes.DEFAULT_
     except Exception:
         pass  # La cuenta se crea igual aunque falle el email de bienvenida
 
-    login_session(user_id)
-    _set_estado(context, MENU)
     context.user_data.pop("registro_email", None)
 
-    await update.message.reply_text(
-        f"✅ *¡Cuenta creada exitosamente!*\n\n"
-        f"Tu contraseña fue enviada a *{email}*.\n"
-        f"Nivel asignado: *{rol.capitalize()}*",
-        parse_mode="Markdown",
-    )
-    await _mostrar_menu(update, context)
+    if es_admin:
+        login_session(user_id)
+        _set_estado(context, MENU)
+        await update.message.reply_text(
+            f"✅ *¡Cuenta de administrador creada!*\n\n"
+            f"Tu contraseña fue enviada a *{email}*.",
+            parse_mode="Markdown",
+        )
+        await _mostrar_menu(update, context)
+    else:
+        _set_estado(context, INICIO)
+        await update.message.reply_text(
+            f"✅ *¡Registro recibido!*\n\n"
+            f"Tu solicitud está *pendiente de aprobación*.\n"
+            f"Recibirás una notificación aquí mismo cuando el administrador active tu cuenta.\n\n"
+            f"_Tu contraseña provisional fue enviada a {email} y estará lista cuando te aprueben._",
+            parse_mode="Markdown",
+        )
+        await _notificar_admin_nuevo_usuario(context, user_id, email)
 
 
 # ── FLUJO DE LOGIN ────────────────────────────────────────────────────────────
@@ -455,6 +512,15 @@ async def _handle_login(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         pass
 
     if verificar_password(user_id, password):
+        usuario = get_usuario(user_id)
+        if usuario and usuario["rol"] == "pendiente":
+            _set_estado(context, INICIO)
+            await update.effective_chat.send_message(
+                "⏳ Tu cuenta está *pendiente de aprobación*.\n"
+                "Recibirás una notificación aquí cuando el administrador active tu acceso.",
+                parse_mode="Markdown",
+            )
+            return
         login_session(user_id)
         _set_estado(context, MENU)
         await update.effective_chat.send_message("✅ Sesión iniciada correctamente.")
@@ -521,6 +587,38 @@ async def _handle_admin_rol_id(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode="Markdown",
     )
     _set_estado(context, MENU)
+
+
+# ── NOTIFICACIÓN ADMIN ────────────────────────────────────────────────────────
+
+async def _notificar_admin_nuevo_usuario(
+    context: ContextTypes.DEFAULT_TYPE, user_id: int, email: str
+) -> None:
+    """Envía al admin un mensaje con botones para aprobar/rechazar al nuevo usuario."""
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("👤 Básico",   callback_data=f"aprobar_basico_{user_id}"),
+            InlineKeyboardButton("🔍 Auditor",  callback_data=f"aprobar_auditor_{user_id}"),
+            InlineKeyboardButton("⚙️ Admin",    callback_data=f"aprobar_admin_{user_id}"),
+        ],
+        [
+            InlineKeyboardButton("🚫 Rechazar", callback_data=f"aprobar_rechazar_{user_id}"),
+        ],
+    ])
+    try:
+        await context.bot.send_message(
+            chat_id=TELEGRAM_ADMIN_ID,
+            text=(
+                f"🔔 *Nuevo usuario solicitando acceso*\n\n"
+                f"• Email: `{email}`\n"
+                f"• Telegram ID: `{user_id}`\n\n"
+                f"¿Qué rol le asignas?"
+            ),
+            reply_markup=keyboard,
+            parse_mode="Markdown",
+        )
+    except Exception:
+        pass  # Si el admin no tiene chat abierto con el bot, falla silenciosamente
 
 
 # ── MENÚ PRINCIPAL ────────────────────────────────────────────────────────────
@@ -603,7 +701,15 @@ async def _check_auth(update: Update) -> bool:
     user_id = update.effective_user.id
     if not is_authenticated(user_id):
         if existe_telegram_id(user_id):
-            await update.message.reply_text("Sesión expirada. Usa /login para volver a entrar.")
+            usuario = get_usuario(user_id)
+            if usuario and usuario["rol"] == "pendiente":
+                await update.message.reply_text(
+                    "⏳ Tu cuenta está *pendiente de aprobación*.\n"
+                    "Recibirás una notificación cuando el administrador active tu acceso.",
+                    parse_mode="Markdown",
+                )
+            else:
+                await update.message.reply_text("Sesión expirada. Usa /login para volver a entrar.")
         else:
             await update.message.reply_text("No tienes cuenta. Usa /start para registrarte.")
         return False
