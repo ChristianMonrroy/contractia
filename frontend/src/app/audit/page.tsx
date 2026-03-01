@@ -110,8 +110,8 @@ function AuditContent() {
     setQuestion("");
     setQueryLoading(true);
     try {
-      const res = await contractsAPI.query({ session_id: sessionId, question: q });
-      setMessages((prev) => [...prev, { role: "ai", text: res.data.answer }]);
+      const res = await contractsAPI.query({ session_id: sessionId, pregunta: q });
+      setMessages((prev) => [...prev, { role: "ai", text: res.data.respuesta }]);
     } catch {
       setMessages((prev) => [...prev, { role: "ai", text: "❌ Error al procesar la pregunta." }]);
     } finally {

@@ -68,8 +68,8 @@ export const contractsAPI = {
     );
   },
 
-  query: (data: { session_id: string; question: string }) =>
-    api.post<{ answer: string }>("/contracts/query", data),
+  query: (data: { session_id: string; pregunta: string }) =>
+    api.post<{ respuesta: string }>("/contracts/query", data),
 
   audit: (data: { session_id: string }) =>
     api.post<{ audit_id: string; message: string }>("/contracts/audit", data),
