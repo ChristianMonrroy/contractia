@@ -12,6 +12,7 @@ from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_bienvenida, email_verificacion
 from contractia.telegram.db.database import get_conn
 from contractia.telegram.db.usuarios import (
+    actualizar_password,
     crear_usuario,
     existe_email,
     get_usuario,
@@ -34,6 +35,16 @@ class VerifyRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    codigo: str
+    nueva_password: str
 
 
 @router.post("/register")
@@ -128,3 +139,69 @@ def login(body: LoginRequest):
 
     token = crear_token(row["telegram_id"], email, row["rol"])
     return {"access_token": token, "token_type": "bearer", "rol": row["rol"]}
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordRequest):
+    """Envía código OTP al email para resetear la contraseña."""
+    email = body.email.lower()
+
+    if not existe_email(email):
+        # Respondemos igual para no revelar si el email existe
+        return {"detail": f"Si el correo existe, recibirás un código en {email}"}
+
+    codigo = generar_codigo_verificacion()
+    expira = datetime.now().timestamp() + 600  # 10 minutos
+
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM codigos_verificacion WHERE telegram_id=%s AND usado=0",
+            (-1,),
+        )
+        conn.execute(
+            "INSERT INTO codigos_verificacion (telegram_id, codigo, expira_en) VALUES (%s, %s, %s)",
+            (-1, f"{email}:{codigo}", expira),
+        )
+
+    asunto = "Resetea tu contraseña — ContractIA"
+    html = f"""
+    <h2>Reseteo de contraseña</h2>
+    <p>Tu código de verificación es:</p>
+    <h1 style="letter-spacing:8px;color:#1e3a5f;">{codigo}</h1>
+    <p>Válido por 10 minutos. Si no solicitaste esto, ignora este correo.</p>
+    """
+    texto = f"Tu código para resetear la contraseña de ContractIA es: {codigo}"
+    enviar_email(email, asunto, html, texto)
+    return {"detail": f"Si el correo existe, recibirás un código en {email}"}
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordRequest):
+    """Verifica OTP y actualiza la contraseña."""
+    email = body.email.lower()
+
+    if len(body.nueva_password) < 8:
+        raise HTTPException(400, "La contraseña debe tener al menos 8 caracteres.")
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, codigo, expira_en FROM codigos_verificacion "
+            "WHERE telegram_id=%s AND usado=0 ORDER BY id DESC LIMIT 1",
+            (-1,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(400, "No hay código pendiente. Solicita uno nuevo.")
+
+    if datetime.now().timestamp() > float(row["expira_en"]):
+        raise HTTPException(400, "El código expiró. Solicita uno nuevo.")
+
+    stored_email, stored_codigo = row["codigo"].split(":", 1)
+    if stored_email != email or stored_codigo != body.codigo:
+        raise HTTPException(400, "Código incorrecto.")
+
+    with get_conn() as conn:
+        conn.execute("UPDATE codigos_verificacion SET usado=1 WHERE id=%s", (row["id"],))
+
+    actualizar_password(email, body.nueva_password)
+    return {"detail": "Contraseña actualizada correctamente."}

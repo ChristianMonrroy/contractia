@@ -48,6 +48,12 @@ export const authAPI = {
 
   login: (data: { email: string; password: string }) =>
     api.post<{ access_token: string; token_type: string }>("/auth/login", data),
+
+  forgotPassword: (data: { email: string }) =>
+    api.post("/auth/forgot-password", data),
+
+  resetPassword: (data: { email: string; codigo: string; nueva_password: string }) =>
+    api.post("/auth/reset-password", data),
 };
 
 // --- Contratos ---

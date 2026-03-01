@@ -25,6 +25,16 @@ def crear_usuario(telegram_id: int, email: str, password: str, rol: str = "basic
         return False
 
 
+def actualizar_password(email: str, nueva_password: str) -> bool:
+    hash_ = bcrypt.hashpw(nueva_password.encode(), bcrypt.gensalt()).decode()
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE usuarios SET password_hash=%s WHERE email=%s",
+            (hash_, email),
+        )
+    return True
+
+
 def cambiar_rol(telegram_id: int, nuevo_rol: str) -> None:
     with get_conn() as conn:
         conn.execute("UPDATE usuarios SET rol=%s WHERE telegram_id=%s", (nuevo_rol, telegram_id))
