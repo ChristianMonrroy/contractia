@@ -76,11 +76,14 @@ async def lifespan(app: FastAPI):
     await _tg_app.start()
 
     if WEBHOOK_URL:
-        await _tg_app.bot.set_webhook(
-            url=f"{WEBHOOK_URL}/telegram/webhook",
-            allowed_updates=["message", "callback_query"],
-        )
-        logger.info(f"✅ Webhook de Telegram configurado: {WEBHOOK_URL}/telegram/webhook")
+        try:
+            await _tg_app.bot.set_webhook(
+                url=f"{WEBHOOK_URL}/telegram/webhook",
+                allowed_updates=["message", "callback_query"],
+            )
+            logger.info(f"✅ Webhook de Telegram configurado: {WEBHOOK_URL}/telegram/webhook")
+        except Exception as e:
+            logger.warning(f"⚠️ No se pudo registrar el webhook ({e}). El bot no recibirá mensajes hasta que el dominio esté activo.")
     else:
         logger.warning("⚠️ WEBHOOK_URL no configurada. El bot no recibirá mensajes.")
 
