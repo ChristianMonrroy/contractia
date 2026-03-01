@@ -20,7 +20,7 @@ def _hoy() -> str:
 def _get_uso(telegram_id: int) -> dict:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT auditorias, preguntas FROM uso_diario WHERE telegram_id=? AND fecha=?",
+            "SELECT auditorias, preguntas FROM uso_diario WHERE telegram_id=%s AND fecha=%s",
             (telegram_id, _hoy()),
         ).fetchone()
     return dict(row) if row else {"auditorias": 0, "preguntas": 0}
@@ -41,7 +41,7 @@ def puede_preguntar(telegram_id: int, rol: str) -> bool:
 def registrar_auditoria(telegram_id: int) -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (?, ?, 1, 0) "
+            "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (%s, %s, 1, 0) "
             "ON CONFLICT(telegram_id, fecha) DO UPDATE SET auditorias = auditorias + 1",
             (telegram_id, _hoy()),
         )
@@ -50,7 +50,7 @@ def registrar_auditoria(telegram_id: int) -> None:
 def registrar_pregunta(telegram_id: int) -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (?, ?, 0, 1) "
+            "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (%s, %s, 0, 1) "
             "ON CONFLICT(telegram_id, fecha) DO UPDATE SET preguntas = preguntas + 1",
             (telegram_id, _hoy()),
         )

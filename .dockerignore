@@ -1,0 +1,11 @@
+.env
+.venv
+__pycache__
+*.pyc
+*.pyo
+.git
+data/
+contracts/
+output/
+credentials.json
+*.db

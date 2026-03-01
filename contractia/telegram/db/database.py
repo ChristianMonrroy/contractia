@@ -1,57 +1,82 @@
-"""Conexión SQLite y creación de tablas para el bot de Telegram."""
+"""Conexión PostgreSQL y creación de tablas para el bot de Telegram.
 
-import sqlite3
-from pathlib import Path
+El wrapper _PGConn mantiene la misma interfaz que sqlite3 para minimizar
+cambios en el resto del código (solo se necesita ? → %s en los queries).
+"""
 
-from contractia.config import PROJECT_ROOT
+import os
 
-DB_PATH = PROJECT_ROOT / "data" / "contractia.db"
+import psycopg2
+import psycopg2.extras
+
+DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
 
-def get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+class _PGConn:
+    """Wrapper que hace que psycopg2 se comporte como sqlite3.Connection."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql: str, params=()):
+        cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql, params)
+        return cur
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self._conn.rollback()
+        else:
+            self._conn.commit()
+        self._conn.close()
+
+
+def get_conn() -> _PGConn:
+    conn = psycopg2.connect(DATABASE_URL)
+    return _PGConn(conn)
 
 
 def init_db() -> None:
-    """Crea las tablas si no existen. Llamar al iniciar el bot."""
+    """Crea las tablas si no existen. Llamar al iniciar el bot y la API."""
     with get_conn() as conn:
-        conn.executescript("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS usuarios (
-                telegram_id   INTEGER PRIMARY KEY,
+                telegram_id   BIGINT PRIMARY KEY,
                 email         TEXT    UNIQUE NOT NULL,
                 password_hash TEXT    NOT NULL,
                 rol           TEXT    NOT NULL DEFAULT 'basico',
                 activo        INTEGER NOT NULL DEFAULT 1,
                 fecha_registro TEXT   NOT NULL
-            );
-
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS codigos_verificacion (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
+                id          SERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL,
                 codigo      TEXT    NOT NULL,
-                expira_en   REAL    NOT NULL,
+                expira_en   DOUBLE PRECISION NOT NULL,
                 usado       INTEGER NOT NULL DEFAULT 0
-            );
-
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS uso_diario (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
+                id          SERIAL PRIMARY KEY,
+                telegram_id BIGINT NOT NULL,
                 fecha       TEXT    NOT NULL,
                 auditorias  INTEGER NOT NULL DEFAULT 0,
                 preguntas   INTEGER NOT NULL DEFAULT 0,
                 UNIQUE(telegram_id, fecha)
-            );
-
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS logs (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER,
+                id          SERIAL PRIMARY KEY,
+                telegram_id BIGINT,
                 accion      TEXT,
                 detalle     TEXT,
                 timestamp   TEXT
-            );
+            )
         """)

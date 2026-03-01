@@ -411,9 +411,9 @@ async def _handle_registro_email(update: Update, context: ContextTypes.DEFAULT_T
     expira = datetime.now().timestamp() + 600  # 10 minutos
 
     with get_conn() as conn:
-        conn.execute("DELETE FROM codigos_verificacion WHERE telegram_id=?", (user_id,))
+        conn.execute("DELETE FROM codigos_verificacion WHERE telegram_id=%s", (user_id,))
         conn.execute(
-            "INSERT INTO codigos_verificacion (telegram_id, codigo, expira_en) VALUES (?, ?, ?)",
+            "INSERT INTO codigos_verificacion (telegram_id, codigo, expira_en) VALUES (%s, %s, %s)",
             (user_id, codigo, expira),
         )
 
@@ -445,7 +445,7 @@ async def _handle_registro_codigo(update: Update, context: ContextTypes.DEFAULT_
     with get_conn() as conn:
         row = conn.execute(
             "SELECT codigo, expira_en FROM codigos_verificacion "
-            "WHERE telegram_id=? AND usado=0 ORDER BY id DESC LIMIT 1",
+            "WHERE telegram_id=%s AND usado=0 ORDER BY id DESC LIMIT 1",
             (user_id,),
         ).fetchone()
 
@@ -463,7 +463,7 @@ async def _handle_registro_codigo(update: Update, context: ContextTypes.DEFAULT_
         return
 
     with get_conn() as conn:
-        conn.execute("UPDATE codigos_verificacion SET usado=1 WHERE telegram_id=?", (user_id,))
+        conn.execute("UPDATE codigos_verificacion SET usado=1 WHERE telegram_id=%s", (user_id,))
 
     password = generar_password()
     es_admin = user_id == TELEGRAM_ADMIN_ID

@@ -1,0 +1,190 @@
+"""Endpoints de contratos: subida, auditoría y consultas RAG."""
+
+import asyncio
+import os
+import tempfile
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
+
+from api.auth import get_current_user
+from contractia.core.loader import procesar_documentos_carpeta
+from contractia.core.report import render_auditoria_markdown
+from contractia.llm.provider import build_llm
+from contractia.orchestrator import ejecutar_auditoria_contrato
+from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
+from contractia.telegram.db.uso import LIMITES, puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
+from contractia.telegram.db.usuarios import get_usuario
+
+router = APIRouter(prefix="/contracts", tags=["contracts"])
+
+# Semáforo global — igual que en el bot
+from contractia.telegram.flows.audit_flow import _auditoria_lock
+
+# Almacenamiento temporal de resultados y retrievers en memoria
+_audit_results: dict = {}
+_retrievers: dict = {}
+
+
+class QueryRequest(BaseModel):
+    pregunta: str
+    session_id: str
+
+
+@router.post("/upload")
+async def upload_contract(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    """Sube un contrato y lo indexa para consultas RAG. Devuelve session_id."""
+    ext = Path(file.filename or "contrato").suffix.lower()
+    if ext not in (".pdf", ".docx"):
+        raise HTTPException(400, "Solo se aceptan archivos PDF o DOCX.")
+
+    if file.size and file.size > 20 * 1024 * 1024:
+        raise HTTPException(400, "El archivo supera el límite de 20 MB.")
+
+    user_id = int(user["sub"])
+    usuario = get_usuario(user_id)
+    if not usuario:
+        raise HTTPException(403, "Usuario no encontrado.")
+
+    if not puede_preguntar(user_id, usuario["rol"]):
+        raise HTTPException(429, "Límite diario de consultas alcanzado.")
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_web_{user_id}_"))
+    tmp_file = tmp_dir / f"contrato{ext}"
+    tmp_file.write_bytes(await file.read())
+
+    try:
+        _, texto = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: procesar_documentos_carpeta(tmp_dir)
+        )
+        if not texto:
+            raise HTTPException(422, "No se pudo extraer texto del archivo.")
+
+        vector_store = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: crear_vector_store(texto)
+        )
+        retriever = crear_retriever(vector_store)
+        session_id = str(uuid.uuid4())
+        _retrievers[session_id] = retriever
+
+        return {"session_id": session_id, "filename": file.filename}
+    finally:
+        import shutil
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@router.post("/query")
+async def query_contract(
+    body: QueryRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Responde una pregunta RAG sobre el contrato cargado en session_id."""
+    retriever = _retrievers.get(body.session_id)
+    if not retriever:
+        raise HTTPException(404, "Sesión no encontrada. Sube el contrato primero.")
+
+    user_id = int(user["sub"])
+    usuario = get_usuario(user_id)
+    if not puede_preguntar(user_id, usuario["rol"]):
+        raise HTTPException(429, "Límite diario de consultas alcanzado.")
+
+    _PROMPT = (
+        "Eres un asistente legal especializado en contratos. "
+        "Responde basándote ÚNICAMENTE en el contexto del contrato.\n\n"
+        "CONTEXTO:\n{contexto}\n\nPREGUNTA: {pregunta}\n\nRESPUESTA:"
+    )
+
+    contexto = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: recuperar_contexto(retriever, body.pregunta, max_tokens=3000)
+    )
+    if not contexto:
+        return {"respuesta": "No encontré información relevante sobre eso en el contrato."}
+
+    llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+    prompt = _PROMPT.format(contexto=contexto, pregunta=body.pregunta)
+    respuesta = await asyncio.get_event_loop().run_in_executor(None, lambda: llm.invoke(prompt))
+    texto = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+
+    registrar_pregunta(user_id)
+    return {"respuesta": texto}
+
+
+@router.post("/audit")
+async def start_audit(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
+    user: dict = Depends(get_current_user),
+):
+    """Lanza una auditoría completa en background. Devuelve audit_id."""
+    user_id = int(user["sub"])
+    usuario = get_usuario(user_id)
+    if not usuario:
+        raise HTTPException(403, "Usuario no encontrado.")
+
+    if usuario["rol"] not in ("auditor", "admin"):
+        raise HTTPException(403, "Tu nivel no incluye auditorías completas.")
+
+    if not puede_auditar(user_id, usuario["rol"]):
+        raise HTTPException(429, "Límite diario de auditorías alcanzado.")
+
+    if _auditoria_lock.locked():
+        raise HTTPException(503, "Hay una auditoría en proceso. Intenta en unos minutos.")
+
+    ext = Path(file.filename or "contrato").suffix.lower()
+    if ext not in (".pdf", ".docx"):
+        raise HTTPException(400, "Solo se aceptan PDF o DOCX.")
+
+    audit_id = str(uuid.uuid4())
+    _audit_results[audit_id] = {"status": "processing"}
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
+    tmp_file = tmp_dir / f"contrato{ext}"
+    tmp_file.write_bytes(await file.read())
+
+    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir)
+    return {"audit_id": audit_id, "status": "processing"}
+
+
+@router.get("/audit/{audit_id}")
+def get_audit_result(audit_id: str, user: dict = Depends(get_current_user)):
+    """Consulta el estado y resultado de una auditoría."""
+    result = _audit_results.get(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    return result
+
+
+async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
+    import shutil
+    async with _auditoria_lock:
+        try:
+            _, texto = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: procesar_documentos_carpeta(tmp_dir)
+            )
+            if not texto:
+                _audit_results[audit_id] = {"status": "error", "detail": "No se pudo extraer texto."}
+                return
+
+            llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            resultado = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: ejecutar_auditoria_contrato(texto, llm)
+            )
+            md = render_auditoria_markdown(resultado)
+            registrar_auditoria(user_id)
+            _audit_results[audit_id] = {
+                "status": "done",
+                "informe": md,
+                "n_hallazgos": sum(
+                    len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
+                ),
+                "n_secciones": len(resultado.get("resultados_auditoria", [])),
+            }
+        except Exception as e:
+            _audit_results[audit_id] = {"status": "error", "detail": str(e)[:300]}
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)

@@ -104,6 +104,6 @@ async def ejecutar_auditoria(
 def _log(telegram_id: int, accion: str, detalle: str) -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO logs (telegram_id, accion, detalle, timestamp) VALUES (?, ?, ?, ?)",
+            "INSERT INTO logs (telegram_id, accion, detalle, timestamp) VALUES (%s, %s, %s, %s)",
             (telegram_id, accion, detalle, datetime.now().isoformat()),
         )

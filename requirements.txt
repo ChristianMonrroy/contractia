@@ -12,3 +12,17 @@ python-dotenv>=1.0.0
 tqdm>=4.60
 python-telegram-bot>=20.0
 bcrypt>=4.0
+
+# API web
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# PostgreSQL
+psycopg2-binary>=2.9.9
+
+# GCP
+google-cloud-storage>=2.16.0
+google-cloud-secret-manager>=2.20.0

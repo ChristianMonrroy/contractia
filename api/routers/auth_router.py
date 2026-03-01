@@ -1,0 +1,130 @@
+"""Endpoints de autenticación: registro, verificación OTP y login."""
+
+import os
+from datetime import datetime
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, EmailStr
+
+from api.auth import crear_token
+from contractia.telegram.auth.crypto import generar_codigo_verificacion, generar_password
+from contractia.telegram.correo.sender import enviar_email
+from contractia.telegram.correo.templates import email_bienvenida, email_verificacion
+from contractia.telegram.db.database import get_conn
+from contractia.telegram.db.usuarios import (
+    crear_usuario,
+    existe_email,
+    get_usuario,
+    verificar_password,
+)
+from contractia.config import TELEGRAM_ADMIN_ID
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyRequest(BaseModel):
+    email: EmailStr
+    codigo: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+@router.post("/register")
+def register(body: RegisterRequest):
+    """Envía código OTP al email para iniciar el registro."""
+    email = body.email.lower()
+
+    if existe_email(email):
+        raise HTTPException(400, "Email ya registrado. Usa /auth/login.")
+
+    codigo = generar_codigo_verificacion()
+    expira = datetime.now().timestamp() + 600  # 10 minutos
+
+    # Usamos telegram_id=0 para registros web (se asigna al verificar)
+    with get_conn() as conn:
+        conn.execute(
+            "DELETE FROM codigos_verificacion WHERE telegram_id=%s AND usado=0",
+            (0,),
+        )
+        conn.execute(
+            "INSERT INTO codigos_verificacion (telegram_id, codigo, expira_en) VALUES (%s, %s, %s)",
+            (0, f"{email}:{codigo}", expira),
+        )
+
+    asunto, html, texto = email_verificacion(codigo)
+    enviar_email(email, asunto, html, texto)
+    return {"detail": f"Código enviado a {email}"}
+
+
+@router.post("/verify")
+def verify(body: VerifyRequest):
+    """Verifica el OTP y crea la cuenta web."""
+    email = body.email.lower()
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, codigo, expira_en FROM codigos_verificacion "
+            "WHERE usado=0 ORDER BY id DESC LIMIT 1",
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(400, "No hay código pendiente.")
+
+    if datetime.now().timestamp() > float(row["expira_en"]):
+        raise HTTPException(400, "El código expiró. Solicita uno nuevo.")
+
+    stored_email, stored_codigo = row["codigo"].split(":", 1)
+    if stored_email != email or stored_codigo != body.codigo:
+        raise HTTPException(400, "Código incorrecto.")
+
+    with get_conn() as conn:
+        conn.execute("UPDATE codigos_verificacion SET usado=1 WHERE id=%s", (row["id"],))
+
+    # telegram_id web: usamos hash negativo del email para no colisionar
+    web_id = -abs(hash(email)) % (10**15)
+    password = generar_password()
+    rol = "pendiente"
+    crear_usuario(web_id, email, password, rol)
+
+    asunto, html, texto = email_bienvenida(email, password, rol)
+    try:
+        enviar_email(email, asunto, html, texto)
+    except Exception:
+        pass
+
+    return {"detail": "Cuenta creada. Pendiente de aprobación por el administrador."}
+
+
+@router.post("/login")
+def login(body: LoginRequest):
+    """Login con email y password. Devuelve JWT."""
+    email = body.email.lower()
+
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT telegram_id, password_hash, rol, activo FROM usuarios WHERE email=%s",
+            (email,),
+        ).fetchone()
+
+    if not row:
+        raise HTTPException(401, "Credenciales incorrectas.")
+
+    if not row["activo"]:
+        raise HTTPException(403, "Cuenta suspendida.")
+
+    if row["rol"] == "pendiente":
+        raise HTTPException(403, "Cuenta pendiente de aprobación.")
+
+    import bcrypt
+    if not bcrypt.checkpw(body.password.encode(), row["password_hash"].encode()):
+        raise HTTPException(401, "Credenciales incorrectas.")
+
+    token = crear_token(row["telegram_id"], email, row["rol"])
+    return {"access_token": token, "token_type": "bearer", "rol": row["rol"]}

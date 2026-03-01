@@ -17,7 +17,7 @@ def crear_usuario(telegram_id: int, email: str, password: str, rol: str = "basic
         with get_conn() as conn:
             conn.execute(
                 "INSERT INTO usuarios (telegram_id, email, password_hash, rol, fecha_registro) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "VALUES (%s, %s, %s, %s, %s)",
                 (telegram_id, email, hash_, rol, datetime.now().isoformat()),
             )
         return True
@@ -27,17 +27,17 @@ def crear_usuario(telegram_id: int, email: str, password: str, rol: str = "basic
 
 def cambiar_rol(telegram_id: int, nuevo_rol: str) -> None:
     with get_conn() as conn:
-        conn.execute("UPDATE usuarios SET rol=? WHERE telegram_id=?", (nuevo_rol, telegram_id))
+        conn.execute("UPDATE usuarios SET rol=%s WHERE telegram_id=%s", (nuevo_rol, telegram_id))
 
 
 def suspender_usuario(telegram_id: int) -> None:
     with get_conn() as conn:
-        conn.execute("UPDATE usuarios SET activo=0 WHERE telegram_id=?", (telegram_id,))
+        conn.execute("UPDATE usuarios SET activo=0 WHERE telegram_id=%s", (telegram_id,))
 
 
 def activar_usuario(telegram_id: int) -> None:
     with get_conn() as conn:
-        conn.execute("UPDATE usuarios SET activo=1 WHERE telegram_id=?", (telegram_id,))
+        conn.execute("UPDATE usuarios SET activo=1 WHERE telegram_id=%s", (telegram_id,))
 
 
 # ── Lectura ───────────────────────────────────────────────────────────────────
@@ -46,21 +46,21 @@ def get_usuario(telegram_id: int) -> Optional[sqlite3.Row]:
     import sqlite3
     with get_conn() as conn:
         return conn.execute(
-            "SELECT * FROM usuarios WHERE telegram_id=?", (telegram_id,)
+            "SELECT * FROM usuarios WHERE telegram_id=%s", (telegram_id,)
         ).fetchone()
 
 
 def existe_telegram_id(telegram_id: int) -> bool:
     with get_conn() as conn:
         return conn.execute(
-            "SELECT 1 FROM usuarios WHERE telegram_id=?", (telegram_id,)
+            "SELECT 1 FROM usuarios WHERE telegram_id=%s", (telegram_id,)
         ).fetchone() is not None
 
 
 def existe_email(email: str) -> bool:
     with get_conn() as conn:
         return conn.execute(
-            "SELECT 1 FROM usuarios WHERE email=?", (email,)
+            "SELECT 1 FROM usuarios WHERE email=%s", (email,)
         ).fetchone() is not None
 
 
@@ -77,7 +77,7 @@ def listar_usuarios() -> list:
 def verificar_password(telegram_id: int, password: str) -> bool:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT password_hash FROM usuarios WHERE telegram_id=? AND activo=1",
+            "SELECT password_hash FROM usuarios WHERE telegram_id=%s AND activo=1",
             (telegram_id,),
         ).fetchone()
     if not row:

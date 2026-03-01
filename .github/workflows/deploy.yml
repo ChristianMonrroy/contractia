@@ -1,0 +1,58 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: striking-domain-488917-p8
+  REGION: us-central1
+  SERVICE: contractia-api
+  IMAGE: us-central1-docker.pkg.dev/striking-domain-488917-p8/contractia/api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write  # Para Workload Identity Federation
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: contractia-sa@striking-domain-488917-p8.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build and Push image
+        run: |
+          docker build -t $IMAGE:${{ github.sha }} -t $IMAGE:latest .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image=$IMAGE:${{ github.sha }} \
+            --region=$REGION \
+            --platform=managed \
+            --service-account=contractia-sa@$PROJECT_ID.iam.gserviceaccount.com \
+            --add-cloudsql-instances=$PROJECT_ID:$REGION:contractia-db \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest,EMAIL_PASSWORD=EMAIL_PASSWORD:latest,TELEGRAM_ADMIN_ID=TELEGRAM_ADMIN_ID:latest,JWT_SECRET=JWT_SECRET:latest \
+            --set-env-vars=LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=$PROJECT_ID,VERTEXAI_LOCATION=$REGION,VERTEXAI_MODEL=gemini-2.5-pro,RAG_ENABLED=true,ENABLE_LLM=true,WEBHOOK_URL=https://api.contractia.pe,EMAIL_SENDER=admin@contractia.pe \
+            --max-instances=1 \
+            --memory=2Gi \
+            --cpu=2 \
+            --timeout=3600 \
+            --allow-unauthenticated \
+            --quiet
