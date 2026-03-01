@@ -5,6 +5,8 @@ __pycache__/
 *.pyc
 *.json
 !package.json
+!package-lock.json
+!frontend/tsconfig.json
 .vscode/settings.json
 .idea/
 output/*.md
