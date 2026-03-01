@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { authAPI } from "@/lib/api";
+import { authAPI, extractError } from "@/lib/api";
 import { FileText, Loader2, Eye, EyeOff } from "lucide-react";
 
 export default function LoginPage() {
@@ -24,10 +24,7 @@ export default function LoginPage() {
       login(res.data.access_token);
       router.push("/dashboard");
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
-        "Credenciales incorrectas";
-      setError(msg);
+      setError(extractError(err, "Credenciales incorrectas"));
     } finally {
       setLoading(false);
     }

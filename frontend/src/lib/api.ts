@@ -29,12 +29,21 @@ api.interceptors.response.use(
   }
 );
 
+// Extrae mensaje de error de FastAPI (string o array de Pydantic)
+export function extractError(err: unknown, fallback = "Error desconocido"): string {
+  const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg).join(", ");
+  return fallback;
+}
+
 // --- Auth ---
 export const authAPI = {
-  register: (data: { nombre: string; email: string; password: string }) =>
+  register: (data: { email: string }) =>
     api.post("/auth/register", data),
 
-  verify: (data: { email: string; otp: string }) =>
+  verify: (data: { email: string; codigo: string }) =>
     api.post("/auth/verify", data),
 
   login: (data: { email: string; password: string }) =>
