@@ -42,7 +42,7 @@ def registrar_auditoria(telegram_id: int) -> None:
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (%s, %s, 1, 0) "
-            "ON CONFLICT(telegram_id, fecha) DO UPDATE SET auditorias = auditorias + 1",
+            "ON CONFLICT(telegram_id, fecha) DO UPDATE SET auditorias = uso_diario.auditorias + 1",
             (telegram_id, _hoy()),
         )
 
@@ -51,7 +51,7 @@ def registrar_pregunta(telegram_id: int) -> None:
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO uso_diario (telegram_id, fecha, auditorias, preguntas) VALUES (%s, %s, 0, 1) "
-            "ON CONFLICT(telegram_id, fecha) DO UPDATE SET preguntas = preguntas + 1",
+            "ON CONFLICT(telegram_id, fecha) DO UPDATE SET preguntas = uso_diario.preguntas + 1",
             (telegram_id, _hoy()),
         )
 
