@@ -53,6 +53,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [audits, setAudits] = useState<AuditRow[]>([]);
   const [loadingAudits, setLoadingAudits] = useState(false);
+  const [cancelling, setCancelling] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
@@ -74,6 +75,25 @@ export default function DashboardPage() {
   const roleInfo = ROLE_LABELS[user.rol] || ROLE_LABELS["basico"];
   const isPending = user.rol === "pendiente";
   const canAudit = user.rol === "auditor" || user.rol === "admin";
+
+  const handleCancel = async (audit_id: string) => {
+    if (!confirm("¿Cancelar esta auditoría? No se puede deshacer.")) return;
+    setCancelling(audit_id);
+    try {
+      await contractsAPI.cancelAudit(audit_id);
+      setAudits((prev) =>
+        prev.map((a) =>
+          a.audit_id === audit_id
+            ? { ...a, status: "error", error_detail: "Cancelada por el usuario.", progress_msg: "Cancelada" }
+            : a
+        )
+      );
+    } catch {
+      alert("No se pudo cancelar la auditoría.");
+    } finally {
+      setCancelling(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -206,22 +226,33 @@ export default function DashboardPage() {
                             ) : "—"}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {a.status === "done" && (
-                              <Link
-                                href={`/audit?audit_id=${a.audit_id}`}
-                                className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
-                              >
-                                Ver informe →
-                              </Link>
-                            )}
-                            {a.status === "processing" && (
-                              <Link
-                                href={`/audit?audit_id=${a.audit_id}`}
-                                className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
-                              >
-                                Ver progreso →
-                              </Link>
-                            )}
+                            <div className="flex items-center justify-end gap-3">
+                              {a.status === "done" && (
+                                <Link
+                                  href={`/audit?audit_id=${a.audit_id}`}
+                                  className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                                >
+                                  Ver informe →
+                                </Link>
+                              )}
+                              {a.status === "processing" && (
+                                <>
+                                  <Link
+                                    href={`/audit?audit_id=${a.audit_id}`}
+                                    className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
+                                  >
+                                    Ver progreso →
+                                  </Link>
+                                  <button
+                                    onClick={() => handleCancel(a.audit_id)}
+                                    disabled={cancelling === a.audit_id}
+                                    className="text-xs font-medium text-red-500 hover:text-red-700 hover:underline whitespace-nowrap disabled:opacity-50"
+                                  >
+                                    {cancelling === a.audit_id ? "Cancelando..." : "Cancelar"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

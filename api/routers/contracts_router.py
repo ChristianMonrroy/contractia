@@ -176,6 +176,23 @@ def get_audit_result(audit_id: str, user: dict = Depends(get_current_user)):
     return result
 
 
+@router.patch("/audit/{audit_id}/cancelar")
+def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
+    """Cancela una auditoría atascada marcándola como error en la DB."""
+    result = get_auditoria(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    if result["status"] != "processing":
+        raise HTTPException(400, "Solo se pueden cancelar auditorías en proceso.")
+    actualizar_auditoria(
+        audit_id,
+        status="error",
+        error_detail="Cancelada por el usuario.",
+        progress_msg="Cancelada",
+    )
+    return {"ok": True}
+
+
 async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str):
     import shutil
     async with _auditoria_lock:

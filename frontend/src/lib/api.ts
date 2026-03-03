@@ -88,6 +88,9 @@ export const contractsAPI = {
 
   getAudits: () =>
     api.get<AuditRow[]>("/contracts/audits"),
+
+  cancelAudit: (audit_id: string) =>
+    api.patch(`/contracts/audit/${audit_id}/cancelar`),
 };
 
 // --- Admin ---
