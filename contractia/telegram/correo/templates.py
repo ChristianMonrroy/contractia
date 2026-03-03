@@ -18,6 +18,43 @@ def email_verificacion(codigo: str) -> tuple:
     return asunto, html, texto
 
 
+def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> tuple:
+    asunto = f"ContractIA — Auditoría completada: {filename}"
+    color_hallazgos = "#dc2626" if n_hallazgos > 0 else "#16a34a"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:540px;margin:auto;padding:24px">
+      <h2 style="color:#1e3a5f">ContractIA — Auditoría completada</h2>
+      <p>Tu auditoría del contrato <strong>{filename}</strong> ha finalizado.</p>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0">
+        <tr style="background:#f8fafc">
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Documento</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{filename}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Secciones analizadas</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{n_secciones}</td>
+        </tr>
+        <tr style="background:#f8fafc">
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Hallazgos detectados</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0;color:{color_hallazgos};font-weight:bold">{n_hallazgos}</td>
+        </tr>
+      </table>
+      <p>Ingresa a <a href="https://contractia.pe/dashboard" style="color:#1d4ed8">contractia.pe/dashboard</a>
+         para ver el informe completo con todos los hallazgos detallados.</p>
+      <p style="color:#6b7280;font-size:13px;margin-top:20px">
+        Este mensaje fue generado automáticamente por ContractIA.
+      </p>
+    </div>
+    """
+    texto = (
+        f"Tu auditoría de '{filename}' ha finalizado.\n"
+        f"Secciones analizadas: {n_secciones}\n"
+        f"Hallazgos detectados: {n_hallazgos}\n"
+        f"Visita contractia.pe/dashboard para ver el informe completo."
+    )
+    return asunto, html, texto
+
+
 def email_bienvenida(email: str, password: str, rol: str) -> tuple:
     asunto = "ContractIA — Cuenta creada exitosamente"
     html = f"""

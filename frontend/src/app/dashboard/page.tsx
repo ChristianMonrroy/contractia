@@ -1,9 +1,10 @@
 "use client";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { contractsAPI, AuditRow } from "@/lib/api";
 import {
   FileSearch,
   MessageSquare,
@@ -12,6 +13,10 @@ import {
   ChevronRight,
   Clock,
   AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  History,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -28,18 +33,47 @@ const ROLE_LIMITS: Record<string, string> = {
   admin:     "Acceso ilimitado",
 };
 
+function StatusBadge({ status }: { status: string }) {
+  if (status === "done")
+    return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" />Completada</span>;
+  if (status === "error")
+    return <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" />Error</span>;
+  return <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full"><Loader2 className="w-3 h-3 animate-spin" />En proceso</span>;
+}
+
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleString("es-PE", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
 export default function DashboardPage() {
   const { user, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [audits, setAudits] = useState<AuditRow[]>([]);
+  const [loadingAudits, setLoadingAudits] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
   }, [isAuthenticated, router]);
 
+  useEffect(() => {
+    if (!user) return;
+    if (user.rol === "auditor" || user.rol === "admin") {
+      setLoadingAudits(true);
+      contractsAPI.getAudits()
+        .then((res) => setAudits(res.data))
+        .catch(() => {})
+        .finally(() => setLoadingAudits(false));
+    }
+  }, [user]);
+
   if (!user) return null;
 
   const roleInfo = ROLE_LABELS[user.rol] || ROLE_LABELS["basico"];
   const isPending = user.rol === "pendiente";
+  const canAudit = user.rol === "auditor" || user.rol === "admin";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -91,7 +125,7 @@ export default function DashboardPage() {
 
         {/* Actions */}
         <h2 className="text-lg font-semibold text-[#1e3a5f] mb-4">Acciones disponibles</h2>
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 gap-4 mb-10">
           <ActionCard
             icon={FileSearch}
             title="Nueva auditoría"
@@ -117,6 +151,87 @@ export default function DashboardPage() {
             badge="Solo Admin"
           />
         </div>
+
+        {/* Historial de auditorías — solo para auditor/admin */}
+        {canAudit && (
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-5 h-5 text-[#1e3a5f]" />
+              <h2 className="text-lg font-semibold text-[#1e3a5f]">Mis auditorías</h2>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
+              {loadingAudits ? (
+                <div className="flex items-center justify-center py-12 text-slate-400 gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span className="text-sm">Cargando historial...</span>
+                </div>
+              ) : audits.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <FileSearch className="w-10 h-10 mx-auto mb-3 text-slate-200" />
+                  <p className="text-sm">Aún no tienes auditorías. ¡Sube tu primer contrato!</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-100">
+                        <th className="text-left px-5 py-3 text-slate-500 font-medium">Documento</th>
+                        <th className="text-left px-4 py-3 text-slate-500 font-medium">Fecha</th>
+                        <th className="text-left px-4 py-3 text-slate-500 font-medium">Estado</th>
+                        <th className="text-left px-4 py-3 text-slate-500 font-medium">Hallazgos</th>
+                        <th className="px-4 py-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {audits.map((a) => (
+                        <tr key={a.audit_id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-5 py-3 font-medium text-[#1e3a5f] max-w-[200px] truncate">
+                            {a.filename || "contrato"}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                            {formatDate(a.created_at)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <StatusBadge status={a.status} />
+                            {a.status === "processing" && a.progress_msg && (
+                              <p className="text-xs text-slate-400 mt-0.5">{a.progress_msg}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {a.status === "done" && a.n_hallazgos !== null ? (
+                              <span className={`font-semibold ${a.n_hallazgos > 0 ? "text-amber-600" : "text-green-600"}`}>
+                                {a.n_hallazgos}
+                              </span>
+                            ) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {a.status === "done" && (
+                              <Link
+                                href={`/audit?audit_id=${a.audit_id}`}
+                                className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                              >
+                                Ver informe →
+                              </Link>
+                            )}
+                            {a.status === "processing" && (
+                              <Link
+                                href={`/audit?audit_id=${a.audit_id}`}
+                                className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
+                              >
+                                Ver progreso →
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

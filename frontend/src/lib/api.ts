@@ -82,9 +82,12 @@ export const contractsAPI = {
   },
 
   getAudit: (audit_id: string) =>
-    api.get<{ status: string; informe?: string; n_hallazgos?: number; error_detail?: string }>(
+    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; filename?: string }>(
       `/contracts/audit/${audit_id}`
     ),
+
+  getAudits: () =>
+    api.get<AuditRow[]>("/contracts/audits"),
 };
 
 // --- Admin ---
@@ -117,6 +120,18 @@ export interface ActividadRow {
   duracion_segundos: number | null;
   n_hallazgos: number | null;
   timestamp: string;
+}
+
+export interface AuditRow {
+  audit_id: string;
+  status: string;
+  filename: string | null;
+  n_hallazgos: number | null;
+  n_secciones: number | null;
+  progress_msg: string | null;
+  error_detail: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ResumenActividad {

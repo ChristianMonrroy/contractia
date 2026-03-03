@@ -93,6 +93,8 @@ def init_db() -> None:
                 n_hallazgos  INTEGER,
                 n_secciones  INTEGER,
                 error_detail TEXT,
+                progress_msg TEXT,
+                filename     TEXT,
                 created_at   TIMESTAMPTZ DEFAULT NOW(),
                 updated_at   TIMESTAMPTZ DEFAULT NOW()
             )
@@ -101,6 +103,8 @@ def init_db() -> None:
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS duracion_segundos FLOAT")
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS canal TEXT DEFAULT 'bot'")
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS n_hallazgos INTEGER")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS progress_msg TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS filename TEXT")
 
 
 def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
@@ -115,12 +119,13 @@ def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
     return (row["cnt"] if row else 0) > 0
 
 
-def crear_auditoria(audit_id: str, user_id: int) -> None:
+def crear_auditoria(audit_id: str, user_id: int, filename: str = "") -> None:
     """Registra una nueva auditoría con estado 'processing'."""
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO auditorias (audit_id, user_id, status) VALUES (%s, %s, 'processing')",
-            (audit_id, user_id),
+            "INSERT INTO auditorias (audit_id, user_id, status, filename, progress_msg) "
+            "VALUES (%s, %s, 'processing', %s, 'Iniciando...')",
+            (audit_id, user_id, filename),
         )
 
 
@@ -128,11 +133,25 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
     """Devuelve el estado y resultado de una auditoría por su ID."""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT status, informe, n_hallazgos, n_secciones, error_detail "
+            "SELECT status, informe, n_hallazgos, n_secciones, "
+            "error_detail, progress_msg, filename "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:
+    """Devuelve el historial de auditorías de un usuario, más recientes primero."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT audit_id, status, filename, n_hallazgos, n_secciones, "
+            "progress_msg, error_detail, created_at, updated_at "
+            "FROM auditorias WHERE user_id = %s "
+            "ORDER BY created_at DESC LIMIT %s",
+            (user_id, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def actualizar_auditoria(audit_id: str, **kwargs) -> None:

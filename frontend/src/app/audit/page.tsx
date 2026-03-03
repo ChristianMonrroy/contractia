@@ -24,6 +24,7 @@ function AuditContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode: Mode = searchParams.get("mode") === "query" ? "query" : "audit";
+  const auditIdParam = searchParams.get("audit_id");
 
   const [status, setStatus] = useState<AuditStatus>("idle");
   const [sessionId, setSessionId] = useState("");
@@ -34,7 +35,9 @@ function AuditContent() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [queryLoading, setQueryLoading] = useState(false);
+  const [progressMsg, setProgressMsg] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
@@ -43,6 +46,36 @@ function AuditContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Si llega con ?audit_id=xxx (desde historial), carga el resultado directamente
+  useEffect(() => {
+    if (!auditIdParam) return;
+    setStatus("running");
+    setProgressMsg("Cargando informe...");
+
+    const poll = setInterval(async () => {
+      try {
+        const check = await contractsAPI.getAudit(auditIdParam);
+        if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
+        if (check.data.filename) setFilename(check.data.filename);
+        if (check.data.status === "done") {
+          clearInterval(poll);
+          setAuditResult(check.data.informe || "");
+          setStatus("done");
+        } else if (check.data.status === "error") {
+          clearInterval(poll);
+          setError(check.data.error_detail || "La auditoría falló.");
+          setStatus("error");
+        }
+      } catch {
+        clearInterval(poll);
+        setError("Error al cargar la auditoría.");
+        setStatus("error");
+      }
+    }, 3000);
+    pollRef.current = poll;
+    return () => clearInterval(poll);
+  }, [auditIdParam]);
 
   const handleFileUpload = async (file: File) => {
     if (!file) return;
@@ -72,13 +105,14 @@ function AuditContent() {
     if (!uploadedFile) return;
     setStatus("running");
     setError("");
+    setProgressMsg("Iniciando...");
     try {
       const res = await contractsAPI.audit(uploadedFile);
       const auditId = res.data.audit_id;
-      // Poll for result
       const poll = setInterval(async () => {
         try {
           const check = await contractsAPI.getAudit(auditId);
+          if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
           if (check.data.status === "done") {
             clearInterval(poll);
             setAuditResult(check.data.informe || "");
@@ -86,14 +120,15 @@ function AuditContent() {
           } else if (check.data.status === "error") {
             clearInterval(poll);
             setError(check.data.error_detail || "La auditoría falló. Intenta nuevamente.");
-            setStatus("error");
+            setStatus("ready");
           }
         } catch {
           clearInterval(poll);
           setError("Error al consultar el estado de la auditoría.");
-          setStatus("error");
+          setStatus("ready");
         }
       }, 4000);
+      pollRef.current = poll;
     } catch (err: unknown) {
       const msg = extractError(err, "Error al iniciar la auditoría.");
       if (msg.toLowerCase().includes("en curso") || msg.toLowerCase().includes("proceso")) {
@@ -122,6 +157,7 @@ function AuditContent() {
   };
 
   const reset = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
     setStatus("idle");
     setSessionId("");
     setUploadedFile(null);
@@ -129,6 +165,7 @@ function AuditContent() {
     setAuditResult("");
     setMessages([]);
     setError("");
+    setProgressMsg("");
   };
 
   return (
@@ -189,24 +226,26 @@ function AuditContent() {
           </div>
         ) : (
           <>
-            {/* File ready */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-green-600" />
+            {/* File chip — mostrar cuando hay filename y no está running */}
+            {filename && status !== "running" && (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center">
+                    <FileText className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-[#1e3a5f] text-sm">{filename}</p>
+                    <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Contrato indexado correctamente
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-[#1e3a5f] text-sm">{filename}</p>
-                  <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Contrato indexado correctamente
-                  </p>
-                </div>
+                <button onClick={reset} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button onClick={reset} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+            )}
 
             {/* Audit mode */}
             {mode === "audit" && (
@@ -230,6 +269,9 @@ function AuditContent() {
                     <p className="text-slate-400 text-sm mt-3">
                       Los 3 agentes IA analizarán tu contrato (≈ 3-5 min)
                     </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      Puedes cerrar esta página — recibirás un email cuando termine
+                    </p>
                   </div>
                 )}
 
@@ -237,12 +279,16 @@ function AuditContent() {
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-10 text-center">
                     <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
                     <h3 className="font-semibold text-[#1e3a5f] text-lg mb-2">Auditoría en progreso</h3>
-                    <p className="text-slate-500 text-sm">Los agentes Jurista, Auditor y Cronista están analizando tu contrato...</p>
+                    {progressMsg && (
+                      <p className="text-blue-600 font-medium text-sm mb-1">{progressMsg}</p>
+                    )}
+                    <p className="text-slate-400 text-sm">Puedes cerrar esta página y volver más tarde</p>
                     <div className="mt-6 flex justify-center gap-6 text-sm text-slate-400">
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>Jurista</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-150"></span>Auditor</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse delay-300"></span>Cronista</span>
                     </div>
+                    <p className="text-slate-300 text-xs mt-6">Recibirás un email al terminar</p>
                   </div>
                 )}
 

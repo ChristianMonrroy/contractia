@@ -16,8 +16,11 @@ from contractia.core.report import render_auditoria_markdown
 from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
+from contractia.telegram.correo.sender import enviar_email
+from contractia.telegram.correo.templates import email_auditoria_lista
 from contractia.telegram.db.database import (
-    crear_auditoria, get_auditoria, actualizar_auditoria, hay_auditoria_en_progreso, get_conn,
+    crear_auditoria, get_auditoria, actualizar_auditoria, hay_auditoria_en_progreso,
+    get_auditorias_usuario, get_conn,
 )
 from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
@@ -145,15 +148,23 @@ async def start_audit(
     if ext not in (".pdf", ".docx"):
         raise HTTPException(400, "Solo se aceptan PDF o DOCX.")
 
+    filename = file.filename or f"contrato{ext}"
     audit_id = str(uuid.uuid4())
-    crear_auditoria(audit_id, user_id)  # Persiste en DB (multi-instancia seguro)
+    crear_auditoria(audit_id, user_id, filename=filename)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
     tmp_file = tmp_dir / f"contrato{ext}"
     tmp_file.write_bytes(await file.read())
 
-    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir)
+    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"])
     return {"audit_id": audit_id, "status": "processing"}
+
+
+@router.get("/audits")
+def list_audits(user: dict = Depends(get_current_user)):
+    """Lista el historial de auditorías del usuario autenticado."""
+    user_id = int(user["sub"])
+    return get_auditorias_usuario(user_id)
 
 
 @router.get("/audit/{audit_id}")
@@ -165,10 +176,11 @@ def get_audit_result(audit_id: str, user: dict = Depends(get_current_user)):
     return result
 
 
-async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
+async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str):
     import shutil
     async with _auditoria_lock:
         try:
+            actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...")
             _, texto = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: procesar_documentos_carpeta(tmp_dir)
             )
@@ -176,19 +188,23 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
 
+            actualizar_auditoria(audit_id, progress_msg="Construyendo base de conocimiento RAG...")
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+
+            actualizar_auditoria(audit_id, progress_msg="Auditando secciones con 3 agentes IA...")
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(texto, llm)
             )
             duracion = round(time.time() - start, 1)
+
+            actualizar_auditoria(audit_id, progress_msg="Generando informe final...")
             md = render_auditoria_markdown(resultado)
             n_hallazgos = sum(
                 len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
             )
             n_secciones = len(resultado.get("resultados_auditoria", []))
             registrar_auditoria(user_id)
-            filename = str(tmp_dir.name)
             _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos)
             actualizar_auditoria(
                 audit_id,
@@ -196,12 +212,19 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
                 informe=md,
                 n_hallazgos=n_hallazgos,
                 n_secciones=n_secciones,
+                progress_msg="Completado",
             )
+            # Notificar por email
+            try:
+                asunto, html, texto_plain = email_auditoria_lista(filename, n_hallazgos, n_secciones)
+                enviar_email(email, asunto, html, texto_plain)
+            except Exception as mail_err:
+                print(f"[EMAIL] No se pudo enviar notificación a {email}: {mail_err}")
         except Exception as e:
             import traceback
             detail = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}"
             print(f"[AUDIT ERROR] {audit_id}: {detail}")
-            actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:500])
+            actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:500], progress_msg="Error")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
