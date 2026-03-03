@@ -4,6 +4,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { contractsAPI, extractError } from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Upload,
   FileText,
@@ -14,6 +16,7 @@ import {
   MessageSquare,
   FileSearch,
   X,
+  Download,
 } from "lucide-react";
 
 type Mode = "audit" | "query";
@@ -324,16 +327,45 @@ function AuditContent() {
 
                 {status === "done" && auditResult && (
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
-                    <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center gap-3">
-                      <CheckCircle2 className="w-5 h-5 text-green-600" />
-                      <span className="font-semibold text-green-800">Auditoría completada</span>
+                    {/* Header con botón PDF */}
+                    <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        <span className="font-semibold text-green-800">Auditoría completada</span>
+                        {filename && <span className="text-xs text-slate-400 hidden sm:block">— {filename}</span>}
+                      </div>
+                      <button
+                        onClick={() => window.print()}
+                        className="flex items-center gap-2 bg-[#1e3a5f] hover:bg-[#152d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                      >
+                        <Download className="w-4 h-4" />
+                        Descargar PDF
+                      </button>
                     </div>
-                    <div className="p-6">
-                      <pre className="whitespace-pre-wrap text-sm text-slate-700 leading-relaxed font-sans">
+
+                    {/* Informe renderizado en markdown */}
+                    <div className="p-6 sm:p-8" id="audit-report-print">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          h1: ({ children }) => <h1 className="text-2xl font-bold text-[#1e3a5f] mt-6 mb-3 pb-2 border-b border-slate-200">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-xl font-semibold text-[#1e3a5f] mt-5 mb-2">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-base font-semibold text-slate-700 mt-4 mb-1">{children}</h3>,
+                          p:  ({ children }) => <p className="text-slate-700 text-sm leading-relaxed mb-3">{children}</p>,
+                          ul: ({ children }) => <ul className="list-disc list-outside ml-5 mb-3 space-y-1">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal list-outside ml-5 mb-3 space-y-1">{children}</ol>,
+                          li: ({ children }) => <li className="text-slate-700 text-sm leading-relaxed">{children}</li>,
+                          strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
+                          hr: () => <hr className="border-slate-200 my-5" />,
+                          blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-300 pl-4 italic text-slate-500 my-3">{children}</blockquote>,
+                          code: ({ children }) => <code className="bg-slate-100 text-slate-700 text-xs px-1.5 py-0.5 rounded font-mono">{children}</code>,
+                        }}
+                      >
                         {auditResult}
-                      </pre>
+                      </ReactMarkdown>
                     </div>
-                    <div className="px-6 pb-6">
+
+                    <div className="px-6 sm:px-8 pb-6 border-t border-slate-50 pt-4">
                       <button
                         onClick={reset}
                         className="text-sm text-blue-600 hover:underline"
