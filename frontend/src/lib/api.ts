@@ -83,7 +83,7 @@ export const contractsAPI = {
 // --- Admin ---
 export const adminAPI = {
   getUsers: () => api.get("/admin/usuarios"),
-  changeRole: (data: { user_id: number; nuevo_rol: string }) =>
+  changeRole: (data: { telegram_id: number; rol: string }) =>
     api.patch("/admin/usuarios/rol", data),
   suspend: (id: number) => api.patch(`/admin/usuarios/${id}/suspender`),
   activate: (id: number) => api.patch(`/admin/usuarios/${id}/activar`),

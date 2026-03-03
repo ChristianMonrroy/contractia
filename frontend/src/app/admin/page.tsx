@@ -18,10 +18,9 @@ import {
 
 interface UserRow {
   id: number;
-  nombre: string;
   email: string;
   rol: string;
-  activo: boolean;
+  activo: number;
   creado_en: string;
 }
 
@@ -63,7 +62,7 @@ export default function AdminPage() {
   const changeRole = async (userId: number, role: string) => {
     setActionLoading(userId);
     try {
-      await adminAPI.changeRole({ user_id: userId, nuevo_rol: role });
+      await adminAPI.changeRole({ telegram_id: userId, rol: role });
       setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, rol: role } : u));
       setFeedback({ id: userId, msg: `Rol cambiado a ${role}` });
       setTimeout(() => setFeedback(null), 2000);
@@ -155,7 +154,6 @@ export default function AdminPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                    <th className="px-6 py-3 text-left font-medium">Usuario</th>
                     <th className="px-6 py-3 text-left font-medium">Correo</th>
                     <th className="px-6 py-3 text-left font-medium">Rol</th>
                     <th className="px-6 py-3 text-left font-medium">Estado</th>
@@ -166,7 +164,6 @@ export default function AdminPage() {
                 <tbody className="divide-y divide-slate-50">
                   {users.map((user) => (
                     <tr key={user.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-[#1e3a5f]">{user.nombre}</td>
                       <td className="px-6 py-4 text-slate-500">{user.email}</td>
                       <td className="px-6 py-4">
                         <div className="relative inline-block">

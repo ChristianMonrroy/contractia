@@ -77,7 +77,8 @@ def existe_email(email: str) -> bool:
 def listar_usuarios() -> list:
     with get_conn() as conn:
         return conn.execute(
-            "SELECT telegram_id, email, rol, activo, fecha_registro "
+            "SELECT telegram_id AS id, email, rol, activo, "
+            "fecha_registro AS creado_en "
             "FROM usuarios ORDER BY fecha_registro DESC"
         ).fetchall()
 
