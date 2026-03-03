@@ -16,22 +16,38 @@ from langchain_core.documents import Document
 _PAGE_TIMEOUT_S = 15
 
 
-def _extract_page_text(page) -> str:
+def _extract_page_text(page) -> tuple[str, bool]:
     """Extrae texto de una página PDF con timeout de seguridad.
 
-    Si pypdf tarda más de _PAGE_TIMEOUT_S segundos en la página,
-    la omite (devuelve '') y el loader sigue con la siguiente.
+    Returns:
+        (texto, ok) donde ok=False indica que pypdf superó el timeout
+        y conviene intentar OCR de respaldo para no perder el contenido.
     """
     with ThreadPoolExecutor(max_workers=1) as pool:
         fut = pool.submit(page.extract_text)
         try:
-            return fut.result(timeout=_PAGE_TIMEOUT_S) or ""
+            return fut.result(timeout=_PAGE_TIMEOUT_S) or "", True
         except FuturesTimeout:
-            print(f"  ⚠️ Timeout extrayendo texto de página (pypdf). Continuando...")
-            return ""
+            print(f"  ⚠️ pypdf lento en esta página, activando OCR de respaldo...")
+            return "", False
         except Exception as e:
-            print(f"  ⚠️ Error extrayendo página: {e}")
-            return ""
+            print(f"  ⚠️ Error en pypdf: {e}. Activando OCR de respaldo...")
+            return "", False
+
+
+def _ocr_pagina(archivo: Path, page_num_1based: int) -> str:
+    """OCR de una sola página (respaldo cuando pypdf falla/tarda demasiado)."""
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+        imagenes = convert_from_path(
+            str(archivo), dpi=150, first_page=page_num_1based, last_page=page_num_1based
+        )
+        if imagenes:
+            return pytesseract.image_to_string(imagenes[0], lang="spa+eng")
+    except Exception as e:
+        print(f"  ⚠️ OCR de respaldo falló en página {page_num_1based}: {e}")
+    return ""
 
 
 def _load_pdf(
@@ -68,7 +84,14 @@ def _load_pdf(
                 pct = 10 + int(((i + 1) / n) * 15)  # 10 % → 25 %
                 ocr_progress(pct, f"Leyendo página {i + 1}/{n}…")
 
-            texto = _extract_page_text(page)
+            texto, ok = _extract_page_text(page)
+
+            # Si pypdf tardó demasiado o falló, usar OCR para no perder el contenido
+            if not ok:
+                if ocr_progress and n > 0:
+                    ocr_progress(pct, f"OCR página {i + 1}/{n} (respaldo)…")
+                texto = _ocr_pagina(archivo, i + 1)
+
             if texto.strip():
                 docs_embebidos.append(Document(
                     page_content=texto,
