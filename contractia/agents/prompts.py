@@ -12,12 +12,15 @@ from langchain_core.prompts import PromptTemplate
 PROMPT_JURISTA = PromptTemplate(
     template=(
         "Eres un experto legal. Identifica referencias a NORMATIVA EXTERNA.\n"
+        "Utiliza el CONTEXTO DEL GRAFO para detectar si una cláusula invoca una ley "
+        "que contradice el marco general del contrato.\n\n"
+        "CONTEXTO DEL GRAFO (relaciones de esta sección):\n{contexto_grafo}\n\n"
         "Incluye 'CONTRATO DE PRESTACIÓN DE SERVICIOS' como externo.\n"
         "Salida: JSON con lista de strings (ej. [\"Ley 123\", \"Código Civil\"]).\n"
         "Responde SOLO con el JSON.\n"
         "Texto:\n{texto}\n"
     ),
-    input_variables=["texto"],
+    input_variables=["texto", "contexto_grafo"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -29,10 +32,13 @@ PROMPT_AUDITOR = PromptTemplate(
         "Eres Auditor de Contratos. Valida referencias internas.\n"
         "Fuentes:\n- Global: {idx_glob}\n- Secciones: {idx_sec}\n- Local: {idx_loc}\n"
         "Ignora externas: {refs_externas}.\n\n"
+        "CONTEXTO DEL GRAFO (textos de cláusulas referenciadas):\n{contexto_grafo}\n\n"
         "INSTRUCCIONES:\n"
         "1. Identifica la **Cláusula Específica** (ej. 5.1) del error.\n"
-        "2. Solo reporta ERRORES REALES (referencias rotas).\n"
-        "3. Ignora años, montos o días.\n\n"
+        "2. Si una cláusula no está en el ÍNDICE GLOBAL, es REFERENCIA_INEXISTENTE.\n"
+        "3. Usa el grafo para verificar si la referencia tiene sentido lógico.\n"
+        "4. Solo reporta ERRORES REALES (referencias rotas o incoherentes).\n"
+        "5. Ignora años, montos o días.\n\n"
         "Responde SOLO con JSON válido:\n"
         "{{\n"
         '  "hay_inconsistencias": bool,\n'
@@ -43,7 +49,7 @@ PROMPT_AUDITOR = PromptTemplate(
         "}}\n"
         "Texto:\n{texto}\n"
     ),
-    input_variables=["texto", "idx_glob", "idx_sec", "idx_loc", "refs_externas"],
+    input_variables=["texto", "idx_glob", "idx_sec", "idx_loc", "refs_externas", "contexto_grafo"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -58,6 +64,8 @@ PROMPT_CRONISTA = PromptTemplate(
         "- **'Días' o 'Día' (con mayúscula)** = DÍAS HÁBILES (Business Days).\n"
         "- **'Días Calendario'** = DÍAS NATURALES (Calendar Days).\n"
         "- Mezclar estos términos sin conversión explícita es un ERROR de ambigüedad.\n\n"
+        "CONTEXTO DEL GRAFO (cadena de eventos y plazos relacionados):\n{contexto_grafo}\n"
+        "Usa el grafo para sumar plazos encadenados y verificar si exceden máximos globales.\n\n"
         "TUS TAREAS (Análisis Profundo):\n"
         "1. **Lógica Secuencial:** Analiza paso a paso el flujo. ¿El paso A lleva al B? "
         "¿Qué pasa si el paso B falla? Si no hay ruta de salida (dead-end), es un ERROR.\n"
@@ -82,5 +90,5 @@ PROMPT_CRONISTA = PromptTemplate(
         "}}\n"
         "Texto:\n{texto}\n"
     ),
-    input_variables=["texto"],
+    input_variables=["texto", "contexto_grafo"],
 )

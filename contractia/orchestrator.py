@@ -8,7 +8,8 @@ from typing import Dict, List, Set
 from tqdm.auto import tqdm
 
 from contractia.agents.factory import crear_agentes
-from contractia.config import ENABLE_LLM, RAG_ENABLED
+from contractia.config import ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
+from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.segmenter import (
     _get_all_section_numbers_as_str,
     construir_mapa_clausula_a_seccion,
@@ -28,6 +29,7 @@ def auditar_consistencia(
     section_nums_to_ignore: Set[str],
     llm,
     retriever=None,
+    contexto_grafo: str = "",
 ) -> List[Dict]:
     """Audita una sección individual con los tres agentes."""
 
@@ -53,7 +55,7 @@ def auditar_consistencia(
 
     # ── Paso 1: Jurista — normativa externa ──
     try:
-        res_jurista = jurista.ejecutar({"texto": texto_seccion})
+        res_jurista = jurista.ejecutar({"texto": texto_seccion, "contexto_grafo": contexto_grafo})
         if isinstance(res_jurista, list):
             lista_externa = [str(x) for x in res_jurista]
         elif isinstance(res_jurista, dict):
@@ -84,6 +86,7 @@ def auditar_consistencia(
             "idx_sec": str_idx_sec,
             "idx_loc": str_idx_loc,
             "refs_externas": str_externas,
+            "contexto_grafo": contexto_grafo,
         })
         if isinstance(res_aud, dict) and res_aud.get("hay_inconsistencias"):
             hallazgos_totales.extend(res_aud.get("hallazgos", []))
@@ -94,7 +97,7 @@ def auditar_consistencia(
 
     # ── Paso 3: Cronista — procesos y plazos ──
     try:
-        res_cron = cronista.ejecutar({"texto": texto_seccion})
+        res_cron = cronista.ejecutar({"texto": texto_seccion, "contexto_grafo": contexto_grafo})
         if isinstance(res_cron, dict):
             if res_cron.get("hay_errores_logicos") or res_cron.get("hay_inconsistencia_plazos"):
                 hallazgos_totales.extend(res_cron.get("hallazgos_procesos", []))
@@ -117,7 +120,7 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
     secciones = separar_en_secciones(texto_contrato)
     indice_secciones = crear_indice_capitulos_anexos(secciones)
     indice_global_clausulas = crear_indice_global_clausulas(secciones)
-    construir_mapa_clausula_a_seccion(secciones)  # side-effect: validation
+    mapa_clausula_a_seccion = construir_mapa_clausula_a_seccion(secciones)
     section_nums_to_ignore = _get_all_section_numbers_as_str(secciones)
 
     # ── RAG: crear vector store ──
@@ -131,13 +134,35 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
         except Exception as e:
             print(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.\n")
 
+    # ── GraphRAG: construir grafo de conocimiento ──
+    grafo = None
+    if GRAPH_ENABLED:
+        try:
+            print("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
+            grafo = construir_grafo_conocimiento(secciones, llm)
+            print("✅ GraphRAG activo.\n")
+        except Exception as e:
+            print(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.\n")
+
     # ── Auditoría multi-agente ──
     resultados_auditoria = []
-    rag_label = "con RAG " if retriever else ""
-    print(f"\n🚀 Iniciando auditoría {rag_label}en {len(secciones)} secciones...")
+    labels = []
+    if retriever:
+        labels.append("RAG")
+    if grafo is not None:
+        labels.append("GraphRAG")
+    label_str = " + ".join(labels) + " " if labels else ""
+    print(f"\n🚀 Iniciando auditoría {label_str}en {len(secciones)} secciones...")
 
     for sec in tqdm(secciones, desc="Auditando Secciones"):
         idx_local = crear_indice_de_clausulas_por_seccion(sec.get("contenido", ""))
+
+        # Contexto del grafo para esta sección
+        contexto_grafo = ""
+        if grafo is not None:
+            contexto_grafo = obtener_contexto_grafo(
+                idx_local, grafo, mapa_clausula_a_seccion
+            )
 
         try:
             hallazgos = auditar_consistencia(
@@ -148,6 +173,7 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
                 section_nums_to_ignore=section_nums_to_ignore,
                 llm=llm,
                 retriever=retriever,
+                contexto_grafo=contexto_grafo,
             )
 
             if hallazgos:

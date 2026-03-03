@@ -29,6 +29,7 @@ VERTEXAI_MAX_TOKENS: int        = int(os.getenv("VERTEXAI_MAX_OUTPUT_TOKENS", "8
 VERTEXAI_EMBEDDING_MODEL: str   = os.getenv("VERTEXAI_EMBEDDING_MODEL", "text-embedding-004")
 
 RAG_ENABLED: bool           = _bool(os.getenv("RAG_ENABLED", "true"))
+GRAPH_ENABLED: bool         = _bool(os.getenv("GRAPH_ENABLED", "true"))
 RAG_EMBEDDING_MODEL: str    = os.getenv("RAG_EMBEDDING_MODEL", "nomic-embed-text")
 RAG_CHUNK_SIZE: int         = int(os.getenv("RAG_CHUNK_SIZE", "1500"))
 RAG_CHUNK_OVERLAP: int      = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
