@@ -137,7 +137,7 @@ def obtener_contexto_grafo(
                 if match:
                     id_ref = match.group(1)
                     if id_ref in mapa_textos:
-                        texto_ref = mapa_textos[id_ref]["texto"][:500]
+                        texto_ref = mapa_textos[id_ref].get("texto", "")[:500]
                         contexto.append(f"  [TEXTO DE {sucesor}]: {texto_ref}...")
 
             # Predecesores (qué cláusulas referencian a esta)

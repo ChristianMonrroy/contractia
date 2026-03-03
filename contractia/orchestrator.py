@@ -160,9 +160,12 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
         # Contexto del grafo para esta sección
         contexto_grafo = ""
         if grafo is not None:
-            contexto_grafo = obtener_contexto_grafo(
-                idx_local, grafo, mapa_clausula_a_seccion
-            )
+            try:
+                contexto_grafo = obtener_contexto_grafo(
+                    idx_local, grafo, mapa_clausula_a_seccion
+                )
+            except Exception as e:
+                print(f"⚠️ GraphRAG context error: {e}")
 
         try:
             hallazgos = auditar_consistencia(
