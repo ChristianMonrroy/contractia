@@ -17,7 +17,7 @@ from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 from contractia.telegram.db.database import (
-    crear_auditoria, get_auditoria, actualizar_auditoria, get_conn,
+    crear_auditoria, get_auditoria, actualizar_auditoria, hay_auditoria_en_progreso, get_conn,
 )
 from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
@@ -138,7 +138,7 @@ async def start_audit(
     if not puede_auditar(user_id, usuario["rol"]):
         raise HTTPException(429, "Límite diario de auditorías alcanzado.")
 
-    if _auditoria_lock.locked():
+    if hay_auditoria_en_progreso(max_minutos=20):
         raise HTTPException(503, "Hay una auditoría en proceso. Intenta en unos minutos.")
 
     ext = Path(file.filename or "contrato").suffix.lower()

@@ -103,6 +103,18 @@ def init_db() -> None:
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS n_hallazgos INTEGER")
 
 
+def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
+    """True si hay una auditoría con status='processing' iniciada en los últimos max_minutos."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM auditorias "
+            "WHERE status = 'processing' "
+            "AND created_at > NOW() - INTERVAL '%s minutes'",
+            (max_minutos,),
+        ).fetchone()
+    return (row["cnt"] if row else 0) > 0
+
+
 def crear_auditoria(audit_id: str, user_id: int) -> None:
     """Registra una nueva auditoría con estado 'processing'."""
     with get_conn() as conn:
