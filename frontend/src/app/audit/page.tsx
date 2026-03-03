@@ -89,8 +89,8 @@ function AuditContent() {
       setUploadedFile(file);
       setFilename(res.data.filename);
       setStatus("ready");
-    } catch {
-      setError("Error al subir el contrato. Verifica que sea PDF o Word.");
+    } catch (err: unknown) {
+      setError(extractError(err, "Error al subir el contrato. Verifica el archivo e inténtalo de nuevo."));
       setStatus("error");
     }
   };
