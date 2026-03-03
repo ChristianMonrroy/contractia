@@ -149,6 +149,9 @@ async def start_audit(
     if ext not in (".pdf", ".docx"):
         raise HTTPException(400, "Solo se aceptan PDF o DOCX.")
 
+    if file.size and file.size > 30 * 1024 * 1024:
+        raise HTTPException(400, "El archivo supera el límite de 30 MB.")
+
     filename = file.filename or f"contrato{ext}"
     audit_id = str(uuid.uuid4())
     crear_auditoria(audit_id, user_id, filename=filename)
