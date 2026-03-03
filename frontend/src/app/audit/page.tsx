@@ -80,9 +80,20 @@ function AuditContent() {
   const handleFileUpload = async (file: File) => {
     if (!file) return;
     setError("");
-    setStatus("uploading");
     setAuditResult("");
     setMessages([]);
+
+    // Modo auditoría: guardar el archivo localmente, sin llamar al API todavía.
+    // El archivo se envía al backend solo al pulsar "Iniciar auditoría".
+    if (mode === "audit") {
+      setUploadedFile(file);
+      setFilename(file.name);
+      setStatus("ready");
+      return;
+    }
+
+    // Modo consulta: indexar el contrato para RAG (necesita session_id).
+    setStatus("uploading");
     try {
       const res = await contractsAPI.upload(file);
       setSessionId(res.data.session_id);
@@ -237,7 +248,7 @@ function AuditContent() {
                     <p className="font-medium text-[#1e3a5f] text-sm">{filename}</p>
                     <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
                       <CheckCircle2 className="w-3 h-3" />
-                      Contrato indexado correctamente
+                      {mode === "audit" ? "Listo para auditar" : "Contrato indexado correctamente"}
                     </p>
                   </div>
                 </div>
