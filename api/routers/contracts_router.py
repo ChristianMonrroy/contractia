@@ -197,7 +197,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
     import shutil
     async with _auditoria_lock:
         try:
-            actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...")
+            actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...", progress_pct=10)
             _, texto = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: procesar_documentos_carpeta(tmp_dir)
             )
@@ -205,17 +205,17 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
 
-            actualizar_auditoria(audit_id, progress_msg="Construyendo base de conocimiento RAG...")
+            actualizar_auditoria(audit_id, progress_msg="Construyendo base de conocimiento RAG...", progress_pct=30)
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
 
-            actualizar_auditoria(audit_id, progress_msg="Auditando secciones con 3 agentes IA...")
+            actualizar_auditoria(audit_id, progress_msg="Auditando secciones con 3 agentes IA...", progress_pct=55)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(texto, llm)
             )
             duracion = round(time.time() - start, 1)
 
-            actualizar_auditoria(audit_id, progress_msg="Generando informe final...")
+            actualizar_auditoria(audit_id, progress_msg="Generando informe final...", progress_pct=90)
             md = render_auditoria_markdown(resultado)
             n_hallazgos = sum(
                 len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
@@ -230,6 +230,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 n_hallazgos=n_hallazgos,
                 n_secciones=n_secciones,
                 progress_msg="Completado",
+                progress_pct=100,
             )
             # Notificar por email
             try:

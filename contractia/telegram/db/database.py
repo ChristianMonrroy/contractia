@@ -105,6 +105,7 @@ def init_db() -> None:
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS n_hallazgos INTEGER")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS progress_msg TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS filename TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS progress_pct INTEGER DEFAULT 0")
 
 
 def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
@@ -123,8 +124,8 @@ def crear_auditoria(audit_id: str, user_id: int, filename: str = "") -> None:
     """Registra una nueva auditoría con estado 'processing'."""
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO auditorias (audit_id, user_id, status, filename, progress_msg) "
-            "VALUES (%s, %s, 'processing', %s, 'Iniciando...')",
+            "INSERT INTO auditorias (audit_id, user_id, status, filename, progress_msg, progress_pct) "
+            "VALUES (%s, %s, 'processing', %s, 'Iniciando...', 0)",
             (audit_id, user_id, filename),
         )
 
@@ -134,7 +135,7 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
     with get_conn() as conn:
         row = conn.execute(
             "SELECT status, informe, n_hallazgos, n_secciones, "
-            "error_detail, progress_msg, filename "
+            "error_detail, progress_msg, progress_pct, filename "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
@@ -146,7 +147,7 @@ def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT audit_id, status, filename, n_hallazgos, n_secciones, "
-            "progress_msg, error_detail, created_at, updated_at "
+            "progress_msg, progress_pct, error_detail, created_at, updated_at "
             "FROM auditorias WHERE user_id = %s "
             "ORDER BY created_at DESC LIMIT %s",
             (user_id, limit),

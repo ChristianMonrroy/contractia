@@ -82,7 +82,7 @@ export const contractsAPI = {
   },
 
   getAudit: (audit_id: string) =>
-    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; filename?: string }>(
+    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; progress_pct?: number; filename?: string }>(
       `/contracts/audit/${audit_id}`
     ),
 
@@ -132,6 +132,7 @@ export interface AuditRow {
   n_hallazgos: number | null;
   n_secciones: number | null;
   progress_msg: string | null;
+  progress_pct: number | null;
   error_detail: string | null;
   created_at: string;
   updated_at: string;

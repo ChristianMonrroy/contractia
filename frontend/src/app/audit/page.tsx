@@ -36,6 +36,7 @@ function AuditContent() {
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [queryLoading, setQueryLoading] = useState(false);
   const [progressMsg, setProgressMsg] = useState("");
+  const [progressPct, setProgressPct] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -57,9 +58,11 @@ function AuditContent() {
       try {
         const check = await contractsAPI.getAudit(auditIdParam);
         if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
+        if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
         if (check.data.filename) setFilename(check.data.filename);
         if (check.data.status === "done") {
           clearInterval(poll);
+          setProgressPct(100);
           setAuditResult(check.data.informe || "");
           setStatus("done");
         } else if (check.data.status === "error") {
@@ -117,6 +120,7 @@ function AuditContent() {
     setStatus("running");
     setError("");
     setProgressMsg("Iniciando...");
+    setProgressPct(5);
     try {
       const res = await contractsAPI.audit(uploadedFile);
       const auditId = res.data.audit_id;
@@ -124,8 +128,10 @@ function AuditContent() {
         try {
           const check = await contractsAPI.getAudit(auditId);
           if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
+          if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
           if (check.data.status === "done") {
             clearInterval(poll);
+            setProgressPct(100);
             setAuditResult(check.data.informe || "");
             setStatus("done");
           } else if (check.data.status === "error") {
@@ -177,6 +183,7 @@ function AuditContent() {
     setMessages([]);
     setError("");
     setProgressMsg("");
+    setProgressPct(0);
   };
 
   return (
@@ -287,19 +294,31 @@ function AuditContent() {
                 )}
 
                 {status === "running" && (
-                  <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-10 text-center">
-                    <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
-                    <h3 className="font-semibold text-[#1e3a5f] text-lg mb-2">Auditoría en progreso</h3>
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-10">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-[#1e3a5f] text-lg">Auditoría en progreso</h3>
+                      <span className="text-2xl font-bold text-blue-600 tabular-nums">{progressPct}%</span>
+                    </div>
+
+                    {/* Barra de progreso */}
+                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden mb-3">
+                      <div
+                        className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-700 ease-out"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+
                     {progressMsg && (
-                      <p className="text-blue-600 font-medium text-sm mb-1">{progressMsg}</p>
+                      <p className="text-blue-600 font-medium text-sm mb-4">{progressMsg}</p>
                     )}
-                    <p className="text-slate-400 text-sm">Puedes cerrar esta página y volver más tarde</p>
-                    <div className="mt-6 flex justify-center gap-6 text-sm text-slate-400">
+
+                    <div className="flex justify-center gap-6 text-sm text-slate-400 mt-4 mb-4">
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>Jurista</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-150"></span>Auditor</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse delay-300"></span>Cronista</span>
                     </div>
-                    <p className="text-slate-300 text-xs mt-6">Recibirás un email al terminar</p>
+                    <p className="text-slate-400 text-sm text-center">Puedes cerrar esta página y volver más tarde</p>
+                    <p className="text-slate-300 text-xs text-center mt-1">Recibirás un email al terminar</p>
                   </div>
                 )}
 
