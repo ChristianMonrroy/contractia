@@ -195,12 +195,17 @@ def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
 
 
 def _make_progress_callback(audit_id: str):
-    """Devuelve una función callback que actualiza el progreso de la auditoría en DB."""
-    def callback(pct: int, msg: str) -> None:
+    """Devuelve un callback que actualiza el progreso en DB.
+
+    Retorna True si la auditoría fue cancelada externamente (el loop debe detenerse).
+    """
+    def callback(pct: int, msg: str) -> bool:
         try:
             actualizar_auditoria(audit_id, progress_pct=pct, progress_msg=msg)
+            state = get_auditoria(audit_id)
+            return bool(state and state.get("status") != "processing")
         except Exception:
-            pass
+            return False
     return callback
 
 
