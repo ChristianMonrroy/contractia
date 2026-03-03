@@ -1,13 +1,13 @@
-# ContractIA — Documento de Arquitectura Técnica y Plan de Evolución
-**Versión:** 7.0.2 | **Fecha:** Febrero 2026
+# ContractIA — Documento de Arquitectura Técnica
+**Versión:** 8.2.0 | **Fecha:** Marzo 2026
 
 ---
 
 ## 1. ¿Qué es ContractIA?
 
-ContractIA es un sistema de **auditoría inteligente de contratos legales** accesible vía bot de Telegram. Permite a usuarios autorizados subir un contrato en PDF o DOCX y obtener:
+ContractIA es un sistema de **auditoría inteligente de contratos legales** accesible vía web (contractia.pe) y bot de Telegram. Permite a usuarios autorizados subir un contrato en PDF o DOCX y obtener:
 
-- **Auditoría completa:** análisis multi-agente que detecta inconsistencias legales, referencias cruzadas rotas y errores en plazos y procesos.
+- **Auditoría completa:** análisis multi-agente (Jurista + Auditor + Cronista) que detecta inconsistencias legales, referencias cruzadas rotas y errores en plazos y procesos, enriquecido con RAG y GraphRAG.
 - **Consulta interactiva (RAG):** preguntas en lenguaje natural respondidas con base en el contenido del contrato.
 
 ---
@@ -15,15 +15,22 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
 ## 2. Arquitectura General
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        TELEGRAM BOT                             │
-│                                                                 │
-│  Usuario → Telegram API → bot.py → handler.py                  │
+┌──────────────────────────────────────────────────────────────────┐
+│                      CANAL WEB (NUEVO)                           │
+│                                                                  │
+│  contractia.pe (Next.js 14 · Vercel)                            │
+│       ↕ HTTPS/JWT                                               │
+│  api.contractia.pe → Cloud Run (FastAPI · Python)               │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│                        TELEGRAM BOT                              │
+│                                                                  │
+│  Usuario → Telegram API → webhook → handler.py                  │
 │                                        │                        │
 │                    ┌───────────────────┤                        │
 │                    ▼                   ▼                        │
 │             audit_flow.py       query_flow.py                   │
-│                    │                   │                        │
 └────────────────────┼───────────────────┼────────────────────────┘
                      │                   │
          ┌───────────▼──────┐    ┌───────▼───────────┐
@@ -31,8 +38,7 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │  orchestrator.py │    │   pipeline.py     │
          │                  │    │                   │
          │  segmenter.py    │    │  FAISS + Embeddings│
-         │  (regex engine)  │    │  (VertexAI /       │
-         │                  │    │   Ollama)          │
+         │  graph.py        │    │  (VertexAI)       │
          └────────┬─────────┘    └───────────────────┘
                   │
          ┌────────▼─────────────────────────┐
@@ -40,6 +46,7 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │                                  │
          │  Jurista → Auditor → Cronista    │
          │  (LangChain + PromptTemplate)    │
+         │  + contexto RAG + GraphRAG       │
          └────────┬─────────────────────────┘
                   │
          ┌────────▼─────────┐
@@ -48,21 +55,22 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │                  │
          │  VertexAI        │
          │  (Gemini 2.5 Pro)│
-         │  o Ollama (local)│
          └──────────────────┘
 
 ┌─────────────────────────────────────┐
 │           CAPA DE DATOS             │
 │                                     │
-│  SQLite (contractia.db)             │
-│  ├── usuarios (bcrypt passwords)    │
+│  Cloud SQL — PostgreSQL 15          │
+│  ├── usuarios                       │
 │  ├── codigos_verificacion (OTP)     │
 │  ├── uso_diario (rate limiting)     │
-│  └── logs                           │
+│  ├── logs (+ duracion, canal,       │
+│  │        n_hallazgos)              │
+│  └── auditorias (estado, informe)   │
 │                                     │
-│  Sesiones en memoria (dict Python)  │
-│  Vector store FAISS (en memoria,    │
-│  por sesión de usuario)             │
+│  FAISS en memoria (por sesión RAG)  │
+│  GraphRAG: networkx DiGraph         │
+│            (en memoria, por audit)  │
 └─────────────────────────────────────┘
 ```
 
@@ -73,11 +81,12 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
 ```
 contractia/
 ├── config.py                   # Variables de entorno centralizadas
-├── orchestrator.py             # Pipeline principal de auditoría
+├── orchestrator.py             # Pipeline principal (RAG + GraphRAG + Agentes)
 │
 ├── core/
 │   ├── loader.py               # Extracción de texto (PDF/DOCX)
 │   ├── segmenter.py            # Motor regex de segmentación estructural
+│   ├── graph.py                # GraphRAG: extracción de tripletas + networkx DiGraph
 │   └── report.py               # Renderizado del informe Markdown
 │
 ├── agents/
@@ -98,12 +107,37 @@ contractia/
     ├── auth/crypto.py          # OTP y generación de passwords
     ├── correo/                 # SMTP Gmail (verificación y bienvenida)
     ├── db/
-    │   ├── database.py         # SQLite, init_db()
+    │   ├── database.py         # PostgreSQL, init_db(), auditorias CRUD,
+    │   │                       # get_actividad(), get_resumen_actividad()
     │   ├── usuarios.py         # CRUD usuarios (bcrypt)
     │   └── uso.py              # Rate limiting diario por rol
     └── flows/
-        ├── audit_flow.py       # Flujo de auditoría completa (con semáforo)
-        └── query_flow.py       # Flujo de consulta RAG interactiva
+        ├── audit_flow.py       # Flujo de auditoría completa (bot)
+        └── query_flow.py       # Flujo de consulta RAG interactiva (bot)
+
+api/
+├── main.py                     # FastAPI entry point + webhook Telegram
+├── auth.py                     # JWT tokens (8h)
+└── routers/
+    ├── auth_router.py          # /auth/* (register, verify, login, reset-password)
+    ├── contracts_router.py     # /contracts/* (upload, query, audit, polling)
+    └── admin_router.py         # /admin/* (usuarios, roles, actividad)
+
+frontend/
+└── src/
+    ├── app/
+    │   ├── page.tsx            # Landing (/)
+    │   ├── login/              # /login
+    │   ├── register/           # /register
+    │   ├── forgot-password/    # /forgot-password
+    │   ├── dashboard/          # /dashboard
+    │   ├── audit/              # /audit (auditoría + consulta RAG)
+    │   └── admin/
+    │       ├── page.tsx        # /admin (panel de usuarios)
+    │       └── actividad/      # /admin/actividad (reportes de uso)
+    ├── components/Navbar.tsx
+    ├── context/AuthContext.tsx  # JWT + roles (isAdmin, isAuthenticated)
+    └── lib/api.ts               # Axios client (authAPI, contractsAPI, adminAPI)
 ```
 
 ---
@@ -137,33 +171,46 @@ PDF/DOCX
 
    │
    ▼
-[4] AUDITORÍA MULTI-AGENTE (por cada sección)
+[4] CONSTRUCCIÓN DEL GRAFO DE CONOCIMIENTO (GraphRAG)
+    graph.py
+    ├── Para cada sección, llama al LLM para extraer tripletas
+    │   (origen, relación, destino, contexto)
+    ├── Relaciones válidas: REFERENCIA_A, SE_RIGE_POR,
+    │   ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE
+    ├── Construye nx.DiGraph con nodos de entidades
+    └── Permite navegar dependencias entre cláusulas
+
+   │
+   ▼
+[5] AUDITORÍA MULTI-AGENTE (por cada sección)
     orchestrator.py → auditar_consistencia()
     │
     ├── AGENTE JURISTA
-    │   Input:  texto de la sección
+    │   Input:  texto + contexto grafo
     │   Tarea:  identifica normativa externa (leyes, códigos, etc.)
     │   Output: lista de referencias externas (JSON)
     │
-    ├── AGENTE AUDITOR  ← recibe contexto RAG de otras secciones
-    │   Input:  texto + contexto RAG + índices de cláusulas
+    ├── AGENTE AUDITOR  ← recibe contexto RAG + contexto grafo
+    │   Input:  texto + contexto RAG + índices de cláusulas + grafo
     │   Tarea:  valida referencias cruzadas internas
     │   Output: {hay_inconsistencias, hallazgos[]} (JSON)
     │
-    └── AGENTE CRONISTA
-        Input:  texto de la sección
+    └── AGENTE CRONISTA  ← recibe contexto grafo
+        Input:  texto + contexto grafo
         Tarea:  analiza lógica de procesos y plazos
         Output: {hay_errores_logicos, hallazgos_procesos[]} (JSON)
 
    │
    ▼
-[5] GENERACIÓN DEL INFORME
-    report.py → Markdown con todos los hallazgos
+[6] GENERACIÓN DEL INFORME
+    report.py → Markdown con todos los hallazgos agrupados por cláusula
 
    │
    ▼
-[6] ENTREGA AL USUARIO
-    Telegram → archivo .md adjunto
+[7] PERSISTENCIA Y ENTREGA
+    Bot Telegram → archivo .md adjunto
+    Web → polling GET /contracts/audit/{id} → informe en página
+    DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones)
 ```
 
 ### Pausa técnica entre secciones
@@ -171,191 +218,153 @@ El orquestador incluye `time.sleep(2)` entre secciones para no saturar la quota 
 
 ---
 
-## 5. Tipo de RAG Implementado
+## 5. RAG Implementado
 
-**Tipo:** RAG Naive / Standard con enriquecimiento de metadata estructural.
+**Tipo:** RAG Naive / Standard + GraphRAG como contexto complementario.
 
 | Característica | Valor |
 |---|---|
-| Estrategia de chunking | `RecursiveCharacterTextSplitter` con separadores legales (`\nCAPÍTULO`, `\nArtículo`, `\nCláusula`, etc.) |
+| Estrategia de chunking | `RecursiveCharacterTextSplitter` con separadores legales |
 | Tamaño de chunk | 1500 caracteres, overlap 200 |
-| Modelo de embeddings | `text-embedding-004` (VertexAI) / `nomic-embed-text` (Ollama) |
+| Modelo de embeddings | `text-embedding-004` (VertexAI) |
 | Vector store | **FAISS** (en memoria, por sesión) |
 | Estrategia de búsqueda | Similarity search (cosine), top-k=3 |
 | Metadata por chunk | título de sección, tipo, número, índice de chunk |
-| Uso del RAG en auditoría | El Agente Auditor recibe los top-3 fragmentos más similares de **otras secciones** para detectar inconsistencias cruzadas |
-| Uso del RAG en consulta | El usuario hace preguntas libres; se recuperan top-k fragmentos y se construye un prompt para el LLM |
+| Uso del RAG en auditoría | Agente Auditor recibe top-3 fragmentos de otras secciones |
+| Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |
 | Persistencia del vector store | No persiste — se reconstruye por cada contrato cargado |
 
-**Limitación notable:** el FAISS vive en memoria RAM por sesión. Si el bot se reinicia, todos los vectores se pierden.
+### GraphRAG (v8.2.0)
+
+| Característica | Valor |
+|---|---|
+| Tecnología | `networkx.DiGraph` |
+| Extracción de tripletas | LLM (Gemini 2.5 Pro) por sección |
+| Tipos de relación | REFERENCIA_A, SE_RIGE_POR, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE |
+| Uso | Los 3 agentes reciben `contexto_grafo` con relaciones de la sección actual |
+| Persistencia | En memoria, por auditoría (se descarta al terminar) |
 
 ---
 
 ## 6. Sistema Multi-Agente
 
-**Patrón:** Sequential Agents (no paralelos, no hay comunicación directa entre agentes).
-
-Los tres agentes comparten el mismo LLM pero tienen prompts distintos y se ejecutan en secuencia:
+**Patrón:** Sequential Agents con contexto compartido (RAG + GraphRAG).
 
 | Agente | Rol | Input principal | Output |
 |---|---|---|---|
-| **Jurista** | Identifica normativa externa | Texto de sección | Lista de leyes/normas citadas |
-| **Auditor** | Valida referencias internas | Texto + contexto RAG + índices | Hallazgos de referencias rotas |
-| **Cronista** | Analiza procesos y plazos | Texto de sección | Hallazgos de errores lógicos y de plazos |
+| **Jurista** | Identifica normativa externa | Texto + contexto grafo | Lista de leyes/normas citadas |
+| **Auditor** | Valida referencias internas | Texto + contexto RAG + índices + grafo | Hallazgos de referencias rotas |
+| **Cronista** | Analiza procesos y plazos | Texto + contexto grafo | Hallazgos de errores lógicos y de plazos |
 
-Todos los agentes usan `LangChain PromptTemplate | LLM | StrOutputParser` con un parser JSON robusto que maneja errores comunes de salida del LLM (markdown, comas extra, comentarios).
+Todos los agentes usan `LangChain PromptTemplate | LLM | StrOutputParser` con un parser JSON robusto.
 
 ---
 
 ## 7. Modelo de Roles y Autenticación
 
-**Registro:** Email OTP (código de 6 dígitos, expira en 10 min) → contraseña autogenerada enviada por email.
+**Registro web:** Email → OTP (6 dígitos, 10 min) → contraseña autogenerada → JWT (8h).
 
 **Roles:**
 
 | Rol | Auditorías/día | Preguntas/día | Notas |
 |---|---|---|---|
-| `pendiente` | 0 | 0 | Recién registrado, espera aprobación del admin |
-| `basico` | 0 | 10 | Solo puede hacer preguntas |
-| `auditor` | 3 | 30 | Puede auditar y preguntar |
-| `admin` | ∞ | ∞ | Panel de administración completo |
+| `pendiente` | 0 | 0 | Espera aprobación del admin |
+| `basico` | 0 | 10 | Solo consultas RAG |
+| `auditor` | 3 | 30 | Auditorías completas + consultas |
+| `admin` | ∞ | ∞ | Panel admin + reportes de actividad |
 
-**Flujo de aprobación:** nuevo usuario → admin recibe notificación en Telegram con botones → asigna rol → usuario notificado.
+**Flujo de aprobación:** nuevo usuario → admin recibe notificación en Telegram con botones → asigna rol → usuario notificado por email.
 
-**Seguridad actual:**
-- Passwords hasheados con **bcrypt** (cost factor por defecto: 12)
-- Sesiones en memoria con timeout configurable (default: 8h)
-- El mensaje con la contraseña en el login se borra de Telegram inmediatamente
-- Secretos en `.env` (nunca en el código)
+**Seguridad:**
+- Passwords hasheados con **bcrypt**
+- JWT firmados con secreto en GCP Secret Manager
+- Tokens en cookies (js-cookie), interceptor axios para inyección automática
+- Redirect a `/login` en respuestas 401
 
 ---
 
 ## 8. LLM y Proveedores
 
-El sistema soporta dos proveedores intercambiables vía variable de entorno `LLM_PROVIDER`:
-
-| Proveedor | Modelo principal | Fallback | Uso |
-|---|---|---|---|
-| `vertexai` | Gemini 2.5 Pro | Gemini 2.5 Pro | Producción |
-| `ollama` | deepseek-r1:8b | qwen3:8b | Desarrollo local |
+| Proveedor | Modelo principal | Uso |
+|---|---|---|
+| `vertexai` | Gemini 2.5 Pro | Producción |
+| `ollama` | deepseek-r1:8b / qwen3:8b | Desarrollo local |
 
 ---
 
-## 9. Concurrencia Actual
+## 9. Concurrencia y Persistencia de Auditorías
 
-- **Bot:** single-process, asyncio, polling mode
-- **Auditorías:** limitadas a 1 simultánea por `asyncio.Semaphore(1)`
-- **Preguntas RAG:** concurrentes sin límite (son más rápidas y ligeras)
-- **Base de datos:** SQLite con WAL mode (permite lecturas concurrentes)
-
----
-
----
-
-# PARTE II — Plan de Escalabilidad y Seguridad
+- **Bot:** single-process, asyncio, webhook mode
+- **Auditorías:** limitadas a 1 simultánea por `hay_auditoria_en_progreso()` — check en DB (auto-expira en 20 min), seguro para multi-instancia Cloud Run
+- **Estado de auditoría:** persistido en tabla `auditorias` (PostgreSQL), no en memoria
+- **Polling web:** frontend hace GET `/contracts/audit/{id}` cada 4s hasta `status=done|error`
+- **Preguntas RAG:** concurrentes sin límite
 
 ---
 
-## 10. Plan de Despliegue 24/7 con Auto-Deploy (Corto Plazo)
+## 10. Base de Datos — Esquema
 
-**Recomendación:** VPS Linux ($6/mes) + GitHub Actions
-
-```
-Tu laptop                  GitHub                    Servidor VPS
-    │                         │                           │
-    │── git push origin main ─►│                           │
-    │                         │── GitHub Actions ──────────►│
-    │                         │   1. SSH al servidor       │
-    │                         │   2. git pull origin main  │
-    │                         │   3. systemctl restart     │
-    │                         │      contractia            │
-```
-
-**Componentes a configurar:**
-1. `.github/workflows/deploy.yml` — workflow de CI/CD
-2. `systemd` service — mantiene el bot corriendo y lo reinicia si cae
-3. GitHub Secrets — `SERVER_HOST`, `SERVER_USER`, `SSH_PRIVATE_KEY`
-4. Variables de entorno en el servidor (nunca en GitHub)
-
----
-
-## 11. Plan de Escalabilidad (Mediano Plazo)
-
-### Fase 1 — Ahora: VPS + SQLite (sin cambios de arquitectura)
-- Costo: $6/mes
-- Capacidad: decenas de usuarios, 1 auditoría simultánea
-- Limitación: no escala horizontalmente
-
-### Fase 2 — Migrar a PostgreSQL
-- Mismo VPS o Railway
-- Cambios en 6 archivos Python (mecánico, ~3h)
-- Desbloquea el uso en Railway y futuros despliegues multi-instancia
-
-### Fase 3 — Webhooks en lugar de Polling
-- Telegram envía mensajes a tu URL en vez de que el bot pregunte
-- Permite múltiples instancias del bot en paralelo
-- Requiere HTTPS (certificado SSL)
-
-### Fase 4 — Arquitectura cloud-native (si escala a cientos de usuarios)
-```
-GitHub ──► Railway/GCP
-              ├── Bot instances (webhooks, múltiples pods)
-              ├── PostgreSQL (gestionado)
-              ├── Redis (sesiones compartidas entre instancias)
-              └── VertexAI (ya cloud-native ✓)
+```sql
+usuarios          (telegram_id PK, email UNIQUE, password_hash, rol, activo, fecha_registro)
+codigos_verificacion (id, telegram_id, codigo, expira_en, usado)
+uso_diario        (id, telegram_id, fecha, auditorias, preguntas, UNIQUE(telegram_id,fecha))
+logs              (id, telegram_id, accion, detalle, timestamp,
+                   duracion_segundos, canal TEXT DEFAULT 'bot', n_hallazgos)
+auditorias        (audit_id PK, user_id, status, informe, n_hallazgos,
+                   n_secciones, error_detail, created_at, updated_at)
 ```
 
 ---
 
-## 12. Plan de Seguridad (Mejoras Pendientes)
+## 11. CI/CD y Despliegue
 
-| Área | Situación actual | Mejora recomendada | Prioridad |
-|---|---|---|---|
-| Credenciales | En `.env` local ✓ | Secrets manager (GCP Secret Manager, Railway vars) en producción | Alta |
-| Base de datos | Sin cifrado en reposo | Cifrado a nivel de disco del servidor (DigitalOcean lo ofrece) | Media |
-| Transporte | Telegram cifra el canal ✓ | Añadir HTTPS si se agregan endpoints web | Media |
-| Rate limiting | Por rol y día ✓ | Añadir límite por IP/burst para prevenir abuso | Media |
-| Logs | En SQLite sin rotación | Rotar logs, no almacenar texto de contratos | Alta |
-| Service account GCP | JSON en disco local | Workload Identity Federation (sin archivos JSON en el servidor) | Alta |
-| Sesiones | En memoria Python | Migrar a Redis para persistencia entre reinicios | Baja |
-| Auditoría de accesos | Logs básicos ✓ | Alertas al admin si un usuario supera umbrales anómalos | Baja |
+```
+git push origin main
+        │
+        ▼
+GitHub Actions (.github/workflows/deploy.yml)
+        ├── docker build
+        ├── docker push → Artifact Registry (us-central1)
+        └── gcloud run deploy → Cloud Run (contractia-api · us-central1)
+
+git push frontend → Vercel (deploy automático)
+```
+
+**Infraestructura GCP:**
+| Servicio | Recurso |
+|---|---|
+| Compute | Cloud Run (contractia-api · us-central1) |
+| Base de datos | Cloud SQL PostgreSQL 15 (contractia-db) |
+| Imágenes Docker | Artifact Registry (us-central1) |
+| Secretos | Secret Manager |
+| IAM | Service Account contractia-sa (Workload Identity Federation) |
 
 ---
 
-## 13. Preguntas para el Profesor
-
-Estas preguntas abordan decisiones de arquitectura que tienen implicaciones académicas y de investigación:
-
----
+## 12. Preguntas para el Profesor
 
 ### Sobre el diseño multi-agente
 
-**P1.** El sistema usa tres agentes especializados (Jurista, Auditor, Cronista) que se ejecutan **secuencialmente** sobre cada sección. ¿Sería más adecuado académicamente un diseño de agentes **paralelos** (con join al final) o un diseño **reflexivo** (donde un agente supervisor revisa y cuestiona los hallazgos de los otros)? ¿Qué frameworks de multi-agente (LangGraph, CrewAI, AutoGen) considera más pertinente para este dominio?
+**P1.** El sistema usa tres agentes especializados que se ejecutan **secuencialmente**. Con la integración de GraphRAG, los agentes ahora tienen acceso a relaciones entre cláusulas. ¿Sería más adecuado un diseño **reflexivo** (agente supervisor que revisa hallazgos) o mantener la secuencia actual? ¿Qué frameworks (LangGraph, CrewAI) considera más pertinente para este dominio?
 
-**P2.** Los agentes no tienen **memoria inter-sección**: cada sección se analiza de forma independiente. ¿Deberíamos acumular los hallazgos de secciones anteriores como contexto para las siguientes, y cómo afectaría eso al costo computacional y al riesgo de alucinaciones acumuladas?
+**P2.** Los agentes no tienen **memoria inter-sección**: cada sección se analiza de forma independiente. ¿Deberíamos acumular hallazgos previos como contexto para secciones siguientes?
 
----
+### Sobre el RAG y GraphRAG
 
-### Sobre el RAG
+**P3.** El sistema combina **RAG Naive** (FAISS + similarity search) con **GraphRAG** (networkx + tripletas). ¿Qué peso relativo deberían tener ambos tipos de contexto en los prompts? ¿Existe evidencia de que GraphRAG supera a RAG puro en documentos legales con cláusulas interdependientes?
 
-**P3.** El sistema usa **RAG Naive** (chunk → embed → similarity search → prompt). Existen variantes más sofisticadas: **HyDE** (Hypothetical Document Embeddings), **RAG-Fusion** (múltiples queries reformuladas), o **GraphRAG** (grafo de entidades). ¿Cuál considera más apropiado para contratos legales donde las cláusulas tienen dependencias explícitas entre sí?
+**P4.** Los chunks se generan por tamaño con separadores legales. ¿Sería más efectivo un chunking **semántico** por cláusula completa (cada cláusula como chunk unitario)?
 
-**P4.** Los chunks se generan por tamaño de caracteres con separadores legales. ¿Sería más efectivo un chunking **semántico** basado en la estructura del contrato (cada cláusula como chunk) versus el chunking actual por tamaño? ¿Hay estudios de ablación sobre esto en documentos legales?
+**P5.** El vector store FAISS **no persiste entre sesiones**. ¿Tiene sentido persistir vectores para análisis comparativo entre versiones del mismo contrato?
 
-**P5.** El vector store FAISS **no persiste entre sesiones**. ¿Tiene sentido académicamente persistir los vectores de contratos ya procesados (para análisis comparativo entre versiones del mismo contrato), o la privacidad del cliente lo contraindica?
+### Sobre escalabilidad
 
----
+**P6.** El sistema corre en Cloud Run con instancias efímeras. El lock de concurrencia es DB-based (auto-expira). Para auditorías muy largas (> 20 min), ¿se recomienda migrar a una arquitectura de **cola de tareas** (Cloud Tasks + Cloud Run Jobs)?
 
-### Sobre escalabilidad y arquitectura
-
-**P6.** El sistema corre en modo **polling** (single-process). Para escalar a múltiples usuarios concurrentes con auditorías pesadas, ¿se recomienda una arquitectura de **cola de tareas** (Celery + Redis) dentro del mismo servicio, o una separación en microservicios (bot service + worker service)? ¿Cuál es el trade-off en un contexto de MVP de investigación?
-
-**P7.** Las sesiones de usuario (incluyendo el vector store FAISS por sesión) viven en **memoria RAM del proceso Python**. Con 50 usuarios concurrentes con contratos de 200 páginas, esto podría consumir varios GB. ¿Cuál es la estrategia adecuada: serializar y guardar el FAISS en disco por sesión, migrar a un vector store compartido (Pinecone, Weaviate, pgvector), o limitar el tiempo de vida de la sesión RAG?
-
----
+**P7.** El FAISS vive en memoria RAM por sesión. Con muchos usuarios concurrentes, ¿es más adecuado migrar a un vector store gestionado (Vertex AI Vector Search, pgvector) o limitar el tiempo de vida de la sesión RAG?
 
 ### Sobre el dominio legal
 
-**P8.** Los prompts de los agentes están optimizados para **contratos de concesión** (infraestructura pública). ¿Qué tan transferible es este diseño a otros tipos de contratos (laborales, comerciales, arrendamiento)? ¿Debería haber un agente adicional de **clasificación de tipo de contrato** antes del pipeline, para seleccionar los prompts adecuados?
+**P8.** Los prompts están optimizados para contratos de concesión (infraestructura pública). ¿Qué tan transferible es este diseño a otros tipos (laborales, comerciales)? ¿Debería haber un agente de **clasificación de tipo de contrato** antes del pipeline?
 
-**P9.** El Agente Cronista diferencia entre "Días" (hábiles) y "Días Calendario", lo cual es específico al marco legal peruano. ¿Debería esta lógica estar en el prompt (como está ahora) o en una **base de conocimiento estructurada** (ej. ontología de plazos legales) consultada vía RAG?
+**P9.** El Agente Cronista diferencia "Días" (hábiles) vs "Días Calendario" (marco legal peruano). ¿Debería esta lógica migrar a una **ontología de plazos legales** consultada vía RAG?
