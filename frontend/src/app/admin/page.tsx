@@ -79,10 +79,10 @@ export default function AdminPage() {
     try {
       if (user.activo) {
         await adminAPI.suspend(user.id);
-        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, activo: false } : u));
+        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, activo: 0 } : u));
       } else {
         await adminAPI.activate(user.id);
-        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, activo: true } : u));
+        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, activo: 1 } : u));
       }
     } catch {
       // silent
