@@ -6,17 +6,8 @@ Soporta PDFs con texto embebido y PDFs escaneados (OCR automático).
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
+from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.documents import Document
-
-
-def _get_pdf_page_count(archivo: Path) -> int:
-    """Devuelve el número de páginas de un PDF usando pypdf (sin cargar el texto)."""
-    try:
-        from pypdf import PdfReader
-        return len(PdfReader(str(archivo)).pages)
-    except Exception:
-        return 0
 
 
 def _load_pdf(
@@ -24,28 +15,50 @@ def _load_pdf(
     ocr_progress: Optional[Callable[[int, str], None]] = None,
 ) -> List[Document]:
     """
-    Carga un PDF. Si no tiene capa de texto (PDF escaneado),
-    aplica OCR con Tesseract automáticamente, página a página.
+    Carga un PDF página a página, reportando progreso en tiempo real.
 
-    Args:
-        ocr_progress: callback(pct: int, msg: str) llamado por cada página
-                      durante el OCR para actualizar el progreso en tiempo real.
+    Fase 1 — texto embebido (pypdf): muestra "Leyendo página X/N…"
+    Fase 2 — OCR con Tesseract si no hay texto: muestra "OCR página X/N…"
+
+    El rango de porcentaje usado es 10 % → 25 % (dentro de _run_audit).
     """
-    # Intento 1: PyPDFLoader (rápido, sin dependencias extra)
+    # ── Obtener número de páginas ──
+    n_pages = 0
     try:
-        loader = PyPDFLoader(str(archivo))
-        docs = loader.load()
-        texto_total = "".join(d.page_content.strip() for d in docs)
-        if texto_total:
-            return docs
+        from pypdf import PdfReader as _PdfReader
+        _r = _PdfReader(str(archivo))
+        n_pages = len(_r.pages)
+    except Exception:
+        pass
+
+    # ── Fase 1: lectura con pypdf, página a página ──
+    docs_embebidos: List[Document] = []
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(str(archivo))
+        n = len(reader.pages)
+
+        for i, page in enumerate(reader.pages):
+            if ocr_progress and n > 0:
+                pct = 10 + int(((i + 1) / n) * 15)  # 10 % → 25 %
+                ocr_progress(pct, f"Leyendo página {i + 1}/{n}…")
+
+            texto = page.extract_text() or ""
+            if texto.strip():
+                docs_embebidos.append(Document(
+                    page_content=texto,
+                    metadata={"source": str(archivo), "page": i},
+                ))
+
+        if docs_embebidos:
+            return docs_embebidos
+
     except Exception as e:
-        print(f"  ⚠️ PyPDFLoader falló: {e}")
+        print(f"  ⚠️ pypdf falló: {e}")
 
-    # Intento 2: OCR con Tesseract (para PDFs escaneados / sin texto)
-    n_pages = _get_pdf_page_count(archivo)
-    total_str = f"/{n_pages}" if n_pages > 0 else ""
+    # ── Fase 2: OCR con Tesseract (PDF escaneado / sin texto embebido) ──
     print(f"  → Sin texto embebido en {archivo.name}, aplicando OCR ({n_pages} páginas)...")
-
     try:
         from pdf2image import convert_from_path
         import pytesseract
@@ -53,12 +66,10 @@ def _load_pdf(
         ocr_docs: List[Document] = []
 
         if n_pages > 0:
-            # Procesar página a página: menos memoria y progreso en tiempo real
             for i in range(1, n_pages + 1):
                 if ocr_progress:
-                    # Progreso de 10% a 25% durante la fase OCR
                     pct = 10 + int((i / n_pages) * 15)
-                    ocr_progress(pct, f"OCR página {i}{total_str}…")
+                    ocr_progress(pct, f"OCR página {i}/{n_pages}…")
 
                 try:
                     imagenes = convert_from_path(
@@ -74,7 +85,7 @@ def _load_pdf(
                 except Exception as e:
                     print(f"  ⚠️ OCR falló en página {i}: {e}")
         else:
-            # Fallback: procesar todo de una vez si no se pudo obtener el n.º de páginas
+            # Fallback: procesar todas las páginas a la vez
             imagenes = convert_from_path(str(archivo), dpi=150)
             total = len(imagenes)
             for i, img in enumerate(imagenes, start=1):
@@ -94,6 +105,7 @@ def _load_pdf(
         if ocr_docs:
             print(f"  ✅ OCR extrajo texto de {len(ocr_docs)} página(s).")
             return ocr_docs
+
         print(f"  ⚠️ OCR no encontró texto en {archivo.name}.")
     except Exception as e:
         print(f"  ⚠️ OCR falló para {archivo.name}: {e}")
@@ -111,8 +123,8 @@ def procesar_documentos_carpeta(
       - Texto concatenado completo
 
     Args:
-        ocr_progress: callback(pct, msg) que se pasa a _load_pdf para
-                      reportar progreso página a página durante el OCR.
+        ocr_progress: callback(pct, msg) que se llama por cada página
+                      del PDF (tanto texto embebido como OCR).
     """
     folder = Path(folder_path)
     if not folder.exists():
