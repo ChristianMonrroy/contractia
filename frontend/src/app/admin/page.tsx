@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { adminAPI } from "@/lib/api";
 import Navbar from "@/components/Navbar";
+import Link from "next/link";
 import {
   Shield,
   Users,
@@ -12,6 +13,7 @@ import {
   XCircle,
   RefreshCw,
   ChevronDown,
+  BarChart2,
 } from "lucide-react";
 
 interface UserRow {
@@ -105,13 +107,22 @@ export default function AdminPage() {
               <p className="text-slate-500 text-sm mt-0.5">Gestión de usuarios y roles</p>
             </div>
           </div>
-          <button
-            onClick={fetchUsers}
-            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Actualizar
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/actividad"
+              className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-800 bg-purple-50 border border-purple-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all font-medium"
+            >
+              <BarChart2 className="w-4 h-4" />
+              Reporte de actividad
+            </Link>
+            <button
+              onClick={fetchUsers}
+              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Actualizar
+            </button>
+          </div>
         </div>
 
         {/* Stats */}

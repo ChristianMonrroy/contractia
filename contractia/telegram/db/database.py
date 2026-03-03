@@ -5,6 +5,7 @@ cambios en el resto del código (solo se necesita ? → %s en los queries).
 """
 
 import os
+from typing import Optional
 
 import psycopg2
 import psycopg2.extras
@@ -73,10 +74,127 @@ def init_db() -> None:
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS logs (
-                id          SERIAL PRIMARY KEY,
-                telegram_id BIGINT,
-                accion      TEXT,
-                detalle     TEXT,
-                timestamp   TEXT
+                id                SERIAL PRIMARY KEY,
+                telegram_id       BIGINT,
+                accion            TEXT,
+                detalle           TEXT,
+                timestamp         TEXT,
+                duracion_segundos FLOAT,
+                canal             TEXT DEFAULT 'bot',
+                n_hallazgos       INTEGER
             )
         """)
+        # Migraciones idempotentes para instancias ya existentes
+        conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS duracion_segundos FLOAT")
+        conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS canal TEXT DEFAULT 'bot'")
+        conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS n_hallazgos INTEGER")
+
+
+def get_actividad(
+    telegram_id: Optional[int] = None,
+    fecha_inicio: Optional[str] = None,
+    fecha_fin: Optional[str] = None,
+    accion: Optional[str] = None,
+    limit: int = 200,
+) -> list:
+    """
+    Retorna logs de actividad filtrados, con email del usuario (JOIN usuarios).
+
+    Args:
+        telegram_id: Filtrar por usuario específico.
+        fecha_inicio: Fecha mínima en formato 'YYYY-MM-DD'.
+        fecha_fin:    Fecha máxima en formato 'YYYY-MM-DD'.
+        accion:       'auditoria' o 'pregunta'.
+        limit:        Máximo de filas a devolver.
+    """
+    conditions = []
+    params = []
+
+    if telegram_id is not None:
+        conditions.append("l.telegram_id = %s")
+        params.append(telegram_id)
+    if fecha_inicio:
+        conditions.append("l.timestamp >= %s")
+        params.append(fecha_inicio)
+    if fecha_fin:
+        conditions.append("l.timestamp <= %s")
+        params.append(fecha_fin + "T23:59:59")
+    if accion:
+        conditions.append("l.accion = %s")
+        params.append(accion)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    params.append(limit)
+
+    sql = f"""
+        SELECT
+            l.id,
+            l.telegram_id,
+            u.email,
+            u.rol,
+            l.accion,
+            l.canal,
+            l.detalle,
+            l.duracion_segundos,
+            l.n_hallazgos,
+            l.timestamp
+        FROM logs l
+        LEFT JOIN usuarios u ON l.telegram_id = u.telegram_id
+        {where}
+        ORDER BY l.timestamp DESC
+        LIMIT %s
+    """
+    with get_conn() as conn:
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_resumen_actividad() -> dict:
+    """
+    Agrega métricas globales de actividad:
+    - Totales por tipo de acción
+    - Duraciones promedio
+    - Top 5 usuarios más activos
+    """
+    with get_conn() as conn:
+        # Totales y promedios por acción
+        rows_totales = conn.execute("""
+            SELECT
+                accion,
+                COUNT(*) AS total,
+                ROUND(AVG(duracion_segundos)::numeric, 1) AS duracion_promedio
+            FROM logs
+            WHERE accion IN ('auditoria', 'pregunta')
+            GROUP BY accion
+        """).fetchall()
+
+        # Top 5 usuarios más activos
+        rows_top = conn.execute("""
+            SELECT
+                u.email,
+                COUNT(*) AS total
+            FROM logs l
+            JOIN usuarios u ON l.telegram_id = u.telegram_id
+            WHERE l.accion IN ('auditoria', 'pregunta')
+            GROUP BY u.email
+            ORDER BY total DESC
+            LIMIT 5
+        """).fetchall()
+
+    resumen = {
+        "total_auditorias": 0,
+        "total_preguntas": 0,
+        "duracion_promedio_auditoria": None,
+        "duracion_promedio_pregunta": None,
+        "top_usuarios": [dict(r) for r in rows_top],
+    }
+    for row in rows_totales:
+        r = dict(row)
+        if r["accion"] == "auditoria":
+            resumen["total_auditorias"] = r["total"]
+            resumen["duracion_promedio_auditoria"] = float(r["duracion_promedio"] or 0)
+        elif r["accion"] == "pregunta":
+            resumen["total_preguntas"] = r["total"]
+            resumen["duracion_promedio_pregunta"] = float(r["duracion_promedio"] or 0)
+
+    return resumen

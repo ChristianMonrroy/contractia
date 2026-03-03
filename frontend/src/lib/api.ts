@@ -87,4 +87,35 @@ export const adminAPI = {
     api.patch("/admin/usuarios/rol", data),
   suspend: (id: number) => api.patch(`/admin/usuarios/${id}/suspender`),
   activate: (id: number) => api.patch(`/admin/usuarios/${id}/activar`),
+
+  getActividad: (params?: {
+    telegram_id?: number;
+    fecha_inicio?: string;
+    fecha_fin?: string;
+    accion?: string;
+  }) => api.get<ActividadRow[]>("/admin/actividad", { params }),
+
+  getResumenActividad: () =>
+    api.get<ResumenActividad>("/admin/actividad/resumen"),
 };
+
+export interface ActividadRow {
+  id: number;
+  telegram_id: number;
+  email: string;
+  rol: string;
+  accion: string;
+  canal: string;
+  detalle: string;
+  duracion_segundos: number | null;
+  n_hallazgos: number | null;
+  timestamp: string;
+}
+
+export interface ResumenActividad {
+  total_auditorias: number;
+  total_preguntas: number;
+  duracion_promedio_auditoria: number | null;
+  duracion_promedio_pregunta: number | null;
+  top_usuarios: Array<{ email: string; total: number }>;
+}

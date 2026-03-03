@@ -9,6 +9,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -63,19 +64,24 @@ async def ejecutar_auditoria(
             )
 
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(texto, llm)
             )
+            duracion = round(time.time() - start, 1)
 
             md = render_auditoria_markdown(resultado)
+            n_hallazgos = sum(
+                len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
+            )
             registrar_auditoria(user_id)
-            _log(user_id, "auditoria", Path(ruta_archivo).name)
+            _log(user_id, "auditoria", Path(ruta_archivo).name,
+                 duracion=duracion, canal="bot", n_hallazgos=n_hallazgos)
 
             # Guardar informe y enviarlo como archivo adjunto
             informe_path = tmp_dir / "informe_auditoria.md"
             informe_path.write_text(md, encoding="utf-8")
 
-            n_hallazgos = sum(len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", []))
             n_secciones = len(resultado.get("resultados_auditoria", []))
 
             await update.message.reply_text("✅ Auditoría completada. Enviando informe...")
@@ -101,9 +107,18 @@ async def ejecutar_auditoria(
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-def _log(telegram_id: int, accion: str, detalle: str) -> None:
+def _log(
+    telegram_id: int,
+    accion: str,
+    detalle: str,
+    duracion: float = None,
+    canal: str = "bot",
+    n_hallazgos: int = None,
+) -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO logs (telegram_id, accion, detalle, timestamp) VALUES (%s, %s, %s, %s)",
-            (telegram_id, accion, detalle, datetime.now().isoformat()),
+            "INSERT INTO logs (telegram_id, accion, detalle, timestamp, "
+            "duracion_segundos, canal, n_hallazgos) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (telegram_id, accion, detalle, datetime.now().isoformat(),
+             duracion, canal, n_hallazgos),
         )

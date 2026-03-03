@@ -3,7 +3,9 @@
 import asyncio
 import os
 import tempfile
+import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
@@ -107,10 +109,13 @@ async def query_contract(
 
     llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
     prompt = _PROMPT.format(contexto=contexto, pregunta=body.pregunta)
+    start = time.time()
     respuesta = await asyncio.get_event_loop().run_in_executor(None, lambda: llm.invoke(prompt))
+    duracion = round(time.time() - start, 1)
     texto = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
 
     registrar_pregunta(user_id)
+    _log_web(user_id, "pregunta", body.pregunta[:200], duracion=duracion)
     return {"respuesta": texto}
 
 
@@ -171,20 +176,46 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
                 return
 
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(texto, llm)
             )
+            duracion = round(time.time() - start, 1)
             md = render_auditoria_markdown(resultado)
+            n_hallazgos = sum(
+                len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
+            )
+            n_secciones = len(resultado.get("resultados_auditoria", []))
             registrar_auditoria(user_id)
+            filename = str(tmp_dir.name)
+            _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos)
             _audit_results[audit_id] = {
                 "status": "done",
                 "informe": md,
-                "n_hallazgos": sum(
-                    len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
-                ),
-                "n_secciones": len(resultado.get("resultados_auditoria", [])),
+                "n_hallazgos": n_hallazgos,
+                "n_secciones": n_secciones,
             }
         except Exception as e:
             _audit_results[audit_id] = {"status": "error", "detail": str(e)[:300]}
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _log_web(
+    telegram_id: int,
+    accion: str,
+    detalle: str,
+    duracion: float = None,
+    n_hallazgos: int = None,
+) -> None:
+    from contractia.telegram.db.database import get_conn
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO logs (telegram_id, accion, detalle, timestamp, "
+                "duracion_segundos, canal, n_hallazgos) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (telegram_id, accion, detalle, datetime.now().isoformat(),
+                 duracion, "web", n_hallazgos),
+            )
+    except Exception:
+        pass  # No interrumpir el flujo principal si el log falla

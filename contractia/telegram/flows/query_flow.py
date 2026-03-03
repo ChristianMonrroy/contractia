@@ -7,6 +7,7 @@ Indexa el contrato del usuario y responde preguntas libres.
 import asyncio
 import shutil
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -121,9 +122,11 @@ async def responder_pregunta(
         prompt = _PROMPT.format(contexto=contexto, pregunta=pregunta)
         llm = get_llm()
 
+        start = time.time()
         respuesta = await asyncio.get_event_loop().run_in_executor(
             None, lambda: llm.invoke(prompt)
         )
+        duracion = round(time.time() - start, 1)
 
         texto = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
 
@@ -132,7 +135,7 @@ async def responder_pregunta(
             texto = texto[:4000] + "\n\n_[...respuesta truncada por límite de Telegram]_"
 
         registrar_pregunta(user_id)
-        _log(user_id, "pregunta", pregunta[:200])
+        _log(user_id, "pregunta", pregunta[:200], duracion=duracion, canal="bot")
 
         await update.message.reply_text(f"💬 {texto}")
 
@@ -143,9 +146,18 @@ async def responder_pregunta(
         )
 
 
-def _log(telegram_id: int, accion: str, detalle: str) -> None:
+def _log(
+    telegram_id: int,
+    accion: str,
+    detalle: str,
+    duracion: float = None,
+    canal: str = "bot",
+    n_hallazgos: int = None,
+) -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO logs (telegram_id, accion, detalle, timestamp) VALUES (%s, %s, %s, %s)",
-            (telegram_id, accion, detalle, datetime.now().isoformat()),
+            "INSERT INTO logs (telegram_id, accion, detalle, timestamp, "
+            "duracion_segundos, canal, n_hallazgos) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+            (telegram_id, accion, detalle, datetime.now().isoformat(),
+             duracion, canal, n_hallazgos),
         )
