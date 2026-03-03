@@ -214,8 +214,15 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
     async with _auditoria_lock:
         try:
             actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...", progress_pct=10)
+
+            def _ocr_progress(pct: int, msg: str) -> None:
+                try:
+                    actualizar_auditoria(audit_id, progress_pct=pct, progress_msg=msg)
+                except Exception:
+                    pass
+
             _, texto = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: procesar_documentos_carpeta(tmp_dir)
+                None, lambda: procesar_documentos_carpeta(tmp_dir, ocr_progress=_ocr_progress)
             )
             if not texto:
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
