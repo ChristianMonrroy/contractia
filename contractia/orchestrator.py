@@ -109,7 +109,7 @@ def auditar_consistencia(
     return hallazgos_totales
 
 
-def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
+def ejecutar_auditoria_contrato(texto_contrato: str, llm, graph_enabled: bool = GRAPH_ENABLED) -> Dict:
     """
     Pipeline completo de auditoría:
       1. Segmentación regex
@@ -136,7 +136,7 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm) -> Dict:
 
     # ── GraphRAG: construir grafo de conocimiento ──
     grafo = None
-    if GRAPH_ENABLED:
+    if graph_enabled:
         try:
             print("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
             grafo = construir_grafo_conocimiento(secciones, llm)

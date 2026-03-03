@@ -71,9 +71,10 @@ export const contractsAPI = {
   query: (data: { session_id: string; pregunta: string }) =>
     api.post<{ respuesta: string }>("/contracts/query", data),
 
-  audit: (file: File) => {
+  audit: (file: File, graphEnabled = false) => {
     const form = new FormData();
     form.append("file", file);
+    form.append("graph_enabled", String(graphEnabled));
     return api.post<{ audit_id: string; status: string }>(
       "/contracts/audit",
       form,

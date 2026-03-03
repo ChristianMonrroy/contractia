@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 from api.auth import get_current_user
@@ -126,6 +126,7 @@ async def query_contract(
 @router.post("/audit")
 async def start_audit(
     file: UploadFile = File(...),
+    graph_enabled: bool = Form(False),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     user: dict = Depends(get_current_user),
 ):
@@ -156,7 +157,7 @@ async def start_audit(
     tmp_file = tmp_dir / f"contrato{ext}"
     tmp_file.write_bytes(await file.read())
 
-    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"])
+    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"], graph_enabled)
     return {"audit_id": audit_id, "status": "processing"}
 
 
@@ -193,7 +194,7 @@ def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str):
+async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False):
     import shutil
     async with _auditoria_lock:
         try:
@@ -205,13 +206,14 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
 
-            actualizar_auditoria(audit_id, progress_msg="Construyendo base de conocimiento RAG...", progress_pct=30)
+            modo = "RAG + GraphRAG" if graph_enabled else "RAG"
+            actualizar_auditoria(audit_id, progress_msg=f"Construyendo base de conocimiento ({modo})...", progress_pct=30)
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
 
             actualizar_auditoria(audit_id, progress_msg="Auditando secciones con 3 agentes IA...", progress_pct=55)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: ejecutar_auditoria_contrato(texto, llm)
+                None, lambda: ejecutar_auditoria_contrato(texto, llm, graph_enabled=graph_enabled)
             )
             duracion = round(time.time() - start, 1)
 
