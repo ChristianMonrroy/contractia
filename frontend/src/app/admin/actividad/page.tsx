@@ -8,7 +8,7 @@ import { ArrowLeft, Clock, FileSearch, MessageSquare, Users } from "lucide-react
 import Link from "next/link";
 
 export default function ActividadPage() {
-  const { user, loading } = useAuth();
+  const { isAdmin, isAuthenticated } = useAuth();
   const router = useRouter();
 
   const [resumen, setResumen] = useState<ResumenActividad | null>(null);
@@ -22,17 +22,16 @@ export default function ActividadPage() {
   const [filtroFechaFin, setFiltroFechaFin] = useState("");
 
   useEffect(() => {
-    if (!loading && (!user || user.rol !== "admin")) {
-      router.push("/login");
-    }
-  }, [user, loading, router]);
+    if (!isAuthenticated) { router.push("/login"); return; }
+    if (!isAdmin) { router.push("/dashboard"); return; }
+  }, [isAuthenticated, isAdmin, router]);
 
   useEffect(() => {
-    if (user?.rol === "admin") {
+    if (isAdmin) {
       cargarResumen();
       cargarActividad();
     }
-  }, [user]);
+  }, [isAdmin]);
 
   async function cargarResumen() {
     try {
@@ -80,7 +79,7 @@ export default function ActividadPage() {
     }
   }
 
-  if (loading || !user) return null;
+  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
