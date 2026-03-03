@@ -85,7 +85,7 @@ function AuditContent() {
             setStatus("done");
           } else if (check.data.status === "error") {
             clearInterval(poll);
-            setError(check.data.detail || "La auditoría falló. Intenta nuevamente.");
+            setError(check.data.error_detail || "La auditoría falló. Intenta nuevamente.");
             setStatus("error");
           }
         } catch {

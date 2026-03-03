@@ -198,7 +198,10 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
                 n_secciones=n_secciones,
             )
         except Exception as e:
-            actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:300])
+            import traceback
+            detail = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}"
+            print(f"[AUDIT ERROR] {audit_id}: {detail}")
+            actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:500])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
