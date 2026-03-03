@@ -3,11 +3,35 @@ Carga de documentos PDF y DOCX desde una carpeta.
 Soporta PDFs con texto embebido y PDFs escaneados (OCR automático).
 """
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.documents import Document
+
+# Tiempo máximo para extraer texto de una sola página.
+# Páginas con fuentes complejas o estructuras inusuales pueden hacer
+# que pypdf se bloquee indefinidamente sin este límite.
+_PAGE_TIMEOUT_S = 15
+
+
+def _extract_page_text(page) -> str:
+    """Extrae texto de una página PDF con timeout de seguridad.
+
+    Si pypdf tarda más de _PAGE_TIMEOUT_S segundos en la página,
+    la omite (devuelve '') y el loader sigue con la siguiente.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(page.extract_text)
+        try:
+            return fut.result(timeout=_PAGE_TIMEOUT_S) or ""
+        except FuturesTimeout:
+            print(f"  ⚠️ Timeout extrayendo texto de página (pypdf). Continuando...")
+            return ""
+        except Exception as e:
+            print(f"  ⚠️ Error extrayendo página: {e}")
+            return ""
 
 
 def _load_pdf(
@@ -44,7 +68,7 @@ def _load_pdf(
                 pct = 10 + int(((i + 1) / n) * 15)  # 10 % → 25 %
                 ocr_progress(pct, f"Leyendo página {i + 1}/{n}…")
 
-            texto = page.extract_text() or ""
+            texto = _extract_page_text(page)
             if texto.strip():
                 docs_embebidos.append(Document(
                     page_content=texto,
