@@ -2,9 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Dependencias del sistema para psycopg2 y faiss
+# Dependencias del sistema para psycopg2, faiss y OCR
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc build-essential \
+    tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

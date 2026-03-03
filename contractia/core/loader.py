@@ -1,5 +1,6 @@
 """
 Carga de documentos PDF y DOCX desde una carpeta.
+Soporta PDFs con texto embebido y PDFs escaneados (OCR automático).
 """
 
 import os
@@ -8,6 +9,46 @@ from typing import List, Optional, Tuple
 
 from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
 from langchain_core.documents import Document
+
+
+def _load_pdf(archivo: Path) -> List[Document]:
+    """
+    Carga un PDF. Si no tiene capa de texto (PDF escaneado),
+    aplica OCR con Tesseract automáticamente.
+    """
+    # Intento 1: PyPDFLoader (rápido, sin dependencias extra)
+    try:
+        loader = PyPDFLoader(str(archivo))
+        docs = loader.load()
+        texto_total = "".join(d.page_content.strip() for d in docs)
+        if texto_total:
+            return docs
+    except Exception as e:
+        print(f"  ⚠️ PyPDFLoader falló: {e}")
+
+    # Intento 2: OCR con Tesseract (para PDFs escaneados / sin texto)
+    print(f"  → Sin texto embebido en {archivo.name}, aplicando OCR...")
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+
+        imagenes = convert_from_path(str(archivo), dpi=200)
+        ocr_docs: List[Document] = []
+        for i, img in enumerate(imagenes):
+            texto = pytesseract.image_to_string(img, lang="spa+eng")
+            if texto.strip():
+                ocr_docs.append(Document(
+                    page_content=texto,
+                    metadata={"source": str(archivo), "page": i},
+                ))
+        if ocr_docs:
+            print(f"  ✅ OCR extrajo texto de {len(ocr_docs)} página(s).")
+            return ocr_docs
+        print(f"  ⚠️ OCR no encontró texto en {archivo.name}.")
+    except Exception as e:
+        print(f"  ⚠️ OCR falló para {archivo.name}: {e}")
+
+    return []
 
 
 def procesar_documentos_carpeta(
@@ -41,13 +82,13 @@ def procesar_documentos_carpeta(
 
         try:
             if ext == ".pdf":
-                loader = PyPDFLoader(str(archivo))
+                docs = _load_pdf(archivo)
             elif ext == ".docx":
                 loader = Docx2txtLoader(str(archivo))
+                docs = loader.load()
             else:
                 continue
 
-            docs = loader.load()
             documentos.extend(docs)
             partes_texto.extend(doc.page_content for doc in docs)
         except Exception as e:
