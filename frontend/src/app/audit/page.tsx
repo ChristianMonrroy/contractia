@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { contractsAPI } from "@/lib/api";
+import { contractsAPI, extractError } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import {
   Upload,
@@ -27,6 +27,7 @@ function AuditContent() {
 
   const [status, setStatus] = useState<AuditStatus>("idle");
   const [sessionId, setSessionId] = useState("");
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
   const [auditResult, setAuditResult] = useState("");
   const [error, setError] = useState("");
@@ -52,6 +53,7 @@ function AuditContent() {
     try {
       const res = await contractsAPI.upload(file);
       setSessionId(res.data.session_id);
+      setUploadedFile(file);
       setFilename(res.data.filename);
       setStatus("ready");
     } catch {
@@ -67,11 +69,11 @@ function AuditContent() {
   };
 
   const startAudit = async () => {
-    if (!sessionId) return;
+    if (!uploadedFile) return;
     setStatus("running");
     setError("");
     try {
-      const res = await contractsAPI.audit({ session_id: sessionId });
+      const res = await contractsAPI.audit(uploadedFile);
       const auditId = res.data.audit_id;
       // Poll for result
       const poll = setInterval(async () => {
@@ -79,11 +81,11 @@ function AuditContent() {
           const check = await contractsAPI.getAudit(auditId);
           if (check.data.status === "done") {
             clearInterval(poll);
-            setAuditResult(check.data.result || "");
+            setAuditResult(check.data.informe || "");
             setStatus("done");
           } else if (check.data.status === "error") {
             clearInterval(poll);
-            setError("La auditoría falló. Intenta nuevamente.");
+            setError(check.data.detail || "La auditoría falló. Intenta nuevamente.");
             setStatus("error");
           }
         } catch {
@@ -93,11 +95,11 @@ function AuditContent() {
         }
       }, 4000);
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      if (detail?.includes("en curso")) {
+      const msg = extractError(err, "Error al iniciar la auditoría.");
+      if (msg.toLowerCase().includes("en curso") || msg.toLowerCase().includes("proceso")) {
         setError("Ya hay una auditoría en progreso. Por favor espera.");
       } else {
-        setError(detail || "Error al iniciar la auditoría.");
+        setError(msg);
       }
       setStatus("ready");
     }
@@ -122,6 +124,7 @@ function AuditContent() {
   const reset = () => {
     setStatus("idle");
     setSessionId("");
+    setUploadedFile(null);
     setFilename("");
     setAuditResult("");
     setMessages([]);
@@ -218,7 +221,8 @@ function AuditContent() {
                     )}
                     <button
                       onClick={startAudit}
-                      className="bg-[#1e3a5f] hover:bg-[#152d4a] text-white font-semibold px-8 py-4 rounded-xl transition-colors inline-flex items-center gap-2 text-lg shadow-lg"
+                      disabled={!uploadedFile}
+                      className="bg-[#1e3a5f] hover:bg-[#152d4a] text-white font-semibold px-8 py-4 rounded-xl transition-colors inline-flex items-center gap-2 text-lg shadow-lg disabled:opacity-50"
                     >
                       <FileSearch className="w-5 h-5" />
                       Iniciar auditoría completa

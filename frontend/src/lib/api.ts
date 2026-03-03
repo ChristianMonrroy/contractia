@@ -71,11 +71,18 @@ export const contractsAPI = {
   query: (data: { session_id: string; pregunta: string }) =>
     api.post<{ respuesta: string }>("/contracts/query", data),
 
-  audit: (data: { session_id: string }) =>
-    api.post<{ audit_id: string; message: string }>("/contracts/audit", data),
+  audit: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.post<{ audit_id: string; status: string }>(
+      "/contracts/audit",
+      form,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+  },
 
   getAudit: (audit_id: string) =>
-    api.get<{ audit_id: string; status: string; result?: string }>(
+    api.get<{ status: string; informe?: string; n_hallazgos?: number; detail?: string }>(
       `/contracts/audit/${audit_id}`
     ),
 };
