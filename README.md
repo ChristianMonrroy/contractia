@@ -1,8 +1,22 @@
-# ContractIA v8.1.0
+# ContractIA v8.2.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
+
+---
+
+## Novedades v8.2.0
+
+| Área | Cambio |
+|------|--------|
+| **GraphRAG** | Integración completa al pipeline de auditoría: grafo de conocimiento (networkx) con tripletas extraídas por LLM; fix `KeyError 'texto'` que bloqueaba todas las auditorías |
+| **Auditorías** | Estado persistido en tabla PostgreSQL `auditorias` — seguro para multi-instancia Cloud Run |
+| **Lock concurrencia** | Reemplaza `asyncio.Semaphore` (en memoria) por `hay_auditoria_en_progreso()` basado en DB; auto-expira en 20 min |
+| **Admin — Actividad** | Nueva página `/admin/actividad` con métricas, filtros y tabla de logs por usuario |
+| **Admin endpoints** | Nuevos `GET /admin/actividad` y `GET /admin/actividad/resumen` |
+| **Logs extendidos** | Tabla `logs` añade `duracion_segundos`, `canal` (bot/web), `n_hallazgos` |
+| **Frontend fixes** | `extractError` null-safe, campos `activo` corregidos, auditoría usa multipart |
 
 ---
 
@@ -18,6 +32,8 @@ api.contractia.pe → Cloud Run (FastAPI · Python)
    Cloud Storage / FAISS (vectores RAG)
         ↕
    VertexAI (Gemini 2.5 Pro · text-embedding-004)
+        ↕
+   GraphRAG (networkx DiGraph · tripletas extraídas por LLM)
 ```
 
 ---
@@ -53,8 +69,13 @@ ContractIA/
 │       └── admin_router.py     ← /admin/* (usuarios, roles)
 ├── contractia/
 │   ├── config.py               ← Variables de entorno
-│   ├── orchestrator.py         ← Pipeline de auditoría
+│   ├── orchestrator.py         ← Pipeline de auditoría (RAG + GraphRAG)
 │   ├── agents/                 ← Jurista, Auditor, Cronista
+│   ├── core/
+│   │   ├── graph.py            ← GraphRAG (networkx + extracción LLM)
+│   │   ├── loader.py           ← PDF/DOCX → texto
+│   │   ├── segmenter.py        ← Segmentación de cláusulas
+│   │   └── report.py           ← Generación de informe Markdown
 │   ├── rag/                    ← FAISS pipeline
 │   ├── llm/                    ← VertexAI / Ollama provider
 │   └── telegram/
@@ -70,7 +91,9 @@ ContractIA/
 │       │   ├── forgot-password/← /forgot-password
 │       │   ├── dashboard/      ← /dashboard
 │       │   ├── audit/          ← /audit
-│       │   └── admin/          ← /admin
+│       │   └── admin/
+│       │       ├── page.tsx    ← /admin (panel)
+│       │       └── actividad/  ← /admin/actividad (reportes)
 │       ├── components/
 │       │   └── Navbar.tsx
 │       ├── context/
@@ -113,6 +136,8 @@ ContractIA/
 | `PATCH`| `/admin/usuarios/rol` | Cambia el rol de un usuario |
 | `PATCH`| `/admin/usuarios/{id}/suspender` | Suspende una cuenta |
 | `PATCH`| `/admin/usuarios/{id}/activar` | Activa una cuenta |
+| `GET`  | `/admin/actividad` | Logs de actividad filtrados (usuario, fecha, tipo) |
+| `GET`  | `/admin/actividad/resumen` | Métricas agregadas (totales, duración promedio, top usuarios) |
 
 ---
 
