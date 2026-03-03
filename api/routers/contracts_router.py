@@ -16,6 +16,7 @@ from contractia.core.report import render_auditoria_markdown
 from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
+from contractia.telegram.correo.pdf_report import generar_pdf_auditoria
 from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_auditoria_lista
 from contractia.telegram.db.database import (
@@ -262,10 +263,16 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 progress_msg="Completado",
                 progress_pct=100,
             )
-            # Notificar por email
+            # Notificar por email con PDF adjunto
             try:
+                nombre_pdf = filename.rsplit(".", 1)[0] + "_informe.pdf"
+                pdf_bytes = generar_pdf_auditoria(md, filename)
                 asunto, html, texto_plain = email_auditoria_lista(filename, n_hallazgos, n_secciones)
-                enviar_email(email, asunto, html, texto_plain)
+                enviar_email(
+                    email, asunto, html, texto_plain,
+                    adjunto_pdf=pdf_bytes,
+                    adjunto_nombre=nombre_pdf,
+                )
             except Exception as mail_err:
                 print(f"[EMAIL] No se pudo enviar notificación a {email}: {mail_err}")
         except Exception as e:

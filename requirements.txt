@@ -27,6 +27,9 @@ email-validator>=2.0.0
 # PostgreSQL
 psycopg2-binary>=2.9.9
 
+# PDF generation
+fpdf2>=2.7.9
+
 # GCP
 google-cloud-storage>=2.16.0
 google-cloud-secret-manager>=2.20.0

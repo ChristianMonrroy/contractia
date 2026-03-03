@@ -39,8 +39,10 @@ def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> 
           <td style="padding:10px 12px;border:1px solid #e2e8f0;color:{color_hallazgos};font-weight:bold">{n_hallazgos}</td>
         </tr>
       </table>
-      <p>Ingresa a <a href="https://contractia.pe/dashboard" style="color:#1d4ed8">contractia.pe/dashboard</a>
-         para ver el informe completo con todos los hallazgos detallados.</p>
+      <p>El informe completo con todos los hallazgos detallados se encuentra
+         <strong>adjunto a este correo en formato PDF</strong>.</p>
+      <p>También puedes consultarlo en línea en
+         <a href="https://contractia.pe/dashboard" style="color:#1d4ed8">contractia.pe/dashboard</a>.</p>
       <p style="color:#6b7280;font-size:13px;margin-top:20px">
         Este mensaje fue generado automáticamente por ContractIA.
       </p>
@@ -50,7 +52,8 @@ def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> 
         f"Tu auditoría de '{filename}' ha finalizado.\n"
         f"Secciones analizadas: {n_secciones}\n"
         f"Hallazgos detectados: {n_hallazgos}\n"
-        f"Visita contractia.pe/dashboard para ver el informe completo."
+        f"El informe completo está adjunto en PDF.\n"
+        f"También disponible en: contractia.pe/dashboard"
     )
     return asunto, html, texto
 
