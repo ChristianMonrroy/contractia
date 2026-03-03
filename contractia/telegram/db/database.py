@@ -84,10 +84,56 @@ def init_db() -> None:
                 n_hallazgos       INTEGER
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS auditorias (
+                audit_id     TEXT PRIMARY KEY,
+                user_id      BIGINT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'processing',
+                informe      TEXT,
+                n_hallazgos  INTEGER,
+                n_secciones  INTEGER,
+                error_detail TEXT,
+                created_at   TIMESTAMPTZ DEFAULT NOW(),
+                updated_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
         # Migraciones idempotentes para instancias ya existentes
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS duracion_segundos FLOAT")
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS canal TEXT DEFAULT 'bot'")
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS n_hallazgos INTEGER")
+
+
+def crear_auditoria(audit_id: str, user_id: int) -> None:
+    """Registra una nueva auditoría con estado 'processing'."""
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO auditorias (audit_id, user_id, status) VALUES (%s, %s, 'processing')",
+            (audit_id, user_id),
+        )
+
+
+def get_auditoria(audit_id: str) -> Optional[dict]:
+    """Devuelve el estado y resultado de una auditoría por su ID."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT status, informe, n_hallazgos, n_secciones, error_detail "
+            "FROM auditorias WHERE audit_id = %s",
+            (audit_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def actualizar_auditoria(audit_id: str, **kwargs) -> None:
+    """Actualiza campos de una auditoría (status, informe, n_hallazgos, etc.)."""
+    if not kwargs:
+        return
+    set_clause = ", ".join(f"{k} = %s" for k in kwargs)
+    values = list(kwargs.values()) + [audit_id]
+    with get_conn() as conn:
+        conn.execute(
+            f"UPDATE auditorias SET {set_clause}, updated_at = NOW() WHERE audit_id = %s",
+            values,
+        )
 
 
 def get_actividad(

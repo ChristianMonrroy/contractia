@@ -1,7 +1,6 @@
 """Endpoints de contratos: subida, auditoría y consultas RAG."""
 
 import asyncio
-import os
 import tempfile
 import time
 import uuid
@@ -17,7 +16,10 @@ from contractia.core.report import render_auditoria_markdown
 from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
-from contractia.telegram.db.uso import LIMITES, puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
+from contractia.telegram.db.database import (
+    crear_auditoria, get_auditoria, actualizar_auditoria, get_conn,
+)
+from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
 
 router = APIRouter(prefix="/contracts", tags=["contracts"])
@@ -25,8 +27,7 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 # Semáforo global — igual que en el bot
 from contractia.telegram.flows.audit_flow import _auditoria_lock
 
-# Almacenamiento temporal de resultados y retrievers en memoria
-_audit_results: dict = {}
+# Los retrievers siguen en memoria (son temporales por sesión, no necesitan persistencia)
 _retrievers: dict = {}
 
 
@@ -145,7 +146,7 @@ async def start_audit(
         raise HTTPException(400, "Solo se aceptan PDF o DOCX.")
 
     audit_id = str(uuid.uuid4())
-    _audit_results[audit_id] = {"status": "processing"}
+    crear_auditoria(audit_id, user_id)  # Persiste en DB (multi-instancia seguro)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
     tmp_file = tmp_dir / f"contrato{ext}"
@@ -157,8 +158,8 @@ async def start_audit(
 
 @router.get("/audit/{audit_id}")
 def get_audit_result(audit_id: str, user: dict = Depends(get_current_user)):
-    """Consulta el estado y resultado de una auditoría."""
-    result = _audit_results.get(audit_id)
+    """Consulta el estado y resultado de una auditoría (lee desde DB)."""
+    result = get_auditoria(audit_id)
     if not result:
         raise HTTPException(404, "Auditoría no encontrada.")
     return result
@@ -172,7 +173,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
                 None, lambda: procesar_documentos_carpeta(tmp_dir)
             )
             if not texto:
-                _audit_results[audit_id] = {"status": "error", "detail": "No se pudo extraer texto."}
+                actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
 
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
@@ -189,14 +190,15 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path):
             registrar_auditoria(user_id)
             filename = str(tmp_dir.name)
             _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos)
-            _audit_results[audit_id] = {
-                "status": "done",
-                "informe": md,
-                "n_hallazgos": n_hallazgos,
-                "n_secciones": n_secciones,
-            }
+            actualizar_auditoria(
+                audit_id,
+                status="done",
+                informe=md,
+                n_hallazgos=n_hallazgos,
+                n_secciones=n_secciones,
+            )
         except Exception as e:
-            _audit_results[audit_id] = {"status": "error", "detail": str(e)[:300]}
+            actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:300])
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -208,7 +210,6 @@ def _log_web(
     duracion: float = None,
     n_hallazgos: int = None,
 ) -> None:
-    from contractia.telegram.db.database import get_conn
     try:
         with get_conn() as conn:
             conn.execute(
