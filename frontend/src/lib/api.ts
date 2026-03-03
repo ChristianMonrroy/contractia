@@ -34,7 +34,7 @@ export function extractError(err: unknown, fallback = "Error desconocido"): stri
   const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
   if (!detail) return fallback;
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((d: { msg?: string }) => d.msg).join(", ");
+  if (Array.isArray(detail)) return detail.filter(Boolean).map((d: { msg?: string } | null) => d?.msg ?? "").filter(Boolean).join(", ");
   return fallback;
 }
 
