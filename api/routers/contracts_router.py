@@ -194,6 +194,16 @@ def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
+def _make_progress_callback(audit_id: str):
+    """Devuelve una función callback que actualiza el progreso de la auditoría en DB."""
+    def callback(pct: int, msg: str) -> None:
+        try:
+            actualizar_auditoria(audit_id, progress_pct=pct, progress_msg=msg)
+        except Exception:
+            pass
+    return callback
+
+
 async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False):
     import shutil
     async with _auditoria_lock:
@@ -210,10 +220,13 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             actualizar_auditoria(audit_id, progress_msg=f"Construyendo base de conocimiento ({modo})...", progress_pct=30)
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
 
-            actualizar_auditoria(audit_id, progress_msg="Auditando secciones con 3 agentes IA...", progress_pct=55)
+            actualizar_auditoria(audit_id, progress_msg="Auditando sección 1…", progress_pct=55)
+            progress_cb = _make_progress_callback(audit_id)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: ejecutar_auditoria_contrato(texto, llm, graph_enabled=graph_enabled)
+                None, lambda: ejecutar_auditoria_contrato(
+                    texto, llm, graph_enabled=graph_enabled, progress_callback=progress_cb
+                )
             )
             duracion = round(time.time() - start, 1)
 

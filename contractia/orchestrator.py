@@ -3,7 +3,8 @@ Orquestador principal: coordina segmentación, RAG y agentes multi-agente.
 """
 
 import time
-from typing import Dict, List, Set
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, Dict, List, Optional, Set
 
 from tqdm.auto import tqdm
 
@@ -31,7 +32,11 @@ def auditar_consistencia(
     retriever=None,
     contexto_grafo: str = "",
 ) -> List[Dict]:
-    """Audita una sección individual con los tres agentes."""
+    """Audita una sección individual con los tres agentes.
+
+    Jurista y Cronista se ejecutan en paralelo (son independientes).
+    El Auditor se ejecuta después del Jurista (necesita sus referencias externas).
+    """
 
     if not ENABLE_LLM or llm is None:
         return []
@@ -53,21 +58,7 @@ def auditar_consistencia(
         except Exception:
             contexto_rag = ""
 
-    # ── Paso 1: Jurista — normativa externa ──
-    try:
-        res_jurista = jurista.ejecutar({"texto": texto_seccion, "contexto_grafo": contexto_grafo})
-        if isinstance(res_jurista, list):
-            lista_externa = [str(x) for x in res_jurista]
-        elif isinstance(res_jurista, dict):
-            lista_externa = res_jurista.get("referencias_externas", [])
-        else:
-            lista_externa = []
-    except Exception:
-        lista_externa = []
-
-    str_externas = ", ".join(lista_externa) if lista_externa else "Ninguna"
-
-    # Preparar índices
+    # Preparar índices (sin LLM, rápido)
     str_idx_sec = ", ".join([f"{x['tipo']} {x['n']}" for x in indice_secciones])
     str_idx_glob = ", ".join(indice_global_clausulas)
     local_filtrado = [
@@ -78,7 +69,45 @@ def auditar_consistencia(
 
     hallazgos_totales = []
 
-    # ── Paso 2: Auditor — referencias cruzadas ──
+    # ── Fase 1: Jurista + Cronista en paralelo (son independientes entre sí) ──
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fut_jurista = pool.submit(
+            jurista.ejecutar,
+            {"texto": texto_seccion, "contexto_grafo": contexto_grafo},
+        )
+        fut_cronista = pool.submit(
+            cronista.ejecutar,
+            {"texto": texto_seccion, "contexto_grafo": contexto_grafo},
+        )
+
+        try:
+            res_jurista = fut_jurista.result()
+        except Exception:
+            res_jurista = {}
+
+        try:
+            res_cronista = fut_cronista.result()
+        except Exception as e:
+            print(f"Error Cronista: {e}")
+            res_cronista = {}
+
+    # Procesar resultado del Jurista
+    if isinstance(res_jurista, list):
+        lista_externa = [str(x) for x in res_jurista]
+    elif isinstance(res_jurista, dict):
+        lista_externa = res_jurista.get("referencias_externas", [])
+    else:
+        lista_externa = []
+    str_externas = ", ".join(lista_externa) if lista_externa else "Ninguna"
+
+    # Procesar resultado del Cronista
+    if isinstance(res_cronista, dict):
+        if res_cronista.get("hay_errores_logicos") or res_cronista.get("hay_inconsistencia_plazos"):
+            hallazgos_totales.extend(res_cronista.get("hallazgos_procesos", []))
+    elif isinstance(res_cronista, list):
+        hallazgos_totales.extend(res_cronista)
+
+    # ── Fase 2: Auditor (usa refs_externas del Jurista) ──
     try:
         res_aud = auditor.ejecutar({
             "texto": texto_seccion + contexto_rag,  # RAG enriquece al auditor
@@ -95,27 +124,25 @@ def auditar_consistencia(
     except Exception as e:
         print(f"Error Auditor: {e}")
 
-    # ── Paso 3: Cronista — procesos y plazos ──
-    try:
-        res_cron = cronista.ejecutar({"texto": texto_seccion, "contexto_grafo": contexto_grafo})
-        if isinstance(res_cron, dict):
-            if res_cron.get("hay_errores_logicos") or res_cron.get("hay_inconsistencia_plazos"):
-                hallazgos_totales.extend(res_cron.get("hallazgos_procesos", []))
-        elif isinstance(res_cron, list):
-            hallazgos_totales.extend(res_cron)
-    except Exception as e:
-        print(f"Error Cronista: {e}")
-
     return hallazgos_totales
 
 
-def ejecutar_auditoria_contrato(texto_contrato: str, llm, graph_enabled: bool = GRAPH_ENABLED) -> Dict:
+def ejecutar_auditoria_contrato(
+    texto_contrato: str,
+    llm,
+    graph_enabled: bool = GRAPH_ENABLED,
+    progress_callback: Optional[Callable[[int, str], None]] = None,
+) -> Dict:
     """
     Pipeline completo de auditoría:
       1. Segmentación regex
       2. Construcción de índices
       3. Creación de vector store RAG (si está habilitado)
-      4. Auditoría multi-agente por sección
+      4. Auditoría multi-agente por sección (Jurista+Cronista en paralelo, luego Auditor)
+
+    Args:
+        progress_callback: función(pct: int, msg: str) llamada al iniciar cada sección.
+                           Permite actualizar el progreso en tiempo real desde el caller.
     """
     secciones = separar_en_secciones(texto_contrato)
     indice_secciones = crear_indice_capitulos_anexos(secciones)
@@ -152,9 +179,15 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm, graph_enabled: bool = 
     if grafo is not None:
         labels.append("GraphRAG")
     label_str = " + ".join(labels) + " " if labels else ""
-    print(f"\n🚀 Iniciando auditoría {label_str}en {len(secciones)} secciones...")
+    n_secciones = len(secciones)
+    print(f"\n🚀 Iniciando auditoría {label_str}en {n_secciones} secciones...")
 
-    for sec in tqdm(secciones, desc="Auditando Secciones"):
+    for i, sec in enumerate(tqdm(secciones, desc="Auditando Secciones")):
+        # Actualizar progreso: de 55% a 88% durante el loop de secciones
+        if progress_callback:
+            pct = 55 + int((i / n_secciones) * 33)
+            progress_callback(pct, f"Auditando sección {i + 1}/{n_secciones}…")
+
         idx_local = crear_indice_de_clausulas_por_seccion(sec.get("contenido", ""))
 
         # Contexto del grafo para esta sección
@@ -186,7 +219,7 @@ def ejecutar_auditoria_contrato(texto_contrato: str, llm, graph_enabled: bool = 
                     "hallazgos": hallazgos,
                 })
 
-            time.sleep(2)  # Pausa técnica entre secciones
+            time.sleep(0.5)  # Pausa breve entre secciones (rate-limit safe a <10 req/s)
 
         except Exception as e:
             print(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
