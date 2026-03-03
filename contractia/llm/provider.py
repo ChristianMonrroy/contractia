@@ -76,7 +76,7 @@ def _build_vertexai():
             llm = ChatVertexAI(
                 model_name=model_name,
                 temperature=VERTEXAI_TEMPERATURE,
-                timeout=600,
+                timeout=180,  # 3 min por llamada; el orquestador reintenta si expira
                 max_output_tokens=VERTEXAI_MAX_TOKENS,
             )
             print(f"✅ LLM '{model_name}' inicializado.")

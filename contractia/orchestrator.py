@@ -3,7 +3,7 @@ Orquestador principal: coordina segmentación, RAG y agentes multi-agente.
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional, Set
 
 from tqdm.auto import tqdm
@@ -22,12 +22,36 @@ from contractia.core.segmenter import (
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 
 # Máximo de caracteres por sección enviada a los agentes.
-# Secciones muy largas (>8 000 chars) generan prompts gigantes que causan
-# respuestas lentas o timeouts en Gemini 2.5 Pro.
+# Secciones muy largas generan prompts que tardan mucho en Gemini 2.5 Pro.
 _MAX_SECTION_CHARS = 8_000
 
-# Tiempo máximo (segundos) que puede tardar cada agente antes de ser omitido.
-_AGENT_TIMEOUT_S = 120
+# Intentos máximos por agente si falla o el LLM devuelve error/timeout.
+_MAX_REINTENTOS = 3
+_PAUSA_REINTENTO_S = 10
+
+
+def _ejecutar_con_reintento(agente, inputs: dict) -> dict:
+    """Ejecuta un agente con hasta _MAX_REINTENTOS intentos.
+
+    Si el LLM lanza un error (incluyendo timeout del cliente VertexAI),
+    espera _PAUSA_REINTENTO_S segundos y reintenta. Nunca omite silenciosamente:
+    sólo devuelve {} si TODOS los intentos fallan (situación excepcional).
+    """
+    ultimo_error = None
+    for intento in range(1, _MAX_REINTENTOS + 1):
+        try:
+            return agente.ejecutar(inputs)
+        except Exception as e:
+            ultimo_error = e
+            if intento < _MAX_REINTENTOS:
+                print(
+                    f"⚠️  Agente falló (intento {intento}/{_MAX_REINTENTOS}): {e}. "
+                    f"Reintentando en {_PAUSA_REINTENTO_S}s..."
+                )
+                time.sleep(_PAUSA_REINTENTO_S)
+            else:
+                print(f"⚠️  Agente no respondió tras {_MAX_REINTENTOS} intentos: {ultimo_error}")
+    return {}
 
 
 def auditar_consistencia(
@@ -44,8 +68,7 @@ def auditar_consistencia(
 
     Jurista y Cronista se ejecutan en paralelo (son independientes).
     El Auditor se ejecuta después del Jurista (necesita sus referencias externas).
-    Cada agente tiene un timeout de _AGENT_TIMEOUT_S segundos: si se cuelga,
-    se omite y la auditoría continúa con las secciones restantes.
+    Cada agente reintenta hasta _MAX_REINTENTOS veces antes de devolver vacío.
     """
 
     if not ENABLE_LLM or llm is None:
@@ -53,15 +76,14 @@ def auditar_consistencia(
 
     jurista, auditor, cronista = crear_agentes(llm)
 
-    # Truncar sección para evitar prompts gigantes
+    # Truncar sección para evitar prompts gigantes (→ lentitud / timeouts en Gemini)
     texto_truncado = texto_seccion[:_MAX_SECTION_CHARS]
 
     # ── RAG: contexto adicional de otras secciones ──
     contexto_rag = ""
     if retriever is not None:
         try:
-            consulta = texto_truncado[:500]
-            ctx = recuperar_contexto(retriever, consulta, max_tokens=2000)
+            ctx = recuperar_contexto(retriever, texto_truncado[:500], max_tokens=2000)
             if ctx:
                 contexto_rag = (
                     "\n\n--- CONTEXTO ADICIONAL (de otras secciones, vía RAG) ---\n"
@@ -82,33 +104,20 @@ def auditar_consistencia(
 
     hallazgos_totales = []
 
-    # ── Fase 1: Jurista + Cronista en paralelo ──
+    # ── Fase 1: Jurista + Cronista en paralelo (son independientes entre sí) ──
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_jurista = pool.submit(
-            jurista.ejecutar,
+            _ejecutar_con_reintento,
+            jurista,
             {"texto": texto_truncado, "contexto_grafo": contexto_grafo},
         )
         fut_cronista = pool.submit(
-            cronista.ejecutar,
+            _ejecutar_con_reintento,
+            cronista,
             {"texto": texto_truncado, "contexto_grafo": contexto_grafo},
         )
-
-        try:
-            res_jurista = fut_jurista.result(timeout=_AGENT_TIMEOUT_S)
-        except FuturesTimeoutError:
-            print(f"⏱️  Jurista timeout ({_AGENT_TIMEOUT_S}s). Omitiendo referencias externas.")
-            res_jurista = {}
-        except Exception:
-            res_jurista = {}
-
-        try:
-            res_cronista = fut_cronista.result(timeout=_AGENT_TIMEOUT_S)
-        except FuturesTimeoutError:
-            print(f"⏱️  Cronista timeout ({_AGENT_TIMEOUT_S}s). Omitiendo hallazgos de plazos.")
-            res_cronista = {}
-        except Exception as e:
-            print(f"Error Cronista: {e}")
-            res_cronista = {}
+        res_jurista = fut_jurista.result()
+        res_cronista = fut_cronista.result()
 
     # Procesar resultado del Jurista
     if isinstance(res_jurista, list):
@@ -126,28 +135,18 @@ def auditar_consistencia(
     elif isinstance(res_cronista, list):
         hallazgos_totales.extend(res_cronista)
 
-    # ── Fase 2: Auditor con timeout (usa refs_externas del Jurista) ──
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        fut_aud = pool.submit(
-            auditor.ejecutar,
-            {
-                "texto": texto_truncado + contexto_rag,
-                "idx_glob": str_idx_glob,
-                "idx_sec": str_idx_sec,
-                "idx_loc": str_idx_loc,
-                "refs_externas": str_externas,
-                "contexto_grafo": contexto_grafo,
-            },
-        )
-        try:
-            res_aud = fut_aud.result(timeout=_AGENT_TIMEOUT_S)
-        except FuturesTimeoutError:
-            print(f"⏱️  Auditor timeout ({_AGENT_TIMEOUT_S}s). Omitiendo hallazgos de esta sección.")
-            res_aud = {}
-        except Exception as e:
-            print(f"Error Auditor: {e}")
-            res_aud = {}
-
+    # ── Fase 2: Auditor con reintentos (usa refs_externas del Jurista) ──
+    res_aud = _ejecutar_con_reintento(
+        auditor,
+        {
+            "texto": texto_truncado + contexto_rag,
+            "idx_glob": str_idx_glob,
+            "idx_sec": str_idx_sec,
+            "idx_loc": str_idx_loc,
+            "refs_externas": str_externas,
+            "contexto_grafo": contexto_grafo,
+        },
+    )
     if isinstance(res_aud, dict) and res_aud.get("hay_inconsistencias"):
         hallazgos_totales.extend(res_aud.get("hallazgos", []))
     elif isinstance(res_aud, list):
@@ -171,7 +170,7 @@ def ejecutar_auditoria_contrato(
 
     Args:
         progress_callback: función(pct: int, msg: str) -> bool.
-                           Llamada al iniciar cada sección para actualizar el progreso.
+                           Llamada al iniciar cada sección.
                            Si devuelve True, el loop se detiene (cancelación externa).
     """
     secciones = separar_en_secciones(texto_contrato)
@@ -223,7 +222,6 @@ def ejecutar_auditoria_contrato(
 
         idx_local = crear_indice_de_clausulas_por_seccion(sec.get("contenido", ""))
 
-        # Contexto del grafo para esta sección
         contexto_grafo = ""
         if grafo is not None:
             try:
