@@ -96,6 +96,12 @@ export const contractsAPI = {
 
   downloadAuditPdf: (audit_id: string) =>
     api.get(`/contracts/audit/${audit_id}/pdf`, { responseType: "blob" }),
+
+  loadAuditAsSession: (audit_id: string) =>
+    api.post<{ session_id: string; filename: string; graph_enabled: boolean }>(
+      "/contracts/session/from-audit",
+      { audit_id }
+    ),
 };
 
 // --- Admin ---

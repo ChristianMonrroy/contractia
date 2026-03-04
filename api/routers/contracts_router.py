@@ -25,7 +25,7 @@ from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_auditoria_lista
 from contractia.telegram.db.database import (
     crear_auditoria, get_auditoria, actualizar_auditoria, hay_auditoria_en_progreso,
-    get_auditorias_usuario, get_conn,
+    get_auditorias_usuario, get_texto_auditoria, get_conn,
 )
 from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
@@ -44,6 +44,10 @@ _mapa_textos: dict = {}
 class QueryRequest(BaseModel):
     pregunta: str
     session_id: str
+
+
+class FromAuditRequest(BaseModel):
+    audit_id: str
 
 
 @router.post("/upload")
@@ -106,6 +110,71 @@ async def upload_contract(
     finally:
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@router.post("/session/from-audit")
+async def session_from_audit(
+    body: FromAuditRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Re-indexa un contrato auditado previamente para usarlo en consultas RAG."""
+    user_id = int(user["sub"])
+
+    # Verificar que la auditoría existe y pertenece al usuario
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, status, filename, graph_enabled FROM auditorias WHERE audit_id = %s",
+            (body.audit_id,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    if dict(row)["user_id"] != user_id and user.get("rol") != "admin":
+        raise HTTPException(403, "No tienes acceso a esta auditoría.")
+    if dict(row)["status"] != "done":
+        raise HTTPException(400, "La auditoría aún no está completada.")
+
+    texto = get_texto_auditoria(body.audit_id)
+    if not texto:
+        raise HTTPException(
+            400,
+            "Esta auditoría no tiene texto guardado. Re-sube el contrato para consultarlo.",
+        )
+
+    usuario = get_usuario(user_id)
+    if not puede_preguntar(user_id, usuario["rol"]):
+        raise HTTPException(429, "Límite diario de consultas alcanzado.")
+
+    graph_enabled = bool(dict(row)["graph_enabled"])
+
+    # Construir vector store RAG
+    vector_store = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: crear_vector_store(texto)
+    )
+    retriever = crear_retriever(vector_store)
+    session_id = str(uuid.uuid4())
+    _retrievers[session_id] = retriever
+
+    # Reconstruir GraphRAG si la auditoría original lo usó
+    if graph_enabled:
+        try:
+            secciones = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: separar_en_secciones(texto)
+            )
+            llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            grafo = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+            )
+            _graphs[session_id] = grafo
+            _mapa_textos[session_id] = construir_mapa_clausula_a_seccion(secciones)
+            print(f"[FROM-AUDIT] GraphRAG listo para sesión {session_id[:8]}.")
+        except Exception as e:
+            print(f"[FROM-AUDIT] GraphRAG no disponible: {e}")
+
+    return {
+        "session_id": session_id,
+        "filename": dict(row).get("filename") or "contrato",
+        "graph_enabled": graph_enabled,
+    }
 
 
 @router.post("/query")
@@ -294,6 +363,12 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             if not texto:
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
+
+            # Guardar texto para reutilizarlo en consultas interactivas futuras
+            try:
+                actualizar_auditoria(audit_id, texto_contrato=texto)
+            except Exception:
+                pass  # No crítico
 
             modo = "RAG + GraphRAG" if graph_enabled else "RAG"
             actualizar_auditoria(audit_id, progress_msg=f"Construyendo base de conocimiento ({modo})...", progress_pct=30)

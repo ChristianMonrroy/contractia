@@ -17,13 +17,14 @@ import {
   FileSearch,
   X,
   Download,
+  History,
 } from "lucide-react";
 
 type Mode = "audit" | "query";
 type AuditStatus = "idle" | "uploading" | "ready" | "running" | "done" | "error";
 
 function AuditContent() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const mode: Mode = searchParams.get("mode") === "query" ? "query" : "audit";
@@ -44,12 +45,25 @@ function AuditContent() {
   const [progressPct, setProgressPct] = useState(0);
   const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [auditHistory, setAuditHistory] = useState<AuditRow[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
   }, [isAuthenticated, router]);
+
+  // Cargar historial de auditorías completadas para el picker de consulta
+  useEffect(() => {
+    if (mode !== "query") return;
+    if (user?.rol !== "auditor" && user?.rol !== "admin") return;
+    setLoadingHistory(true);
+    contractsAPI.getAudits()
+      .then((res) => setAuditHistory(res.data.filter((a) => a.status === "done")))
+      .catch(() => {})
+      .finally(() => setLoadingHistory(false));
+  }, [mode, user]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -165,6 +179,22 @@ function AuditContent() {
     }
   };
 
+  const loadFromAudit = async (audit: AuditRow) => {
+    setStatus("uploading");
+    setQueryGraphEnabled(!!audit.graph_enabled);
+    setError("");
+    try {
+      const res = await contractsAPI.loadAuditAsSession(audit.audit_id);
+      setSessionId(res.data.session_id);
+      setFilename(res.data.filename);
+      setQueryGraphEnabled(res.data.graph_enabled);
+      setStatus("ready");
+    } catch (err: unknown) {
+      setError(extractError(err, "No se pudo cargar la auditoría. Sube el contrato manualmente."));
+      setStatus("idle");
+    }
+  };
+
   const sendQuestion = async () => {
     if (!question.trim() || !sessionId || queryLoading) return;
     const q = question.trim();
@@ -248,6 +278,62 @@ function AuditContent() {
             </p>
           </div>
         </div>
+
+        {/* Picker: auditorías anteriores (solo auditor/admin en modo consulta) */}
+        {mode === "query" && (status === "idle" || status === "error") &&
+          (user?.rol === "auditor" || user?.rol === "admin") && (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-5 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <History className="w-4 h-4 text-slate-500" />
+              <h3 className="font-semibold text-slate-700 text-sm">Consultar una auditoría anterior</h3>
+            </div>
+            {loadingHistory ? (
+              <div className="flex items-center gap-2 text-slate-400 text-sm py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Cargando historial...</span>
+              </div>
+            ) : auditHistory.length === 0 ? (
+              <p className="text-slate-400 text-sm py-2">No tienes auditorías completadas aún.</p>
+            ) : (
+              <div className="space-y-2">
+                {auditHistory.slice(0, 8).map((a) => (
+                  <div
+                    key={a.audit_id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#1e3a5f] truncate max-w-[220px]">
+                          {a.filename || "contrato"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                            a.graph_enabled ? "bg-purple-100 text-purple-700" : "bg-blue-50 text-blue-600"
+                          }`}>
+                            {a.graph_enabled ? "GraphRAG" : "RAG"}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {new Date(a.created_at).toLocaleDateString("es-PE")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => loadFromAudit(a)}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap ml-3"
+                    >
+                      Usar esta →
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-slate-400 text-center mt-4 pt-3 border-t border-slate-100">
+              — o sube un nuevo contrato abajo —
+            </p>
+          </div>
+        )}
 
         {/* Selector de modo para consulta interactiva (visible antes de subir el archivo) */}
         {mode === "query" && (status === "idle" || status === "error") && (

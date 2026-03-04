@@ -108,6 +108,17 @@ def init_db() -> None:
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS filename TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS progress_pct INTEGER DEFAULT 0")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS graph_enabled BOOLEAN DEFAULT FALSE")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS texto_contrato TEXT")
+
+
+def get_texto_auditoria(audit_id: str) -> Optional[str]:
+    """Devuelve el texto extraído de un contrato auditado, o None si no está disponible."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT texto_contrato FROM auditorias WHERE audit_id = %s",
+            (audit_id,),
+        ).fetchone()
+    return row["texto_contrato"] if row else None
 
 
 def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
