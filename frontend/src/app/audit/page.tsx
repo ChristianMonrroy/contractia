@@ -40,6 +40,7 @@ function AuditContent() {
   const [queryLoading, setQueryLoading] = useState(false);
   const [progressMsg, setProgressMsg] = useState("");
   const [graphEnabled, setGraphEnabled] = useState(false);
+  const [queryGraphEnabled, setQueryGraphEnabled] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
   const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -104,7 +105,7 @@ function AuditContent() {
     // Modo consulta: indexar el contrato para RAG (necesita session_id).
     setStatus("uploading");
     try {
-      const res = await contractsAPI.upload(file);
+      const res = await contractsAPI.upload(file, queryGraphEnabled);
       setSessionId(res.data.session_id);
       setUploadedFile(file);
       setFilename(res.data.filename);
@@ -248,6 +249,45 @@ function AuditContent() {
           </div>
         </div>
 
+        {/* Selector de modo para consulta interactiva (visible antes de subir el archivo) */}
+        {mode === "query" && (status === "idle" || status === "error") && (
+          <div className="mb-6">
+            <p className="text-sm font-medium text-slate-600 mb-3">Modo de análisis</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setQueryGraphEnabled(false)}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  !queryGraphEnabled
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                }`}
+              >
+                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                  Estándar (RAG)
+                  {!queryGraphEnabled && <span className="ml-2 text-xs text-blue-600 font-medium">✓ Seleccionado</span>}
+                </div>
+                <div className="text-xs text-slate-500">Recuperación semántica. Respuestas rápidas.</div>
+                <div className="text-xs text-slate-400 mt-1">Indexado: ~5-10 s</div>
+              </button>
+              <button
+                onClick={() => setQueryGraphEnabled(true)}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  queryGraphEnabled
+                    ? "border-purple-500 bg-purple-50"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                }`}
+              >
+                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                  Profundo (GraphRAG)
+                  {queryGraphEnabled && <span className="ml-2 text-xs text-purple-600 font-medium">✓ Seleccionado</span>}
+                </div>
+                <div className="text-xs text-slate-500">RAG + grafo de conocimiento. Detecta relaciones entre cláusulas.</div>
+                <div className="text-xs text-slate-400 mt-1">Indexado: ~5-10 min</div>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Upload area */}
         {status === "idle" || status === "error" ? (
           <div
@@ -277,9 +317,17 @@ function AuditContent() {
           </div>
         ) : status === "uploading" ? (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-12 text-center">
-            <Loader2 className="w-10 h-10 text-blue-500 animate-spin mx-auto mb-4" />
-            <p className="text-slate-600 font-medium">Procesando y vectorizando el contrato...</p>
-            <p className="text-slate-400 text-sm mt-1">Esto puede tomar unos segundos</p>
+            <Loader2 className={`w-10 h-10 animate-spin mx-auto mb-4 ${queryGraphEnabled ? "text-purple-500" : "text-blue-500"}`} />
+            <p className="text-slate-600 font-medium">
+              {queryGraphEnabled
+                ? "Construyendo base de conocimiento RAG + grafo de conocimiento..."
+                : "Procesando y vectorizando el contrato..."}
+            </p>
+            <p className="text-slate-400 text-sm mt-1">
+              {queryGraphEnabled
+                ? "Esto puede tardar varios minutos. No cierres la página."
+                : "Esto puede tomar unos segundos"}
+            </p>
           </div>
         ) : (
           <>
@@ -294,7 +342,11 @@ function AuditContent() {
                     <p className="font-medium text-[#1e3a5f] text-sm">{filename}</p>
                     <p className="text-xs text-green-600 flex items-center gap-1 mt-0.5">
                       <CheckCircle2 className="w-3 h-3" />
-                      {mode === "audit" ? "Listo para auditar" : "Contrato indexado correctamente"}
+                      {mode === "audit"
+                        ? "Listo para auditar"
+                        : queryGraphEnabled
+                          ? "Indexado con RAG + GraphRAG"
+                          : "Contrato indexado correctamente"}
                     </p>
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 """Endpoints de contratos: subida, auditoría y consultas RAG."""
 
 import asyncio
+import re
 import tempfile
 import time
 import uuid
@@ -12,8 +13,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api.auth import get_current_user
+from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.loader import procesar_documentos_carpeta
 from contractia.core.report import render_auditoria_markdown
+from contractia.core.segmenter import construir_mapa_clausula_a_seccion, separar_en_secciones
 from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
@@ -32,8 +35,10 @@ router = APIRouter(prefix="/contracts", tags=["contracts"])
 # Semáforo global — igual que en el bot
 from contractia.telegram.flows.audit_flow import _auditoria_lock
 
-# Los retrievers siguen en memoria (son temporales por sesión, no necesitan persistencia)
+# Los retrievers, grafos y mapas de sección se almacenan por session_id (temporales, en memoria)
 _retrievers: dict = {}
+_graphs: dict = {}
+_mapa_textos: dict = {}
 
 
 class QueryRequest(BaseModel):
@@ -44,9 +49,10 @@ class QueryRequest(BaseModel):
 @router.post("/upload")
 async def upload_contract(
     file: UploadFile = File(...),
+    graph_enabled: bool = Form(False),
     user: dict = Depends(get_current_user),
 ):
-    """Sube un contrato y lo indexa para consultas RAG. Devuelve session_id."""
+    """Sube un contrato y lo indexa para consultas RAG (y opcionalmente GraphRAG)."""
     ext = Path(file.filename or "contrato").suffix.lower()
     if ext not in (".pdf", ".docx"):
         raise HTTPException(400, "Solo se aceptan archivos PDF o DOCX.")
@@ -80,7 +86,23 @@ async def upload_contract(
         session_id = str(uuid.uuid4())
         _retrievers[session_id] = retriever
 
-        return {"session_id": session_id, "filename": file.filename}
+        # GraphRAG: construir grafo de conocimiento si el usuario lo solicitó
+        if graph_enabled:
+            try:
+                secciones = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: separar_en_secciones(texto)
+                )
+                llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+                grafo = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+                )
+                _graphs[session_id] = grafo
+                _mapa_textos[session_id] = construir_mapa_clausula_a_seccion(secciones)
+                print(f"[UPLOAD] GraphRAG listo para sesión {session_id[:8]}.")
+            except Exception as e:
+                print(f"[UPLOAD] GraphRAG no disponible: {e}")
+
+        return {"session_id": session_id, "filename": file.filename, "graph_enabled": graph_enabled}
     finally:
         import shutil
         shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -104,7 +126,9 @@ async def query_contract(
     _PROMPT = (
         "Eres un asistente legal especializado en contratos. "
         "Responde basándote ÚNICAMENTE en el contexto del contrato.\n\n"
-        "CONTEXTO:\n{contexto}\n\nPREGUNTA: {pregunta}\n\nRESPUESTA:"
+        "CONTEXTO:\n{contexto}\n"
+        "{seccion_grafo}"
+        "\nPREGUNTA: {pregunta}\n\nRESPUESTA:"
     )
 
     contexto = await asyncio.get_event_loop().run_in_executor(
@@ -113,8 +137,22 @@ async def query_contract(
     if not contexto:
         return {"respuesta": "No encontré información relevante sobre eso en el contrato."}
 
+    # GraphRAG: enriquecer con contexto del grafo si la sesión lo tiene
+    seccion_grafo = ""
+    if body.session_id in _graphs:
+        try:
+            clausulas = list(set(re.findall(r"\b(\d+(?:\.\d+)*)\b", body.pregunta)))
+            if clausulas:
+                ctx_g = obtener_contexto_grafo(
+                    clausulas, _graphs[body.session_id], _mapa_textos.get(body.session_id, {})
+                )
+                if ctx_g and "No hay relaciones" not in ctx_g:
+                    seccion_grafo = f"\nRELACIONES ENTRE CLÁUSULAS (grafo):\n{ctx_g}\n"
+        except Exception as e:
+            print(f"[QUERY] Error GraphRAG: {e}")
+
     llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
-    prompt = _PROMPT.format(contexto=contexto, pregunta=body.pregunta)
+    prompt = _PROMPT.format(contexto=contexto, seccion_grafo=seccion_grafo, pregunta=body.pregunta)
     start = time.time()
     respuesta = await asyncio.get_event_loop().run_in_executor(None, lambda: llm.invoke(prompt))
     duracion = round(time.time() - start, 1)

@@ -58,10 +58,11 @@ export const authAPI = {
 
 // --- Contratos ---
 export const contractsAPI = {
-  upload: (file: File) => {
+  upload: (file: File, graphEnabled = false) => {
     const form = new FormData();
     form.append("file", file);
-    return api.post<{ session_id: string; filename: string; chunks: number }>(
+    form.append("graph_enabled", String(graphEnabled));
+    return api.post<{ session_id: string; filename: string; graph_enabled: boolean }>(
       "/contracts/upload",
       form,
       { headers: { "Content-Type": "multipart/form-data" } }
