@@ -1,10 +1,21 @@
-# ContractIA v8.3.0
+# ContractIA v8.4.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.4.0
+
+| Área | Cambio |
+|------|--------|
+| **GraphRAG en consulta interactiva** | El modo Consulta ahora incluye selector RAG / GraphRAG igual que el modo Auditoría; el grafo se construye al subir el archivo si se activa la opción |
+| **Reutilizar auditoría previa** | Usuarios auditor/admin pueden seleccionar una auditoría anterior como base para consulta interactiva; el texto del contrato se recupera desde DB sin re-subir el archivo |
+| **Persistencia texto contrato** | `texto_contrato TEXT` añadido a la tabla `auditorias`; se guarda tras extracción exitosa para reutilización futura |
+| **Endpoint `/session/from-audit`** | `POST /contracts/session/from-audit` reconstruye RAG (~10s) y opcionalmente GraphRAG desde el texto almacenado; retorna `session_id` listo para consultas |
+| **Fix SafetySetting VertexAI** | Corregido `PydanticUserError` en `langchain_google_vertexai 2.x` al usar `from __future__ import annotations`; `model_rebuild()` ahora recibe namespace completo de `vertexai.generative_models` via `importlib` |
+| **Fix aiplatform version** | `google-cloud-aiplatform` cambiado a `!=1.65.0,>=1.38.0` para permitir ≥1.65.1 donde `SafetySetting` es importable correctamente |
 
 ## Novedades v8.3.0
 
@@ -138,9 +149,10 @@ ContractIA/
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `POST` | `/contracts/upload` | Sube PDF/DOCX y vectoriza con FAISS |
-| `POST` | `/contracts/query` | Consulta RAG sobre el contrato |
+| `POST` | `/contracts/upload` | Sube PDF/DOCX, vectoriza con FAISS; `graph_enabled=true` construye GraphRAG |
+| `POST` | `/contracts/query` | Consulta RAG/GraphRAG sobre el contrato activo |
 | `POST` | `/contracts/audit` | Inicia auditoría multi-agente (background) |
+| `POST` | `/contracts/session/from-audit` | Crea sesión de consulta desde una auditoría previa (texto en DB) |
 | `GET`  | `/contracts/audits` | Historial de auditorías del usuario |
 | `GET`  | `/contracts/audit/{id}` | Polling de estado y resultado de auditoría |
 | `GET`  | `/contracts/audit/{id}/pdf` | Descarga el informe en PDF |
