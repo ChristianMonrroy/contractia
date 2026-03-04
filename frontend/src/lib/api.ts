@@ -92,6 +92,9 @@ export const contractsAPI = {
 
   cancelAudit: (audit_id: string) =>
     api.patch(`/contracts/audit/${audit_id}/cancelar`),
+
+  downloadAuditPdf: (audit_id: string) =>
+    api.get(`/contracts/audit/${audit_id}/pdf`, { responseType: "blob" }),
 };
 
 // --- Admin ---

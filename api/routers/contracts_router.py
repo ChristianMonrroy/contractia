@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, File
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from api.auth import get_current_user
@@ -181,6 +182,25 @@ def get_audit_result(audit_id: str, user: dict = Depends(get_current_user)):
     return result
 
 
+@router.get("/audit/{audit_id}/pdf")
+def download_audit_pdf(audit_id: str, user: dict = Depends(get_current_user)):
+    """Genera y devuelve el informe de auditoría en PDF para descarga."""
+    result = get_auditoria(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    if result["status"] != "done" or not result.get("informe"):
+        raise HTTPException(400, "El informe aún no está disponible.")
+
+    filename = result.get("filename") or "contrato"
+    pdf_bytes = generar_pdf_auditoria(result["informe"], filename)
+    nombre = filename.rsplit(".", 1)[0] + "_informe.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
 @router.patch("/audit/{audit_id}/cancelar")
 def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
     """Cancela una auditoría atascada marcándola como error en la DB."""
@@ -263,15 +283,20 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 progress_msg="Completado",
                 progress_pct=100,
             )
-            # Notificar por email con PDF adjunto
+            # Notificar por email (PDF adjunto si se puede generar)
             try:
-                nombre_pdf = filename.rsplit(".", 1)[0] + "_informe.pdf"
-                pdf_bytes = generar_pdf_auditoria(md, filename)
                 asunto, html, texto_plain = email_auditoria_lista(filename, n_hallazgos, n_secciones)
+                pdf_bytes = None
+                adjunto_nombre = "informe_auditoria.pdf"
+                try:
+                    adjunto_nombre = filename.rsplit(".", 1)[0] + "_informe.pdf"
+                    pdf_bytes = generar_pdf_auditoria(md, filename)
+                except Exception as pdf_err:
+                    print(f"[PDF] No se pudo generar PDF adjunto: {pdf_err}")
                 enviar_email(
                     email, asunto, html, texto_plain,
                     adjunto_pdf=pdf_bytes,
-                    adjunto_nombre=nombre_pdf,
+                    adjunto_nombre=adjunto_nombre,
                 )
             except Exception as mail_err:
                 print(f"[EMAIL] No se pudo enviar notificación a {email}: {mail_err}")

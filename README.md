@@ -1,10 +1,25 @@
-# ContractIA v8.2.0
+# ContractIA v8.3.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.3.0
+
+| Área | Cambio |
+|------|--------|
+| **Descarga PDF** | Nuevo endpoint `GET /contracts/audit/{id}/pdf` — genera y descarga el informe como PDF real (fpdf2); botón del frontend usa JWT y descarga directo |
+| **Email con PDF** | El email de notificación incluye el informe adjunto en PDF; si la generación del PDF falla, el email se envía igual (sin adjunto) |
+| **Progreso PDF** | Extracción de texto PDF muestra "Leyendo página X/N…" para texto embebido y "OCR página X/N…" para escaneos |
+| **OCR robusto** | Timeout de 15 s por página en pypdf (ThreadPoolExecutor); si falla → OCR de respaldo para esa página específica; DPI 200→150 (44% más rápido) |
+| **Agentes paralelos** | Jurista + Cronista se ejecutan en paralelo (ThreadPoolExecutor); pausa entre secciones 2 s→0.5 s |
+| **Reintentos agentes** | Hasta 3 reintentos automáticos con 10 s de pausa si el LLM falla (timeout 600→180 s) |
+| **Cloud Run CPU** | `--no-cpu-throttling` en deploy: mantiene CPU activo entre requests para que los `BackgroundTasks` no queden congelados |
+| **Bot fix listar usuarios** | Corregido `KeyError` silencioso en "Listar usuarios" del panel admin del bot (`u['id']` vs `u['telegram_id']`) |
+| **Dependencias GCP** | `google-cloud-aiplatform` pinado `<1.65.0` para evitar circular import de `ExampleStoreServiceClient` |
+| **Límite archivos** | Auditoría rechaza archivos >30 MB (antes sin límite explícito) |
 
 ## Novedades v8.2.0
 
@@ -81,7 +96,7 @@ ContractIA/
 │   └── telegram/
 │       ├── handler.py          ← Bot handlers + flujo de aprobación
 │       ├── db/                 ← database.py, usuarios.py
-│       └── correo/             ← sender.py, templates.py
+│       └── correo/             ← sender.py, templates.py, pdf_report.py
 ├── frontend/                   ← Next.js 14
 │   └── src/
 │       ├── app/
@@ -125,8 +140,11 @@ ContractIA/
 |--------|------|-------------|
 | `POST` | `/contracts/upload` | Sube PDF/DOCX y vectoriza con FAISS |
 | `POST` | `/contracts/query` | Consulta RAG sobre el contrato |
-| `POST` | `/contracts/audit` | Inicia auditoría multi-agente |
-| `GET`  | `/contracts/audit/{id}` | Polling del resultado de auditoría |
+| `POST` | `/contracts/audit` | Inicia auditoría multi-agente (background) |
+| `GET`  | `/contracts/audits` | Historial de auditorías del usuario |
+| `GET`  | `/contracts/audit/{id}` | Polling de estado y resultado de auditoría |
+| `GET`  | `/contracts/audit/{id}/pdf` | Descarga el informe en PDF |
+| `PATCH`| `/contracts/audit/{id}/cancelar` | Cancela una auditoría atascada |
 
 ### Admin (`/admin`)
 
@@ -160,7 +178,7 @@ ContractIA/
 | **Auditor** | Detecta riesgos, penalidades y condiciones desfavorables |
 | **Cronista** | Sintetiza hallazgos y genera el informe final |
 
-Los tres agentes corren en paralelo (limitados a 1 auditoría concurrente via `asyncio.Semaphore`).
+**Ejecución:** Jurista y Cronista corren en **paralelo** (ThreadPoolExecutor). Auditor corre después del Jurista (necesita sus referencias externas). Limitado a 1 auditoría concurrente via check en DB (`hay_auditoria_en_progreso`). Cada agente reintenta hasta 3 veces si el LLM falla.
 
 ---
 

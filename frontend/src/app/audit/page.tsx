@@ -41,6 +41,8 @@ function AuditContent() {
   const [progressMsg, setProgressMsg] = useState("");
   const [graphEnabled, setGraphEnabled] = useState(false);
   const [progressPct, setProgressPct] = useState(0);
+  const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
+  const [pdfLoading, setPdfLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -128,6 +130,7 @@ function AuditContent() {
     try {
       const res = await contractsAPI.audit(uploadedFile, graphEnabled);
       const auditId = res.data.audit_id;
+      setCurrentAuditId(auditId);
       const poll = setInterval(async () => {
         try {
           const check = await contractsAPI.getAudit(auditId);
@@ -177,6 +180,27 @@ function AuditContent() {
     }
   };
 
+  const downloadPdf = async () => {
+    if (!currentAuditId || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const res = await contractsAPI.downloadAuditPdf(currentAuditId);
+      const blob = new Blob([res.data as BlobPart], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename.replace(/\.\w+$/, "") + "_informe.pdf";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch {
+      alert("No se pudo generar el PDF. Intenta de nuevo.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const reset = () => {
     if (pollRef.current) clearInterval(pollRef.current);
     setStatus("idle");
@@ -188,6 +212,7 @@ function AuditContent() {
     setError("");
     setProgressMsg("");
     setProgressPct(0);
+    setCurrentAuditId("");
   };
 
   return (
@@ -380,11 +405,15 @@ function AuditContent() {
                         {filename && <span className="text-xs text-slate-400 hidden sm:block">— {filename}</span>}
                       </div>
                       <button
-                        onClick={() => window.print()}
-                        className="flex items-center gap-2 bg-[#1e3a5f] hover:bg-[#152d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                        onClick={downloadPdf}
+                        disabled={pdfLoading}
+                        className="flex items-center gap-2 bg-[#1e3a5f] hover:bg-[#152d4a] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-60"
                       >
-                        <Download className="w-4 h-4" />
-                        Descargar PDF
+                        {pdfLoading
+                          ? <Loader2 className="w-4 h-4 animate-spin" />
+                          : <Download className="w-4 h-4" />
+                        }
+                        {pdfLoading ? "Generando..." : "Descargar PDF"}
                       </button>
                     </div>
 

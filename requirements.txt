@@ -33,3 +33,6 @@ fpdf2>=2.7.9
 # GCP
 google-cloud-storage>=2.16.0
 google-cloud-secret-manager>=2.20.0
+# Pinado <1.65.0 para evitar circular import de ExampleStoreServiceClient
+# (bug introducido en 1.65.0, corregido en versiones futuras)
+google-cloud-aiplatform>=1.38.0,<1.65.0

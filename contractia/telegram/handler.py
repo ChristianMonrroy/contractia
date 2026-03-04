@@ -312,8 +312,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         lineas = ["*Usuarios registrados:*\n"]
         for u in usuarios:
             estado = "✅" if u["activo"] else "🔴"
-            lineas.append(f"{estado} `{u['telegram_id']}` {u['email']} ({u['rol']})")
-        await query.message.reply_text("\n".join(lineas), parse_mode="Markdown")
+            lineas.append(f"{estado} `{u['id']}` {u['email']} ({u['rol']})")
+        texto = "\n".join(lineas)
+        # Telegram limita mensajes a 4096 chars; truncar si hay muchos usuarios
+        if len(texto) > 4000:
+            texto = texto[:4000] + "\n…(lista truncada)"
+        await query.message.reply_text(texto, parse_mode="Markdown")
 
     elif data == "admin_cambiar_rol" and rol == "admin":
         _set_estado(context, ADMIN_ROL_ID)

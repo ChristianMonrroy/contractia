@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.2.0 | **Fecha:** Marzo 2026
+**Versión:** 8.3.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -105,7 +105,10 @@ contractia/
     ├── handler.py              # Router de mensajes (máquina de estados)
     ├── sessions.py             # Sesiones en memoria (autenticación activa)
     ├── auth/crypto.py          # OTP y generación de passwords
-    ├── correo/                 # SMTP Gmail (verificación y bienvenida)
+    ├── correo/                 # SMTP Gmail + generación de PDF (fpdf2)
+    │   ├── sender.py           # Envío vía Gmail SMTP con soporte adjunto PDF
+    │   ├── templates.py        # HTML templates (verificación, bienvenida, auditoría)
+    │   └── pdf_report.py       # Markdown → PDF (fpdf2, pure Python)
     ├── db/
     │   ├── database.py         # PostgreSQL, init_db(), auditorias CRUD,
     │   │                       # get_actividad(), get_resumen_actividad()
@@ -120,7 +123,7 @@ api/
 ├── auth.py                     # JWT tokens (8h)
 └── routers/
     ├── auth_router.py          # /auth/* (register, verify, login, reset-password)
-    ├── contracts_router.py     # /contracts/* (upload, query, audit, polling)
+    ├── contracts_router.py     # /contracts/* (upload, query, audit, polling, pdf)
     └── admin_router.py         # /admin/* (usuarios, roles, actividad)
 
 frontend/
@@ -149,7 +152,10 @@ PDF/DOCX
    │
    ▼
 [1] EXTRACCIÓN DE TEXTO
-    loader.py → pypdf / docx2txt
+    loader.py → pypdf (página a página, con progreso "Leyendo pág X/N")
+              → timeout 15 s por página (ThreadPoolExecutor)
+              → OCR fallback por página si pypdf falla (pytesseract, DPI 150)
+              → docx2txt para DOCX
 
    │
    ▼
@@ -185,20 +191,20 @@ PDF/DOCX
 [5] AUDITORÍA MULTI-AGENTE (por cada sección)
     orchestrator.py → auditar_consistencia()
     │
-    ├── AGENTE JURISTA
+    ├── [PARALELO] AGENTE JURISTA  ──┐
+    │   Input:  texto + contexto grafo │ ThreadPoolExecutor(max_workers=2)
+    │   Output: lista de referencias   │ (independientes entre sí)
+    │                                   │
+    ├── [PARALELO] AGENTE CRONISTA ──┘
     │   Input:  texto + contexto grafo
-    │   Tarea:  identifica normativa externa (leyes, códigos, etc.)
-    │   Output: lista de referencias externas (JSON)
+    │   Output: {hay_errores_logicos, hallazgos_procesos[]}
     │
-    ├── AGENTE AUDITOR  ← recibe contexto RAG + contexto grafo
-    │   Input:  texto + contexto RAG + índices de cláusulas + grafo
-    │   Tarea:  valida referencias cruzadas internas
-    │   Output: {hay_inconsistencias, hallazgos[]} (JSON)
-    │
-    └── AGENTE CRONISTA  ← recibe contexto grafo
-        Input:  texto + contexto grafo
-        Tarea:  analiza lógica de procesos y plazos
-        Output: {hay_errores_logicos, hallazgos_procesos[]} (JSON)
+    └── [SECUENCIAL] AGENTE AUDITOR  ← espera resultado Jurista
+        Input:  texto + contexto RAG + índices + refs_externas del Jurista + grafo
+        Output: {hay_inconsistencias, hallazgos[]}
+
+    Cada agente: hasta 3 reintentos automáticos con 10 s de pausa si el LLM falla
+    Pausa entre secciones: 0.5 s (antes 2 s)
 
    │
    ▼
@@ -208,13 +214,15 @@ PDF/DOCX
    │
    ▼
 [7] PERSISTENCIA Y ENTREGA
-    Bot Telegram → archivo .md adjunto
-    Web → polling GET /contracts/audit/{id} → informe en página
-    DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones)
+    Bot Telegram → archivo .md adjunto al chat
+    Web → polling GET /contracts/audit/{id} → informe renderizado en Markdown
+        → GET /contracts/audit/{id}/pdf → PDF generado con fpdf2 (descarga directa)
+    Email → notificación automática con PDF adjunto al terminar
+    DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones, progress_msg, progress_pct)
 ```
 
 ### Pausa técnica entre secciones
-El orquestador incluye `time.sleep(2)` entre secciones para no saturar la quota de VertexAI.
+El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quota de VertexAI (reducido desde 2 s en v8.3.0).
 
 ---
 
@@ -297,7 +305,7 @@ Todos los agentes usan `LangChain PromptTemplate | LLM | StrOutputParser` con un
 - **Bot:** single-process, asyncio, webhook mode
 - **Auditorías:** limitadas a 1 simultánea por `hay_auditoria_en_progreso()` — check en DB (auto-expira en 20 min), seguro para multi-instancia Cloud Run
 - **Estado de auditoría:** persistido en tabla `auditorias` (PostgreSQL), no en memoria
-- **Polling web:** frontend hace GET `/contracts/audit/{id}` cada 4s hasta `status=done|error`
+- **Polling web:** frontend hace GET `/contracts/audit/{id}` cada 4s hasta `status=done|error`; `progress_msg` y `progress_pct` actualizados en DB en tiempo real
 - **Preguntas RAG:** concurrentes sin límite
 
 ---
@@ -311,7 +319,8 @@ uso_diario        (id, telegram_id, fecha, auditorias, preguntas, UNIQUE(telegra
 logs              (id, telegram_id, accion, detalle, timestamp,
                    duracion_segundos, canal TEXT DEFAULT 'bot', n_hallazgos)
 auditorias        (audit_id PK, user_id, status, informe, n_hallazgos,
-                   n_secciones, error_detail, created_at, updated_at)
+                   n_secciones, error_detail, progress_msg, progress_pct,
+                   filename, created_at, updated_at)
 ```
 
 ---
@@ -333,11 +342,13 @@ git push frontend → Vercel (deploy automático)
 **Infraestructura GCP:**
 | Servicio | Recurso |
 |---|---|
-| Compute | Cloud Run (contractia-api · us-central1) |
+| Compute | Cloud Run (contractia-api · us-central1 · `--no-cpu-throttling`) |
 | Base de datos | Cloud SQL PostgreSQL 15 (contractia-db) |
 | Imágenes Docker | Artifact Registry (us-central1) |
 | Secretos | Secret Manager |
 | IAM | Service Account contractia-sa (Workload Identity Federation) |
+
+> **`--no-cpu-throttling`** (v8.3.0): mantiene CPU activo entre requests, necesario para que los `BackgroundTasks` de FastAPI (auditorías) se ejecuten sin congelarse.
 
 ---
 
