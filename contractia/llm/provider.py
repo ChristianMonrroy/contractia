@@ -69,15 +69,19 @@ def _build_vertexai():
 
     # langchain_google_vertexai 2.x usa `from __future__ import annotations`,
     # convirtiendo todas las anotaciones en forward references (strings).
-    # Pydantic v2 intenta resolver 'SafetySetting' al hacer model_rebuild() y
-    # falla si la clase no está en el namespace del módulo. Forzamos la
-    # reconstrucción con el namespace correcto antes de instanciar el modelo.
+    # Pydantic v2 resuelve esas referencias con model_rebuild(). Proveer el
+    # namespace completo de vertexai.generative_models (SafetySetting,
+    # HarmCategory, HarmBlockThreshold, etc.) evita PydanticUserError.
     try:
-        from vertexai.generative_models import SafetySetting as _SafetySetting
-        ChatVertexAI.model_rebuild(
-            force=True,
-            _types_namespace={"SafetySetting": _SafetySetting},
-        )
+        import importlib
+        _types_ns: dict = {}
+        for _mod_path in ("vertexai.generative_models", "vertexai.preview.generative_models"):
+            try:
+                _mod = importlib.import_module(_mod_path)
+                _types_ns.update({k: v for k, v in vars(_mod).items() if not k.startswith("_")})
+            except ImportError:
+                pass
+        ChatVertexAI.model_rebuild(force=True, _types_namespace=_types_ns)
         print("✅ ChatVertexAI model_rebuild OK.")
     except Exception as _e:
         print(f"⚠️  model_rebuild parcial (no crítico): {_e}")
