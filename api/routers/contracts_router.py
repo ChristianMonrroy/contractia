@@ -345,8 +345,22 @@ def _make_progress_callback(audit_id: str):
     return callback
 
 
+async def _keepalive(stop: asyncio.Event, interval: int = 30) -> None:
+    """Ping a /health cada `interval` segundos para evitar que Cloud Run escale a cero."""
+    import httpx
+    while not stop.is_set():
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.get("http://localhost:8080/health", timeout=5)
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+
+
 async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False):
     import shutil
+    _stop_keepalive = asyncio.Event()
+    _keepalive_task = asyncio.create_task(_keepalive(_stop_keepalive))
     async with _auditoria_lock:
         try:
             actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...", progress_pct=10)
@@ -426,6 +440,8 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:500], progress_msg="Error")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+    _stop_keepalive.set()
+    _keepalive_task.cancel()
 
 
 def _log_web(
