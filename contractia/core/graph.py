@@ -50,7 +50,11 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
         nx.DiGraph con nodos de entidades y aristas de relaciones.
     """
     G = nx.DiGraph()
-    cadena = _PROMPT_EXTRACCION | llm | StrOutputParser()
+    try:
+        cadena = _PROMPT_EXTRACCION | llm | StrOutputParser()
+    except Exception as e:
+        print(f"⚠️ No se pudo construir la cadena GraphRAG: {e}")
+        return G  # Grafo vacío; la auditoría continuará sin GraphRAG
 
     for sec in secciones:
         titulo = sec.get("titulo", "Sección Desconocida")

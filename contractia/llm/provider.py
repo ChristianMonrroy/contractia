@@ -67,6 +67,21 @@ def _build_vertexai():
     import vertexai
     from langchain_google_vertexai import ChatVertexAI
 
+    # langchain_google_vertexai 2.x usa `from __future__ import annotations`,
+    # convirtiendo todas las anotaciones en forward references (strings).
+    # Pydantic v2 intenta resolver 'SafetySetting' al hacer model_rebuild() y
+    # falla si la clase no está en el namespace del módulo. Forzamos la
+    # reconstrucción con el namespace correcto antes de instanciar el modelo.
+    try:
+        from vertexai.generative_models import SafetySetting as _SafetySetting
+        ChatVertexAI.model_rebuild(
+            force=True,
+            _types_namespace={"SafetySetting": _SafetySetting},
+        )
+        print("✅ ChatVertexAI model_rebuild OK.")
+    except Exception as _e:
+        print(f"⚠️  model_rebuild parcial (no crítico): {_e}")
+
     vertexai.init(project=VERTEXAI_PROJECT, location=VERTEXAI_LOCATION)
     print(f"✅ Vertex AI inicializado. Proyecto: {VERTEXAI_PROJECT}")
 
