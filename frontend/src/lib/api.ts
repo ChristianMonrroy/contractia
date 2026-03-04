@@ -126,6 +126,7 @@ export interface ActividadRow {
   detalle: string;
   duracion_segundos: number | null;
   n_hallazgos: number | null;
+  tipo_rag: string | null;
   timestamp: string;
 }
 
@@ -138,6 +139,7 @@ export interface AuditRow {
   progress_msg: string | null;
   progress_pct: number | null;
   error_detail: string | null;
+  graph_enabled: boolean | null;
   created_at: string;
   updated_at: string;
 }

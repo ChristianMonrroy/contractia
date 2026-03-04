@@ -156,7 +156,7 @@ async def start_audit(
 
     filename = file.filename or f"contrato{ext}"
     audit_id = str(uuid.uuid4())
-    crear_auditoria(audit_id, user_id, filename=filename)
+    crear_auditoria(audit_id, user_id, filename=filename, graph_enabled=graph_enabled)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
     tmp_file = tmp_dir / f"contrato{ext}"
@@ -278,7 +278,8 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             )
             n_secciones = len(resultado.get("resultados_auditoria", []))
             registrar_auditoria(user_id)
-            _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos)
+            tipo_rag = "GraphRAG" if graph_enabled else "RAG"
+            _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos, tipo_rag=tipo_rag)
             actualizar_auditoria(
                 audit_id,
                 status="done",
@@ -320,14 +321,15 @@ def _log_web(
     detalle: str,
     duracion: float = None,
     n_hallazgos: int = None,
+    tipo_rag: str = None,
 ) -> None:
     try:
         with get_conn() as conn:
             conn.execute(
                 "INSERT INTO logs (telegram_id, accion, detalle, timestamp, "
-                "duracion_segundos, canal, n_hallazgos) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                "duracion_segundos, canal, n_hallazgos, tipo_rag) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
                 (telegram_id, accion, detalle, datetime.now().isoformat(),
-                 duracion, "web", n_hallazgos),
+                 duracion, "web", n_hallazgos, tipo_rag),
             )
     except Exception:
         pass  # No interrumpir el flujo principal si el log falla

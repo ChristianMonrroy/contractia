@@ -198,6 +198,7 @@ export default function DashboardPage() {
                       <tr className="bg-slate-50 border-b border-slate-100">
                         <th className="text-left px-5 py-3 text-slate-500 font-medium">Documento</th>
                         <th className="text-left px-4 py-3 text-slate-500 font-medium">Fecha</th>
+                        <th className="text-left px-4 py-3 text-slate-500 font-medium">Modo</th>
                         <th className="text-left px-4 py-3 text-slate-500 font-medium">Estado</th>
                         <th className="text-left px-4 py-3 text-slate-500 font-medium">Hallazgos</th>
                         <th className="px-4 py-3"></th>
@@ -211,6 +212,12 @@ export default function DashboardPage() {
                           </td>
                           <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
                             {formatDate(a.created_at)}
+                          </td>
+                          <td className="px-4 py-3">
+                            {a.graph_enabled
+                              ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
+                              : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">RAG</span>
+                            }
                           </td>
                           <td className="px-4 py-3">
                             <StatusBadge status={a.status} />

@@ -244,6 +244,15 @@ export default function ActividadPage() {
                         }`}>
                           {row.accion === "auditoria" ? "Auditoría" : "Pregunta"}
                         </span>
+                        {row.accion === "auditoria" && row.tipo_rag && (
+                          <span className={`ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            row.tipo_rag === "GraphRAG"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {row.tipo_rag}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
