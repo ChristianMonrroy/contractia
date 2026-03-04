@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { contractsAPI, extractError } from "@/lib/api";
+import { contractsAPI, extractError, AuditRow } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
