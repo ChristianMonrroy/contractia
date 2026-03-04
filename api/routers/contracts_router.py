@@ -192,7 +192,12 @@ def download_audit_pdf(audit_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(400, "El informe aún no está disponible.")
 
     filename = result.get("filename") or "contrato"
-    pdf_bytes = generar_pdf_auditoria(result["informe"], filename)
+    try:
+        pdf_bytes = generar_pdf_auditoria(result["informe"], filename)
+    except Exception as e:
+        import traceback
+        print(f"[PDF] Error generando PDF para {audit_id}: {traceback.format_exc()}")
+        raise HTTPException(500, f"Error al generar PDF: {type(e).__name__}: {str(e)[:300]}")
     nombre = filename.rsplit(".", 1)[0] + "_informe.pdf"
     return Response(
         content=pdf_bytes,

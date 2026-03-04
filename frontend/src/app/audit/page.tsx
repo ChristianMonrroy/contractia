@@ -194,8 +194,18 @@ function AuditContent() {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch {
-      alert("No se pudo generar el PDF. Intenta de nuevo.");
+    } catch (err: unknown) {
+      let msg = "No se pudo generar el PDF.";
+      // Intentar leer el mensaje de error del blob (axios con responseType: "blob")
+      const errData = (err as { response?: { data?: unknown; status?: number } })?.response?.data;
+      if (errData instanceof Blob) {
+        try {
+          const text = await errData.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.detail) msg = `Error: ${parsed.detail}`;
+        } catch { /* ignorar si no se puede parsear */ }
+      }
+      alert(msg);
     } finally {
       setPdfLoading(false);
     }

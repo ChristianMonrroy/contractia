@@ -53,7 +53,7 @@ def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
     pdf.set_text_color(255, 255, 255)
     pdf.set_font(FONT, "B", 16)
     pdf.set_xy(20, 8)
-    pdf.cell(0, 8, "ContractIA — Informe de Auditoría", align="L")
+    pdf.cell(0, 8, _safe("ContractIA - Informe de Auditoria"), align="L")
     pdf.set_font(FONT, "", 9)
     pdf.set_xy(20, 18)
     pdf.cell(0, 5, _safe(filename), align="L")
@@ -110,13 +110,22 @@ def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
             pdf.line(20, pdf.get_y() + 1, 190, pdf.get_y() + 1)
             pdf.ln(4)
 
+        # H4
+        elif line.startswith("#### "):
+            pdf.ln(1)
+            pdf.set_font(FONT, "B", 10)
+            pdf.set_text_color(*_GRAY)
+            pdf.multi_cell(0, 5, _safe(line[5:]))
+            pdf.ln(1)
+            pdf.set_text_color(15, 23, 42)
+
         # Elemento de lista con viñeta
         elif line.strip().startswith(("- ", "* ")):
             indent = 4 * (len(line) - len(line.lstrip()))  # sangría proporcional
             bullet_text = line.strip()[2:]
             pdf.set_x(20 + indent + 3)
             pdf.set_font(FONT, "", 10)
-            pdf.write(5, "\x95 ")  # bullet •
+            pdf.write(5, "- ")
             _write_line(pdf, bullet_text, FONT, 10, x=None)
 
         # Texto normal (con posible **negrita** inline)
@@ -131,6 +140,6 @@ def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
     pdf.ln(3)
     pdf.set_font(FONT, "I", 8)
     pdf.set_text_color(*_GRAY)
-    pdf.cell(0, 5, "Generado automáticamente por ContractIA — contractia.pe", align="C")
+    pdf.cell(0, 5, _safe("Generado automaticamente por ContractIA - contractia.pe"), align="C")
 
     return bytes(pdf.output())
