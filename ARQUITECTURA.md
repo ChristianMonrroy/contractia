@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.5.0 | **Fecha:** Marzo 2026
+**Versión:** 8.6.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -28,9 +28,11 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
 │                                                                  │
 │  Usuario → Telegram API → webhook → handler.py                  │
 │                                        │                        │
+│              Selector GraphRAG (Sí/No) │                        │
 │                    ┌───────────────────┤                        │
 │                    ▼                   ▼                        │
 │             audit_flow.py       query_flow.py                   │
+│          (graph_enabled=T/F)  (graph_enabled=T/F)               │
 └────────────────────┼───────────────────┼────────────────────────┘
                      │                   │
          ┌───────────▼──────┐    ┌───────▼───────────┐
@@ -242,15 +244,19 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |
 | Persistencia del vector store | No persiste — se reconstruye por cada contrato cargado |
 
-### GraphRAG (v8.2.0)
+### GraphRAG (v8.6.0)
 
 | Característica | Valor |
 |---|---|
 | Tecnología | `networkx.DiGraph` |
-| Extracción de tripletas | LLM (Gemini 2.5 Pro) por sección |
+| Extracción de tripletas | LLM (Gemini 2.5 Pro) por sección con prompt CoT + Few-Shot |
 | Tipos de relación | REFERENCIA_A, SE_RIGE_POR, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE |
-| Uso | Los 3 agentes reciben `contexto_grafo` con relaciones de la sección actual |
-| Persistencia | En memoria, por auditoría (se descarta al terminar) |
+| Búsqueda de nodos | Regex con word-boundary (`(?<!\d)cid(?!\d)`) — evita falsos positivos por substring |
+| Profundidad de consulta | `nx.ego_graph(radius=2)` — detecta cadenas A→B→C, no solo vecinos directos |
+| Aristas CONTIENE | Excluidas del contexto enviado a los agentes (ruido estructural) |
+| Uso web | Los 3 agentes reciben `contexto_grafo`; consulta interactiva enriquece prompt si hay grafo en sesión |
+| Uso bot | Selector `[🕸️ Sí, con GraphRAG] [⚡ No, solo RAG]` antes de subir el archivo; soportado en auditoría y consulta |
+| Persistencia | En memoria por auditoría (web) o por sesión de usuario (bot) |
 
 ---
 

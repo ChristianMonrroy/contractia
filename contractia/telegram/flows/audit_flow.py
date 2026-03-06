@@ -31,6 +31,7 @@ async def ejecutar_auditoria(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     ruta_archivo: str,
+    graph_enabled: bool = False,
 ) -> None:
     """Orquesta la auditoría completa y envía el informe al usuario."""
     if _auditoria_lock.locked():
@@ -57,16 +58,17 @@ async def ejecutar_auditoria(
                 await update.message.reply_text("❌ No pude extraer texto del archivo. Verifica que no esté protegido.")
                 return
 
+            modo = "RAG + GraphRAG" if graph_enabled else "RAG"
             await update.message.reply_text(
-                "🔍 Analizando el contrato con los agentes de IA...\n"
-                "_(Esto puede tardar varios minutos según el tamaño del contrato)_",
-                parse_mode="Markdown",
+                f"🔍 Analizando el contrato con los agentes de IA \\({modo}\\)\\.\\.\\.\n"
+                "_Esto puede tardar varios minutos según el tamaño del contrato\\._",
+                parse_mode="MarkdownV2",
             )
 
             llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: ejecutar_auditoria_contrato(texto, llm)
+                None, lambda: ejecutar_auditoria_contrato(texto, llm, graph_enabled=graph_enabled)
             )
             duracion = round(time.time() - start, 1)
 
@@ -92,6 +94,7 @@ async def ejecutar_auditoria(
                     filename="informe_auditoria_contrato.md",
                     caption=(
                         f"📋 *Informe de Auditoría ContractIA*\n"
+                        f"• Modo: {modo}\n"
                         f"• Secciones con hallazgos: {n_secciones}\n"
                         f"• Total de hallazgos: {n_hallazgos}"
                     ),

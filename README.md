@@ -1,10 +1,23 @@
-# ContractIA v8.5.0
+# ContractIA v8.6.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.6.0
+
+| Área | Cambio |
+|------|--------|
+| **GraphRAG — Prompt CoT + Few-Shot** | `_PROMPT_EXTRACCION` en `graph.py` reescrito con CoT de 5 pasos, ejemplo concreto (few-shot) y bloque `<razonamiento>`; consistente con la calidad de los prompts de los agentes |
+| **GraphRAG — Búsqueda regex** | Reemplazado `if cid in str(n)` por regex con word-boundary negativo (`(?<!\d)cid(?!\d)`); evita que "5" matchee "15", "25" o "5.1" — menos falsos contextos |
+| **GraphRAG — Profundidad 2** | `obtener_contexto_grafo` usa `nx.ego_graph(radius=2)` en lugar de buscar solo vecinos directos; detecta cadenas `A→B→C` (ej. plazos encadenados entre cláusulas) |
+| **GraphRAG — Filtro CONTIENE** | Las aristas jerárquicas `CONTIENE` se omiten del contexto enviado a los agentes; eran ruido estructural sin valor legal |
+| **Bot — Selector GraphRAG** | Nuevo paso en el flujo del bot: al elegir Auditoría o Consulta, el usuario ve botones `[🕸️ Sí, con GraphRAG] [⚡ No, solo RAG]` antes de subir el archivo |
+| **Bot — GraphRAG en consulta** | `query_flow.py` construye el grafo al indexar si se activa; `responder_pregunta` enriquece automáticamente el prompt con relaciones del grafo cuando la pregunta menciona cláusulas |
+| **Bot — GraphRAG en auditoría** | `ejecutar_auditoria` acepta `graph_enabled=True/False`; el caption del informe indica el modo usado |
+| **Sesiones bot** | `sessions.py` guarda `grafo` y `mapa_textos` junto al retriever; nuevas funciones `get_grafo()` y `get_mapa_textos()` |
 
 ## Novedades v8.5.0
 

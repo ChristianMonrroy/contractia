@@ -4,6 +4,7 @@ Estado de sesión en memoria por usuario.
 Guarda:
   - autenticación y timestamp de login
   - vector store y retriever del contrato activo del usuario
+  - grafo de conocimiento (GraphRAG) y mapa de textos, si se activó
 """
 
 from datetime import datetime, timedelta
@@ -38,18 +39,37 @@ def is_authenticated(user_id: int) -> bool:
 
 # ── Contrato / RAG ────────────────────────────────────────────────────────────
 
-def set_vector_store(user_id: int, vector_store: Any, retriever: Any) -> None:
-    _upsert(user_id, {"vector_store": vector_store, "retriever": retriever})
+def set_vector_store(
+    user_id: int,
+    vector_store: Any,
+    retriever: Any,
+    grafo: Any = None,
+    mapa_textos: Any = None,
+) -> None:
+    _upsert(user_id, {
+        "vector_store": vector_store,
+        "retriever": retriever,
+        "grafo": grafo,
+        "mapa_textos": mapa_textos,
+    })
 
 
 def get_retriever(user_id: int) -> Optional[Any]:
     return _sessions.get(user_id, {}).get("retriever")
 
 
+def get_grafo(user_id: int) -> Optional[Any]:
+    return _sessions.get(user_id, {}).get("grafo")
+
+
+def get_mapa_textos(user_id: int) -> Optional[Any]:
+    return _sessions.get(user_id, {}).get("mapa_textos")
+
+
 def clear_contract(user_id: int) -> None:
     session = _sessions.get(user_id, {})
-    session.pop("vector_store", None)
-    session.pop("retriever", None)
+    for campo in ("vector_store", "retriever", "grafo", "mapa_textos"):
+        session.pop(campo, None)
 
 
 # ── Internos ──────────────────────────────────────────────────────────────────

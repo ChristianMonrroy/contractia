@@ -5,14 +5,15 @@ Implementa una máquina de estados almacenada en context.user_data["estado"].
 No usa ConversationHandler para tener control total del flujo multi-paso.
 
 Estados:
-    INICIO           → usuario sin sesión activa
-    REGISTRO_EMAIL   → esperando el email del nuevo usuario
-    REGISTRO_CODIGO  → esperando el código OTP de verificación
-    LOGIN_PASSWORD   → esperando contraseña
-    MENU             → usuario autenticado, en el menú principal
-    ESPERANDO_ARCHIVO→ usuario eligió un modo y debe subir el PDF/DOCX
-    MODO_PREGUNTAS   → contrato indexado, loop de preguntas
-    ADMIN_ROL_ID     → admin ingresando el telegram_id a modificar
+    INICIO              → usuario sin sesión activa
+    REGISTRO_EMAIL      → esperando el email del nuevo usuario
+    REGISTRO_CODIGO     → esperando el código OTP de verificación
+    LOGIN_PASSWORD      → esperando contraseña
+    MENU                → usuario autenticado, en el menú principal
+    SELECCIONANDO_GRAFO → eligió modo, esperando si activa GraphRAG (Sí/No)
+    ESPERANDO_ARCHIVO   → elegió modo + GraphRAG, debe subir el PDF/DOCX
+    MODO_PREGUNTAS      → contrato indexado, loop de preguntas
+    ADMIN_ROL_ID        → admin ingresando el telegram_id a modificar
 """
 
 import os
@@ -61,6 +62,7 @@ REGISTRO_EMAIL = "registro_email"
 REGISTRO_CODIGO = "registro_codigo"
 LOGIN_PASSWORD = "login_password"
 MENU = "menu"
+SELECCIONANDO_GRAFO = "seleccionando_grafo"
 ESPERANDO_ARCHIVO = "esperando_archivo"
 MODO_PREGUNTAS = "modo_preguntas"
 ADMIN_ROL_ID = "admin_rol_id"
@@ -205,6 +207,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     usuario = get_usuario(user_id)
     rol = usuario["rol"]
     modo = context.user_data.get("modo_pendiente", "preguntas")
+    graph_enabled = context.user_data.get("graph_enabled", False)
 
     # Verificar permisos y límites
     if modo == "auditoria":
@@ -255,9 +258,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         if modo == "auditoria":
             _set_estado(context, MENU)
-            await ejecutar_auditoria(update, context, tmp.name)
+            await ejecutar_auditoria(update, context, tmp.name, graph_enabled=graph_enabled)
         else:
-            exito = await indexar_contrato(update, context, tmp.name)
+            exito = await indexar_contrato(update, context, tmp.name, graph_enabled=graph_enabled)
             if exito:
                 _set_estado(context, MODO_PREGUNTAS)
             else:
@@ -287,6 +290,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data in ("modo_preguntas", "modo_auditoria"):
         modo = "preguntas" if data == "modo_preguntas" else "auditoria"
         context.user_data["modo_pendiente"] = modo
+        _set_estado(context, SELECCIONANDO_GRAFO)
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🕸️ Sí, con GraphRAG", callback_data="graph_si"),
+                InlineKeyboardButton("⚡ No, solo RAG",     callback_data="graph_no"),
+            ]
+        ])
+        await query.message.reply_text(
+            "🔧 *¿Activar análisis de relaciones entre cláusulas (GraphRAG)?*\n\n"
+            "• *Con GraphRAG*: detecta dependencias entre cláusulas — más preciso, "
+            "tarda ~2-3 min adicionales al indexar.\n"
+            "• *Solo RAG*: búsqueda semántica estándar — más rápido.",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    elif data in ("graph_si", "graph_no"):
+        if _estado(context) != SELECCIONANDO_GRAFO:
+            return
+        context.user_data["graph_enabled"] = (data == "graph_si")
         _set_estado(context, ESPERANDO_ARCHIVO)
         await query.message.reply_text("📎 Envíame el contrato en PDF o DOCX:")
 

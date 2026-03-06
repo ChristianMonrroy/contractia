@@ -2,9 +2,12 @@
 Flujo de consultas RAG para el bot de Telegram.
 
 Indexa el contrato del usuario y responde preguntas libres.
+Soporta GraphRAG opcional: si se activa al indexar, las respuestas
+se enriquecen con relaciones entre cláusulas del grafo de conocimiento.
 """
 
 import asyncio
+import re
 import shutil
 import tempfile
 import time
@@ -15,18 +18,26 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from contractia.config import RAG_TOP_K
+from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.loader import procesar_documentos_carpeta
+from contractia.core.segmenter import separar_en_secciones
 from contractia.llm.provider import build_llm
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 from contractia.telegram.db.database import get_conn
 from contractia.telegram.db.uso import registrar_pregunta
-from contractia.telegram.sessions import get_retriever, set_vector_store
+from contractia.telegram.sessions import (
+    get_grafo,
+    get_mapa_textos,
+    get_retriever,
+    set_vector_store,
+)
 
 _PROMPT = (
     "Eres un asistente legal especializado en contratos de concesión. "
     "Responde la pregunta basándote ÚNICAMENTE en el contexto del contrato proporcionado. "
     "Si la respuesta no está en el contexto, dilo claramente.\n\n"
     "CONTEXTO DEL CONTRATO:\n{contexto}\n\n"
+    "{bloque_grafo}"
     "PREGUNTA: {pregunta}\n\n"
     "RESPUESTA:"
 )
@@ -46,9 +57,11 @@ async def indexar_contrato(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     ruta_archivo: str,
+    graph_enabled: bool = False,
 ) -> bool:
     """
     Extrae el texto del contrato, genera embeddings y guarda el retriever en sesión.
+    Si graph_enabled=True, construye además el grafo de conocimiento GraphRAG.
     Retorna True si el indexado fue exitoso.
     """
     user_id = update.effective_user.id
@@ -72,12 +85,37 @@ async def indexar_contrato(
             None, lambda: crear_vector_store(texto)
         )
         retriever = crear_retriever(vector_store, k=RAG_TOP_K)
-        set_vector_store(user_id, vector_store, retriever)
 
+        grafo = None
+        mapa_textos = None
+
+        if graph_enabled:
+            await update.message.reply_text(
+                "🕸️ Construyendo grafo de relaciones entre cláusulas...\n"
+                "_(Esto agrega ~2-3 minutos adicionales)_",
+                parse_mode="Markdown",
+            )
+            llm = get_llm()
+            secciones = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: separar_en_secciones(texto)
+            )
+            mapa_textos = {
+                s.get("numero", ""): s
+                for s in secciones
+                if s.get("numero")
+            }
+            grafo = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: construir_grafo_conocimiento(secciones, llm)
+            )
+
+        set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos)
+
+        modo = "RAG + GraphRAG" if graph_enabled else "RAG"
         await update.message.reply_text(
-            "✅ Contrato indexado correctamente.\n"
-            "Ahora puedes escribir tus preguntas.\n"
-            "Usa /menu para volver al menú principal."
+            f"✅ Contrato indexado correctamente \\({modo}\\)\\.\n"
+            "Ahora puedes escribir tus preguntas\\.\n"
+            "Usa /menu para volver al menú principal\\.",
+            parse_mode="MarkdownV2",
         )
         return True
 
@@ -95,7 +133,7 @@ async def responder_pregunta(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ) -> None:
-    """Recupera contexto RAG y genera respuesta con el LLM."""
+    """Recupera contexto RAG (y GraphRAG si está activo) y genera respuesta con el LLM."""
     user_id = update.effective_user.id
     pregunta = update.message.text.strip()
 
@@ -119,7 +157,21 @@ async def responder_pregunta(
             )
             return
 
-        prompt = _PROMPT.format(contexto=contexto, pregunta=pregunta)
+        # Enriquecer con GraphRAG si está disponible en sesión
+        bloque_grafo = ""
+        G = get_grafo(user_id)
+        mapa_textos = get_mapa_textos(user_id)
+        if G is not None and G.number_of_nodes() > 0:
+            clausulas = re.findall(r"\d+(?:\.\d+)+", pregunta)
+            ctx_grafo = obtener_contexto_grafo(clausulas or [], G, mapa_textos or {})
+            if ctx_grafo and "No hay relaciones" not in ctx_grafo:
+                bloque_grafo = f"RELACIONES DEL GRAFO:\n{ctx_grafo}\n\n"
+
+        prompt = _PROMPT.format(
+            contexto=contexto,
+            bloque_grafo=bloque_grafo,
+            pregunta=pregunta,
+        )
         llm = get_llm()
 
         start = time.time()
