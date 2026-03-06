@@ -8,8 +8,8 @@ from typing import Callable, Dict, List, Optional, Set
 
 from tqdm.auto import tqdm
 
-from contractia.agents.factory import crear_agentes
-from contractia.config import ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
+from contractia.agents.factory import crear_agentes, crear_scout
+from contractia.config import AGENTIC_RAG_ENABLED, ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.segmenter import (
     _get_all_section_numbers_as_str,
@@ -54,6 +54,21 @@ def _ejecutar_con_reintento(agente, inputs: dict) -> dict:
     return {}
 
 
+def _rag_estatico(retriever, texto_truncado: str) -> str:
+    """Wrapper del RAG estático original para reutilización interna."""
+    try:
+        ctx = recuperar_contexto(retriever, texto_truncado[:500], max_tokens=2000)
+        if ctx:
+            return (
+                "\n\n--- CONTEXTO ADICIONAL (de otras secciones, vía RAG) ---\n"
+                + ctx
+                + "\n--- FIN CONTEXTO ADICIONAL ---\n"
+            )
+        return ""
+    except Exception:
+        return ""
+
+
 def auditar_consistencia(
     texto_seccion: str,
     indice_secciones: List[Dict],
@@ -62,6 +77,7 @@ def auditar_consistencia(
     section_nums_to_ignore: Set[str],
     llm,
     retriever=None,
+    vector_store=None,
     contexto_grafo: str = "",
 ) -> List[Dict]:
     """Audita una sección individual con los tres agentes.
@@ -79,19 +95,27 @@ def auditar_consistencia(
     # Truncar sección para evitar prompts gigantes (→ lentitud / timeouts en Gemini)
     texto_truncado = texto_seccion[:_MAX_SECTION_CHARS]
 
-    # ── RAG: contexto adicional de otras secciones ──
+    # ── RAG: contexto adicional (estático o agéntico según config) ──────────────
     contexto_rag = ""
     if retriever is not None:
-        try:
-            ctx = recuperar_contexto(retriever, texto_truncado[:500], max_tokens=2000)
-            if ctx:
-                contexto_rag = (
-                    "\n\n--- CONTEXTO ADICIONAL (de otras secciones, vía RAG) ---\n"
-                    + ctx
-                    + "\n--- FIN CONTEXTO ADICIONAL ---\n"
-                )
-        except Exception:
-            contexto_rag = ""
+        if AGENTIC_RAG_ENABLED and vector_store is not None:
+            try:
+                scout = crear_scout(llm, retriever, vector_store)
+                ctx_scout = scout.ejecutar(texto_truncado)
+                if ctx_scout:
+                    contexto_rag = (
+                        "\n\n--- CONTEXTO AGÉNTICO (Scout v9.0) ---\n"
+                        + ctx_scout
+                        + "\n--- FIN CONTEXTO SCOUT ---\n"
+                    )
+                    print(f"   🔍 Scout: {len(ctx_scout)} chars de contexto enriquecido")
+                else:
+                    contexto_rag = _rag_estatico(retriever, texto_truncado)
+            except Exception as e:
+                print(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
+                contexto_rag = _rag_estatico(retriever, texto_truncado)
+        else:
+            contexto_rag = _rag_estatico(retriever, texto_truncado)
 
     # Preparar índices (sin LLM, rápido)
     str_idx_sec = ", ".join([f"{x['tipo']} {x['n']}" for x in indice_secciones])
@@ -102,6 +126,9 @@ def auditar_consistencia(
     ]
     str_idx_loc = ", ".join(local_filtrado) if local_filtrado else "Ninguna"
 
+    # Texto enriquecido: texto original + contexto RAG/Scout para los 3 agentes
+    texto_enriquecido = texto_truncado + contexto_rag
+
     hallazgos_totales = []
 
     # ── Fase 1: Jurista + Cronista en paralelo (son independientes entre sí) ──
@@ -109,12 +136,12 @@ def auditar_consistencia(
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
             jurista,
-            {"texto": texto_truncado, "contexto_grafo": contexto_grafo},
+            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo},
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
             cronista,
-            {"texto": texto_truncado, "contexto_grafo": contexto_grafo},
+            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo},
         )
         res_jurista = fut_jurista.result()
         res_cronista = fut_cronista.result()
@@ -139,7 +166,7 @@ def auditar_consistencia(
     res_aud = _ejecutar_con_reintento(
         auditor,
         {
-            "texto": texto_truncado + contexto_rag,
+            "texto": texto_enriquecido,
             "idx_glob": str_idx_glob,
             "idx_sec": str_idx_sec,
             "idx_loc": str_idx_loc,
@@ -181,12 +208,14 @@ def ejecutar_auditoria_contrato(
 
     # ── RAG: crear vector store ──
     retriever = None
+    vector_store = None  # Declarar en scope amplio para pasarlo al Scout
     if RAG_ENABLED:
         try:
             print("\n📚 Construyendo base de conocimiento RAG...")
             vector_store = crear_vector_store(texto_contrato, secciones)
             retriever = crear_retriever(vector_store)
-            print("✅ RAG activo: los agentes consultarán contexto relevante.\n")
+            modo_rag = "Hybrid RAG + Reranker + Scout" if AGENTIC_RAG_ENABLED else "Hybrid RAG + Reranker"
+            print(f"✅ RAG activo ({modo_rag}).\n")
         except Exception as e:
             print(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.\n")
 
@@ -240,6 +269,7 @@ def ejecutar_auditoria_contrato(
                 section_nums_to_ignore=section_nums_to_ignore,
                 llm=llm,
                 retriever=retriever,
+                vector_store=vector_store,
                 contexto_grafo=contexto_grafo,
             )
 

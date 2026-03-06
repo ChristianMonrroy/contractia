@@ -1,10 +1,23 @@
-# ContractIA v8.8.0
+# ContractIA v9.0.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.0.0
+
+| Área | Cambio |
+|------|--------|
+| **Agentic RAG — Agente Scout** | Nuevo `AgenteScout` en `contractia/agents/scout.py`; corre antes de Jurista/Auditor/Cronista y usa `bind_tools` (tool calling de Gemini) en un ReAct loop manual para recuperar contexto dinámicamente |
+| **Agentic RAG — Tools** | Dos herramientas: `buscar_en_contrato(consulta)` (Hybrid RAG semántico) y `obtener_clausula(numero)` (búsqueda exacta por número); el LLM decide cuándo y cuántas veces llamarlas |
+| **Agentic RAG — Retrocompatible** | `AGENTIC_RAG_ENABLED=false` por defecto; sin este flag el pipeline funciona exactamente igual que v8.8.0; cero cambios en prompts, schemas ni routers |
+| **Agentic RAG — 3 agentes enriquecidos** | El contexto Scout se pasa vía `{texto}` a los 3 agentes (Jurista, Auditor, Cronista), no solo al Auditor |
+| **Degradación silenciosa** | Si el Scout falla en cualquier iteración, cae automáticamente a RAG estático; la auditoría nunca se interrumpe |
+| **config** | Nuevas variables: `AGENTIC_RAG_ENABLED`, `SCOUT_MAX_ITER` (default 2), `SCOUT_MAX_TOKENS` (default 3000) |
+| **factory** | Nueva función `crear_scout(llm, retriever, vector_store)` en `factory.py` |
+| **orchestrator** | `_rag_estatico()` extraída como función privada; `vector_store` propagado al scope amplio; `auditar_consistencia()` acepta `vector_store=None` (retrocompatible) |
 
 ## Novedades v8.8.0
 

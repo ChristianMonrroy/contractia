@@ -55,3 +55,12 @@ EMAIL_PASSWORD: str         = os.getenv("EMAIL_PASSWORD", "")
 # Si está vacío, el pipeline usa EnsembleRetriever (BM25 + FAISS) sin reranking.
 # Para producción: agregar COHERE_API_KEY en GCP Secret Manager.
 COHERE_API_KEY: str         = os.getenv("COHERE_API_KEY", "")
+
+# ── Agentic RAG (Scout) ───────────────────────────────────────────────────────
+# Si False (default), el pipeline usa RAG estático (comportamiento v8.8).
+# Si True, el Agente Scout corre antes de los agentes y hace llamadas dinámicas
+# al retriever mediante tool calling (bind_tools de LangChain + Gemini).
+# Activar en producción: gcloud run services update ... --update-env-vars="AGENTIC_RAG_ENABLED=true"
+AGENTIC_RAG_ENABLED: bool   = _bool(os.getenv("AGENTIC_RAG_ENABLED", "false"))
+SCOUT_MAX_ITER: int         = int(os.getenv("SCOUT_MAX_ITER", "2"))
+SCOUT_MAX_TOKENS: int       = int(os.getenv("SCOUT_MAX_TOKENS", "3000"))

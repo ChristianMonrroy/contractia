@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.8.0 | **Fecha:** Marzo 2026
+**Versión:** 9.0.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -41,6 +41,7 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │                  │    │                   │
          │  segmenter.py    │    │  BM25+FAISS (RRF) │
          │  graph.py        │    │  Cohere Reranker  │
+         │  scout.py (v9)   │    │  Scout (Agentic)  │
          └────────┬─────────┘    └───────────────────┘
                   │
          ┌────────▼─────────────────────────┐
