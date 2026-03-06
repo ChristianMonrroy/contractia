@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.3.0 | **Fecha:** Marzo 2026
+**Versión:** 8.5.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -260,11 +260,20 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 
 | Agente | Rol | Input principal | Output |
 |---|---|---|---|
-| **Jurista** | Identifica normativa externa | Texto + contexto grafo | Lista de leyes/normas citadas |
-| **Auditor** | Valida referencias internas | Texto + contexto RAG + índices + grafo | Hallazgos de referencias rotas |
-| **Cronista** | Analiza procesos y plazos | Texto + contexto grafo | Hallazgos de errores lógicos y de plazos |
+| **Jurista** | Identifica normativa externa | Texto + contexto grafo | `SalidaJurista`: lista de leyes/normas citadas |
+| **Auditor** | Valida referencias internas | Texto + contexto RAG + índices + grafo | `SalidaAuditor`: hallazgos de referencias rotas |
+| **Cronista** | Analiza procesos y plazos | Texto + contexto grafo | `SalidaCronista`: hallazgos de errores lógicos y de plazos |
 
-Todos los agentes usan `LangChain PromptTemplate | LLM | StrOutputParser` con un parser JSON robusto.
+**Técnicas de Prompt Engineering aplicadas (v8.5.0):**
+
+| Técnica | Agente(s) | Descripción |
+|---|---|---|
+| **Chain-of-Thought (CoT)** | Jurista, Auditor, Cronista | Bloque `<razonamiento>` con pasos explícitos antes del output; el parser lo ignora en producción |
+| **Few-Shot** | Jurista | Ejemplo concreto de referencia externa vs. interna para reducir falsos positivos |
+| **Árbol de decisión** | Auditor | 4 pasos explícitos por cada referencia: check en refs_externas → idx_glob → coherencia semántica → descartar |
+| **Severidad dinámica** | Auditor, Cronista | Criterios ALTA/MEDIA/BAJA explícitos en el prompt; antes hardcodeado a ALTA |
+
+Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)` (v8.5.0). El schema Pydantic correspondiente (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`) garantiza salida válida sin parser regex. Si `with_structured_output` no está disponible (ej. backend Ollama), el `AgenteEspecialista` cae a `StrOutputParser` + `parse_json_seguro` como fallback.
 
 ---
 
@@ -285,7 +294,7 @@ Todos los agentes usan `LangChain PromptTemplate | LLM | StrOutputParser` con un
 
 **Seguridad:**
 - Passwords hasheados con **bcrypt**
-- JWT firmados con secreto en GCP Secret Manager
+- JWT firmados con **PyJWT>=2.9.0** (reemplazó `python-jose` en v8.5.0 por CVE activo); algoritmo HS256; secreto en GCP Secret Manager
 - Tokens en cookies (js-cookie), interceptor axios para inyección automática
 - Redirect a `/login` en respuestas 401
 

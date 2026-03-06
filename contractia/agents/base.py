@@ -4,10 +4,11 @@ Clase base para agentes especialistas y parsing robusto de JSON.
 
 import json
 import re
-from typing import Any
+from typing import Any, Optional, Type
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
+from pydantic import BaseModel
 
 
 def parse_json_seguro(texto_llm: str) -> Any:
@@ -20,6 +21,9 @@ def parse_json_seguro(texto_llm: str) -> Any:
 
     texto = texto_llm.strip()
 
+    # Eliminar bloque de razonamiento <razonamiento>...</razonamiento>
+    texto = re.sub(r"<razonamiento>.*?</razonamiento>", "", texto, flags=re.DOTALL).strip()
+
     # Limpiar markdown
     if "```" in texto:
         match = re.search(r"```(?:json)?(.*?)```", texto, re.DOTALL)
@@ -31,7 +35,7 @@ def parse_json_seguro(texto_llm: str) -> Any:
         return {}
 
     # Limpieza de sintaxis
-    texto = re.sub(r"//.*", "", texto)  # Comentarios
+    texto = re.sub(r"//.*", "", texto)       # Comentarios
     texto = re.sub(r",\s*([\]}])", r"\1", texto)  # Comas finales
 
     try:
@@ -47,17 +51,36 @@ def parse_json_seguro(texto_llm: str) -> Any:
 
 
 class AgenteEspecialista:
-    """Agente que ejecuta un prompt contra un LLM y parsea la salida como JSON."""
+    """
+    Agente que ejecuta un prompt contra un LLM y devuelve la salida parseada.
 
-    def __init__(self, llm, role_prompt: PromptTemplate):
+    Si se proporciona `output_schema`, usa with_structured_output para garantizar
+    el schema Pydantic sin regex. Si no, usa parse_json_seguro como fallback.
+    """
+
+    def __init__(
+        self,
+        llm,
+        role_prompt: PromptTemplate,
+        output_schema: Optional[Type[BaseModel]] = None,
+    ):
         self.llm = llm
         self.prompt = role_prompt
-        self.chain = self.prompt | self.llm | StrOutputParser()
+        self.output_schema = output_schema
+
+        if output_schema is not None:
+            llm_structured = llm.with_structured_output(output_schema)
+            self.chain = self.prompt | llm_structured
+        else:
+            self.chain = self.prompt | self.llm | StrOutputParser()
 
     def ejecutar(self, inputs: dict) -> Any:
         try:
-            raw_output = self.chain.invoke(inputs)
-            return parse_json_seguro(raw_output)
+            result = self.chain.invoke(inputs)
+            if self.output_schema is not None:
+                # Devuelve el objeto Pydantic como dict
+                return result.model_dump() if hasattr(result, "model_dump") else result
+            return parse_json_seguro(result)
         except Exception as e:
             print(f"⚠️ Error en ejecución de Agente: {e}")
             return {}

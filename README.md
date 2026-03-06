@@ -1,10 +1,22 @@
-# ContractIA v8.4.0
+# ContractIA v8.5.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.5.0
+
+| Área | Cambio |
+|------|--------|
+| **Seguridad JWT** | Reemplazado `python-jose` (sin mantenimiento desde 2021, CVE activo) por `PyJWT>=2.9.0`; API idéntica para HS256, cero cambios en endpoints |
+| **Limpieza deps** | Eliminado `passlib` de `requirements.txt` — el proyecto ya usaba `bcrypt` directamente; sin impacto en comportamiento |
+| **Fecha UTC** | `datetime.utcnow()` reemplazado por `datetime.now(timezone.utc)` en `api/auth.py` (deprecado en Python 3.12+) |
+| **Agentes — salida estructurada** | `AgenteEspecialista` ahora usa `llm.with_structured_output(schema)` (LangChain + Gemini); elimina el parser regex frágil; los schemas Pydantic ya existentes (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`) garantizan output válido |
+| **Prompts — CoT** | Los tres agentes incorporan árbol de decisión explícito y bloque `<razonamiento>` (Chain-of-Thought); el parser lo ignora automáticamente |
+| **Prompts — Few-Shot** | `PROMPT_JURISTA` incluye ejemplo concreto externas vs. internas para reducir falsos positivos |
+| **Prompts — Severidad dinámica** | Criterios ALTA/MEDIA/BAJA explícitos en Auditor y Cronista; antes `"ALTA"` era hardcodeado en el template para todos los hallazgos |
 
 ## Novedades v8.4.0
 
@@ -74,7 +86,7 @@ api.contractia.pe → Cloud Run (FastAPI · Python)
 | LLM | Gemini 2.5 Pro via VertexAI |
 | Embeddings | text-embedding-004 (VertexAI) |
 | Vector store | FAISS |
-| Auth | JWT (8h), bcrypt, OTP por email |
+| Auth | JWT (8h, PyJWT), bcrypt, OTP por email |
 | Bot | python-telegram-bot (webhook) |
 | CI/CD | GitHub Actions → Docker → Artifact Registry → Cloud Run |
 | Secretos | GCP Secret Manager |
