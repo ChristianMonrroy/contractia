@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.6.0 | **Fecha:** Marzo 2026
+**Versión:** 8.7.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -39,8 +39,8 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │   ORQUESTADOR    │    │   RAG PIPELINE    │
          │  orchestrator.py │    │   pipeline.py     │
          │                  │    │                   │
-         │  segmenter.py    │    │  FAISS + Embeddings│
-         │  graph.py        │    │  (VertexAI)       │
+         │  segmenter.py    │    │  BM25 + FAISS     │
+         │  graph.py        │    │  EnsembleRetriever│
          └────────┬─────────┘    └───────────────────┘
                   │
          ┌────────▼─────────────────────────┐
@@ -238,13 +238,13 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | Tamaño de chunk | 1500 caracteres, overlap 200 |
 | Modelo de embeddings | `text-embedding-004` (VertexAI) |
 | Vector store | **FAISS** (en memoria, por sesión) |
-| Estrategia de búsqueda | Similarity search (cosine), top-k=3 |
+| Estrategia de búsqueda | **Hybrid RAG**: BM25 (exacto, peso 0.4) + FAISS cosine (semántico, peso 0.6) fusionados con RRF |
 | Metadata por chunk | título de sección, tipo, número, índice de chunk |
 | Uso del RAG en auditoría | Agente Auditor recibe top-3 fragmentos de otras secciones |
 | Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |
 | Persistencia del vector store | No persiste — se reconstruye por cada contrato cargado |
 
-### GraphRAG (v8.6.0)
+### GraphRAG (v8.6.0+)
 
 | Característica | Valor |
 |---|---|
@@ -377,7 +377,7 @@ git push frontend → Vercel (deploy automático)
 
 ### Sobre el RAG y GraphRAG
 
-**P3.** El sistema combina **RAG Naive** (FAISS + similarity search) con **GraphRAG** (networkx + tripletas). ¿Qué peso relativo deberían tener ambos tipos de contexto en los prompts? ¿Existe evidencia de que GraphRAG supera a RAG puro en documentos legales con cláusulas interdependientes?
+**P3.** El sistema combina **Hybrid RAG** (BM25 + FAISS/RRF) con **GraphRAG** (networkx + tripletas). ¿Qué peso relativo deberían tener ambos tipos de contexto en los prompts? ¿Existe evidencia de que GraphRAG supera a Hybrid RAG en documentos legales con cláusulas interdependientes, o se complementan de forma aditiva?
 
 **P4.** Los chunks se generan por tamaño con separadores legales. ¿Sería más efectivo un chunking **semántico** por cláusula completa (cada cláusula como chunk unitario)?
 

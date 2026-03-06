@@ -1,8 +1,13 @@
 """
 Pipeline RAG: vectorización del contrato y recuperación por similitud.
 
-Flujo:
-  Documento → Chunks → Embeddings → FAISS → Retriever
+Flujo (Hybrid RAG desde v8.7.0):
+  Documento → Chunks → Embeddings → FAISS  ┐
+                     → BM25 (rank_bm25)    ┘→ EnsembleRetriever (RRF) → Agentes
+
+BM25 complementa a FAISS con búsqueda exacta por keywords: crítico para
+términos legales específicos como "Ley 30225", "D.S. 344-2018-EF",
+números de cláusula y montos exactos que embeddings pueden no discriminar bien.
 
 Proveedores de embeddings soportados (según LLM_PROVIDER en .env):
   - vertexai : VertexAIEmbeddings  (text-embedding-004)
@@ -116,16 +121,49 @@ def crear_vector_store(texto_contrato: str, secciones: Optional[List[Dict]] = No
             vector_store.add_documents(batch)
 
     print(f"   ✅ Vector store FAISS creado ({len(documentos)} fragmentos).")
+
+    # Guardar los documentos en el objeto para que crear_retriever
+    # pueda construir el índice BM25 sin cambiar la firma de los callers.
+    vector_store._contractia_docs = documentos
+
     return vector_store
 
 
 def crear_retriever(vector_store, k: int = None):
-    """Crea un retriever que busca los K fragmentos más relevantes."""
+    """
+    Crea un Hybrid Retriever (BM25 + FAISS) si los documentos están disponibles,
+    o un retriever FAISS puro como fallback.
+
+    BM25 (peso 0.4) captura coincidencias exactas de keywords legales
+    (números de ley, cláusulas, montos). FAISS (peso 0.6) captura
+    similitud semántica. La fusión usa RRF (Reciprocal Rank Fusion).
+    """
     k = k or RAG_TOP_K
-    return vector_store.as_retriever(
+    faiss_retriever = vector_store.as_retriever(
         search_type="similarity",
         search_kwargs={"k": k},
     )
+
+    docs = getattr(vector_store, "_contractia_docs", None)
+    if not docs:
+        return faiss_retriever
+
+    try:
+        from langchain_community.retrievers import BM25Retriever
+        from langchain.retrievers import EnsembleRetriever
+
+        bm25_retriever = BM25Retriever.from_documents(docs, k=k)
+        print(f"   🔀 Hybrid RAG activo: BM25 ({len(docs)} docs) + FAISS (pesos 0.4/0.6)")
+        return EnsembleRetriever(
+            retrievers=[bm25_retriever, faiss_retriever],
+            weights=[0.4, 0.6],
+        )
+    except ImportError:
+        print("   ⚠️ rank_bm25 no instalado — usando solo FAISS.")
+        return faiss_retriever
+    except Exception as e:
+        print(f"   ⚠️ Hybrid RAG no disponible ({e}) — usando solo FAISS.")
+        return faiss_retriever
 
 
 def recuperar_contexto(retriever, consulta: str, max_tokens: int = 2000) -> str:

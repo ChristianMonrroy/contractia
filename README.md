@@ -1,10 +1,19 @@
-# ContractIA v8.6.0
+# ContractIA v8.7.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, RAG + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Hybrid RAG + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.7.0
+
+| Área | Cambio |
+|------|--------|
+| **Hybrid RAG** | `pipeline.py` combina BM25 (`rank_bm25`) + FAISS via `EnsembleRetriever` con RRF (pesos 0.4/0.6); BM25 captura keywords legales exactos ("Ley 30225", "D.S. 344-2018-EF", números de cláusula) que los embeddings no discriminan bien |
+| **Hybrid RAG — Retrocompatible** | Cero cambios en callers (orchestrator, contracts_router, query_flow, bot); los docs se almacenan en `vector_store._contractia_docs` y `crear_retriever` los detecta automáticamente |
+| **Hybrid RAG — Fallback** | Si `rank_bm25` no está instalado o falla, degradación silenciosa a FAISS puro; la auditoría nunca se interrumpe por esto |
+| **deps** | `rank_bm25>=0.2.2` añadido a `requirements.txt` |
 
 ## Novedades v8.6.0
 
