@@ -50,3 +50,8 @@ SESSION_TIMEOUT_HOURS: int  = int(os.getenv("SESSION_TIMEOUT_HOURS", "8"))
 # ── Email (Gmail SMTP) ────────────────────────────────────────────────────────
 EMAIL_SENDER: str           = os.getenv("EMAIL_SENDER", "")
 EMAIL_PASSWORD: str         = os.getenv("EMAIL_PASSWORD", "")
+
+# ── Reranker (Cohere) ─────────────────────────────────────────────────────────
+# Si está vacío, el pipeline usa EnsembleRetriever (BM25 + FAISS) sin reranking.
+# Para producción: agregar COHERE_API_KEY en GCP Secret Manager.
+COHERE_API_KEY: str         = os.getenv("COHERE_API_KEY", "")

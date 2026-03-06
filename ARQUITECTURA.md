@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 8.7.0 | **Fecha:** Marzo 2026
+**Versión:** 8.8.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -39,8 +39,8 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │   ORQUESTADOR    │    │   RAG PIPELINE    │
          │  orchestrator.py │    │   pipeline.py     │
          │                  │    │                   │
-         │  segmenter.py    │    │  BM25 + FAISS     │
-         │  graph.py        │    │  EnsembleRetriever│
+         │  segmenter.py    │    │  BM25+FAISS (RRF) │
+         │  graph.py        │    │  Cohere Reranker  │
          └────────┬─────────┘    └───────────────────┘
                   │
          ┌────────▼─────────────────────────┐
@@ -238,7 +238,7 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | Tamaño de chunk | 1500 caracteres, overlap 200 |
 | Modelo de embeddings | `text-embedding-004` (VertexAI) |
 | Vector store | **FAISS** (en memoria, por sesión) |
-| Estrategia de búsqueda | **Hybrid RAG**: BM25 (exacto, peso 0.4) + FAISS cosine (semántico, peso 0.6) fusionados con RRF |
+| Estrategia de búsqueda | **Hybrid RAG + Reranking**: BM25+FAISS/RRF recuperan top-20 candidatos; Cohere `rerank-multilingual-v3.0` reordena a top-K por relevancia real |
 | Metadata por chunk | título de sección, tipo, número, índice de chunk |
 | Uso del RAG en auditoría | Agente Auditor recibe top-3 fragmentos de otras secciones |
 | Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |

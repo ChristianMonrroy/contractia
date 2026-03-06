@@ -1,10 +1,21 @@
-# ContractIA v8.7.0
+# ContractIA v8.8.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Hybrid RAG + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v8.8.0
+
+| Área | Cambio |
+|------|--------|
+| **Retrieve-and-Rerank** | `crear_retriever` ahora usa `CohereRerank(rerank-multilingual-v3.0)` via `ContextualCompressionRetriever`; recupera top-20 candidatos (Hybrid RAG) y reordena a top-K por relevancia real contra la consulta |
+| **Pipeline en capas** | Tres capas apiladas en `pipeline.py`: FAISS (base) → BM25+EnsembleRetriever (Hybrid) → Cohere Reranker (final); cada capa degrada silenciosamente a la anterior si falla |
+| **Mayor recall** | `k_candidatos = min(k × 5, 20)`: retriever busca 5× más candidatos antes del reranking para maximizar cobertura antes del filtro final |
+| **config** | Nueva variable `COHERE_API_KEY` en `config.py`; si está vacía el pipeline funciona sin reranking (modo v8.7) |
+| **deps** | `cohere>=5.0.0` y `langchain-cohere>=0.3.0` añadidos a `requirements.txt` |
+| **Secret Manager** | Agregar `COHERE_API_KEY` en GCP Secret Manager para activar reranking en producción |
 
 ## Novedades v8.7.0
 
