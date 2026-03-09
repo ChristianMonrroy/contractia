@@ -148,6 +148,102 @@ frontend/
 
 ---
 
+## 3.1. Responsabilidades de Cada Módulo
+
+### `contractia/config.py`
+Punto único de configuración. Lee todas las variables de entorno (`.env` o Secret Manager) y las expone como atributos tipados. Cualquier módulo que necesite un parámetro (modelo LLM, tamaño de chunk, token de Telegram, etc.) lo importa desde aquí. Centralizar la configuración evita valores hardcodeados dispersos en el código.
+
+---
+
+### `contractia/orchestrator.py`
+**Cerebro del pipeline de auditoría.** Coordina la ejecución completa:
+1. Recibe el texto extraído y lo segmenta en secciones.
+2. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
+3. Itera sobre cada sección llamando a `auditar_consistencia()`, que ejecuta los tres agentes y consolida sus hallazgos.
+4. Devuelve el diccionario de resultados completo que luego se convierte en informe.
+
+---
+
+### `contractia/core/`
+
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
+| `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia (ej. pasa de cláusula 5 a 7 sin la 6). No usa LLM. |
+| `graph.py` | Construye el grafo de conocimiento GraphRAG. Para cada sección llama al LLM con un prompt CoT+Few-Shot que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. Expone `obtener_contexto_grafo()` para que los agentes consulten relaciones entre cláusulas. |
+| `report.py` | Transforma el diccionario de resultados del orquestador en un informe Markdown legible, agrupando hallazgos por sección y añadiendo resumen ejecutivo. |
+
+---
+
+### `contractia/agents/`
+
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `base.py` | Define `AgenteEspecialista`: wrapper que combina un `PromptTemplate` con el LLM y devuelve la salida parseada. Incluye `parse_json_seguro()` para manejar JSON malformado del LLM (comas extra, bloques markdown, comentarios). |
+| `prompts.py` | Contiene los tres `PromptTemplate` de los agentes (Jurista, Auditor, Cronista). Aquí se concentra todo el prompt engineering: CoT, Few-Shot, árbol de decisión, criterios de severidad y conciencia temporal (`{fecha_actual}`). |
+| `schemas.py` | Define los esquemas Pydantic de salida (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`). Usados con `with_structured_output()` para garantizar JSON válido sin parser regex. |
+| `factory.py` | Funciones de fábrica (`crear_jurista()`, `crear_auditor()`, `crear_cronista()`) que instancian `AgenteEspecialista` con el prompt y schema correctos. Desacopla la creación del uso. |
+
+---
+
+### `contractia/llm/provider.py`
+Construye y devuelve el objeto LLM según `LLM_PROVIDER` en config. Si es `vertexai`, inicializa `ChatVertexAI` con el modelo Gemini configurado. Si es `ollama`, inicializa `ChatOllama`. El resto del sistema usa el objeto LLM sin saber qué backend hay detrás.
+
+---
+
+### `contractia/rag/pipeline.py`
+Implementa el pipeline RAG completo:
+- **`crear_vector_store()`**: divide secciones en chunks con `RecursiveCharacterTextSplitter`, genera embeddings con VertexAI `text-embedding-004`, construye índice FAISS en memoria.
+- **`crear_retriever_hibrido()`**: combina BM25 (léxico) + FAISS (semántico) con fusión RRF sobre los top-20 candidatos; Cohere Reranker filtra al top-K final.
+- **`recuperar_contexto()`**: ejecuta la búsqueda y devuelve el texto de los fragmentos más relevantes como string listo para insertar en el prompt.
+- **`buscar_clausula()`**: búsqueda directa por número de cláusula (usado por el Agente Scout).
+
+---
+
+### `contractia/telegram/`
+
+| Archivo/Carpeta | Responsabilidad |
+|-----------------|----------------|
+| `handler.py` | Router principal del bot. Implementa una máquina de estados por usuario: maneja comandos (`/start`, `/help`), botones de aprobación de admin, selector RAG/GraphRAG y delega a `audit_flow.py` o `query_flow.py`. |
+| `sessions.py` | Diccionario en memoria de sesiones activas por `user_id`. Almacena el texto del contrato, el vector store, el grafo y el tiempo de última actividad. Expira sesiones tras 8 horas. |
+| `auth/crypto.py` | Genera OTPs de 6 dígitos y contraseñas seguras aleatorias para el flujo de registro por email. |
+| `correo/sender.py` | Envía emails vía Gmail SMTP (soporte adjunto PDF). |
+| `correo/templates.py` | HTML templates de los correos (verificación OTP, bienvenida, notificación de auditoría). |
+| `correo/pdf_report.py` | Convierte el informe Markdown a PDF usando fpdf2 (Python puro, sin dependencias nativas). |
+| `db/database.py` | Wrapper de psycopg2 con `get_conn()` como context manager. Expone `init_db()` (crea tablas si no existen) y CRUD de auditorías. |
+| `db/usuarios.py` | CRUD de la tabla `usuarios`: crear, buscar por email/telegram_id, actualizar rol, hashear/verificar contraseñas con bcrypt. |
+| `db/uso.py` | Rate limiting diario: registra y consulta el número de auditorías/preguntas por usuario por día según su rol. |
+| `flows/audit_flow.py` | Orquesta el flujo completo de auditoría en el bot: descarga el archivo, extrae texto, llama al orquestador, guarda y envía el informe `.md` como adjunto al chat. |
+| `flows/query_flow.py` | Maneja la consulta RAG interactiva en el bot: indexa el contrato en la sesión del usuario (si aún no está), recupera contexto, llama al LLM con el prompt de consulta y responde al usuario en el chat. |
+
+---
+
+### `api/`
+
+| Archivo | Responsabilidad |
+|---------|----------------|
+| `main.py` | Entry point de FastAPI. Registra los routers, configura CORS, monta el endpoint de webhook de Telegram y arranca la inicialización de la DB al levantar. |
+| `auth.py` | Generación y verificación de tokens JWT (HS256, 8h). Dependencia `get_current_user()` usada en todas las rutas protegidas. |
+| `routers/auth_router.py` | Endpoints `/auth/*`: registro con OTP por email, verificación, login, reset de contraseña. |
+| `routers/contracts_router.py` | Endpoints `/contracts/*`: subir contrato, abrir sesión RAG, consulta interactiva, lanzar auditoría (como `BackgroundTask`), polling de progreso, descarga PDF. |
+| `routers/admin_router.py` | Endpoints `/admin/*`: listar usuarios, cambiar roles, ver logs de actividad y resumen de uso. Solo accesible con rol `admin`. |
+
+---
+
+### `frontend/`
+
+| Archivo/Carpeta | Responsabilidad |
+|-----------------|----------------|
+| `app/page.tsx` | Landing pública con descripción del producto. |
+| `app/login/` · `app/register/` · `app/forgot-password/` | Flujos de autenticación: formularios que llaman a `authAPI`. |
+| `app/dashboard/` | Vista principal post-login: acceso rápido a auditoría y consulta. |
+| `app/audit/` | Página central: subida de archivo, selector de modo (RAG/GraphRAG), polling de progreso en tiempo real, visualización del informe en Markdown y descarga PDF. |
+| `app/admin/` | Panel de administración: gestión de usuarios y roles; `/admin/actividad` con métricas de uso. |
+| `context/AuthContext.tsx` | Context global de React que almacena el JWT, el rol y expone `isAdmin`, `isAuthenticated`. Intercepta respuestas 401 para redirigir a login. |
+| `lib/api.ts` | Cliente Axios con base URL configurada. Expone `authAPI`, `contractsAPI` y `adminAPI` como objetos con métodos tipados. |
+
+---
+
 ## 4. Pipeline de Auditoría — Paso a Paso
 
 ```
@@ -176,7 +272,7 @@ PDF/DOCX
     ├── Divide secciones en chunks (1500 chars, overlap 200)
     ├── Genera embeddings con VertexAI text-embedding-004
     ├── Construye índice FAISS en memoria
-    └── Crea retriever (similarity search, top-k=3)
+    └── Crea retriever (similarity search, top-k=1)
 
    │
    ▼
@@ -241,7 +337,7 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | Vector store | **FAISS** (en memoria, por sesión) |
 | Estrategia de búsqueda | **Hybrid RAG + Reranking**: BM25+FAISS/RRF recuperan top-20 candidatos; Cohere `rerank-multilingual-v3.0` reordena a top-K por relevancia real |
 | Metadata por chunk | título de sección, tipo, número, índice de chunk |
-| Uso del RAG en auditoría | Agente Auditor recibe top-3 fragmentos de otras secciones |
+| Uso del RAG en auditoría | Agente Auditor recibe top-1 fragmento de otras secciones |
 | Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |
 | Persistencia del vector store | No persiste — se reconstruye por cada contrato cargado |
 
@@ -250,7 +346,7 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | Característica | Valor |
 |---|---|
 | Tecnología | `networkx.DiGraph` |
-| Extracción de tripletas | LLM (Gemini 2.5 Pro) por sección con prompt CoT + Few-Shot |
+| Extracción de tripletas | LLM (Gemini 3.1 Pro Preview) por sección con prompt CoT + Few-Shot |
 | Tipos de relación | REFERENCIA_A, SE_RIGE_POR, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE |
 | Búsqueda de nodos | Regex con word-boundary (`(?<!\d)cid(?!\d)`) — evita falsos positivos por substring |
 | Profundidad de consulta | `nx.ego_graph(radius=2)` — detecta cadenas A→B→C, no solo vecinos directos |
@@ -279,6 +375,7 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | **Few-Shot** | Jurista | Ejemplo concreto de referencia externa vs. interna para reducir falsos positivos |
 | **Árbol de decisión** | Auditor | 4 pasos explícitos por cada referencia: check en refs_externas → idx_glob → coherencia semántica → descartar |
 | **Severidad dinámica** | Auditor, Cronista | Criterios ALTA/MEDIA/BAJA explícitos en el prompt; antes hardcodeado a ALTA |
+| **Conciencia temporal** | Jurista, Auditor, Cronista | `{fecha_actual}` inyectada en cada prompt (v9.1.0); permite detectar plazos vencidos y fechas contractuales ilógicas respecto al día de hoy |
 
 Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)` (v8.5.0). El schema Pydantic correspondiente (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`) garantiza salida válida sin parser regex. Si `with_structured_output` no está disponible (ej. backend Ollama), el `AgenteEspecialista` cae a `StrOutputParser` + `parse_json_seguro` como fallback.
 
@@ -311,7 +408,7 @@ Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)`
 
 | Proveedor | Modelo principal | Uso |
 |---|---|---|
-| `vertexai` | Gemini 2.5 Pro | Producción |
+| `vertexai` | Gemini 3.1 Pro Preview | Producción |
 | `ollama` | deepseek-r1:8b / qwen3:8b | Desarrollo local |
 
 ---
