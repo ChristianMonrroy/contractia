@@ -86,8 +86,11 @@ async def indexar_contrato(
 
         await update.message.reply_text("🔍 Generando embeddings... (puede tardar ~1 minuto)")
 
+        secciones = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: separar_en_secciones(texto)
+        )
         vector_store = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: crear_vector_store(texto)
+            None, lambda: crear_vector_store(texto, secciones)
         )
         retriever = crear_retriever(vector_store, k=RAG_TOP_K)
 
@@ -101,9 +104,6 @@ async def indexar_contrato(
                 parse_mode="Markdown",
             )
             llm = get_llm()
-            secciones = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: separar_en_secciones(texto)
-            )
             mapa_textos = {
                 s.get("numero", ""): s
                 for s in secciones
@@ -117,10 +117,9 @@ async def indexar_contrato(
 
         modo = "RAG + GraphRAG" if graph_enabled else "RAG"
         await update.message.reply_text(
-            f"✅ Contrato indexado correctamente \\({modo}\\)\\.\n"
-            "Ahora puedes escribir tus preguntas\\.\n"
-            "Usa /menu para volver al menú principal\\.",
-            parse_mode="MarkdownV2",
+            f"✅ Contrato indexado correctamente ({modo}).\n"
+            "Ahora puedes escribir tus preguntas.\n"
+            "Usa /menu para volver al menú principal.",
         )
         return True
 
