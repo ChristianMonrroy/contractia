@@ -225,7 +225,11 @@ async def query_contract(
     start = time.time()
     respuesta = await asyncio.get_event_loop().run_in_executor(None, lambda: llm.invoke(prompt))
     duracion = round(time.time() - start, 1)
-    texto = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+    content = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+    if isinstance(content, list):
+        texto = next((b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text"), "")
+    else:
+        texto = content
 
     registrar_pregunta(user_id)
     _log_web(user_id, "pregunta", body.pregunta[:200], duracion=duracion)

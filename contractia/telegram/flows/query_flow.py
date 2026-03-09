@@ -180,7 +180,11 @@ async def responder_pregunta(
         )
         duracion = round(time.time() - start, 1)
 
-        texto = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+        content = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+        if isinstance(content, list):
+            texto = next((b["text"] for b in content if isinstance(b, dict) and b.get("type") == "text"), "")
+        else:
+            texto = content
 
         # Telegram tiene límite de 4096 caracteres por mensaje
         if len(texto) > 4000:
