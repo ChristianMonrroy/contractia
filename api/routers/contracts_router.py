@@ -195,6 +195,11 @@ async def query_contract(
     _PROMPT = (
         "Eres un asistente legal especializado en contratos. "
         "Responde basándote ÚNICAMENTE en el contexto del contrato.\n\n"
+        "REGLA DE CITACIÓN (obligatoria): Al responder, cita siempre las cláusulas o "
+        "secciones exactas donde encontraste la información, usando el número de cláusula "
+        "(ej. 'cláusula 6.11.a', 'numeral 8.2', 'Anexo III') y el nombre del capítulo o "
+        "anexo correspondiente indicado en [Fuente: ...]. "
+        "Si la información proviene de varias cláusulas, menciona todas.\n\n"
         "CONTEXTO:\n{contexto}\n"
         "{seccion_grafo}"
         "\nPREGUNTA: {pregunta}\n\nRESPUESTA:"
