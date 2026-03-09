@@ -83,8 +83,11 @@ async def upload_contract(
         if not texto:
             raise HTTPException(422, "No se pudo extraer texto del archivo.")
 
+        secciones = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: separar_en_secciones(texto)
+        )
         vector_store = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: crear_vector_store(texto)
+            None, lambda: crear_vector_store(texto, secciones)
         )
         retriever = crear_retriever(vector_store)
         session_id = str(uuid.uuid4())
@@ -93,9 +96,6 @@ async def upload_contract(
         # GraphRAG: construir grafo de conocimiento si el usuario lo solicitó
         if graph_enabled:
             try:
-                secciones = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: separar_en_secciones(texto)
-                )
                 llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
                 grafo = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: construir_grafo_conocimiento(secciones, llm_g)
@@ -146,9 +146,12 @@ async def session_from_audit(
 
     graph_enabled = bool(dict(row)["graph_enabled"])
 
-    # Construir vector store RAG
+    # Construir vector store RAG con secciones para fuentes legibles
+    secciones = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: separar_en_secciones(texto)
+    )
     vector_store = await asyncio.get_event_loop().run_in_executor(
-        None, lambda: crear_vector_store(texto)
+        None, lambda: crear_vector_store(texto, secciones)
     )
     retriever = crear_retriever(vector_store)
     session_id = str(uuid.uuid4())
@@ -157,9 +160,6 @@ async def session_from_audit(
     # Reconstruir GraphRAG si la auditoría original lo usó
     if graph_enabled:
         try:
-            secciones = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: separar_en_secciones(texto)
-            )
             llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
             grafo = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: construir_grafo_conocimiento(secciones, llm_g)
