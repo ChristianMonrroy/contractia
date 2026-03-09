@@ -355,12 +355,19 @@ def _make_progress_callback(audit_id: str):
 
 
 async def _keepalive(stop: asyncio.Event, interval: int = 30) -> None:
-    """Ping a /health cada `interval` segundos para evitar que Cloud Run escale a cero."""
+    """Ping a /health cada `interval` segundos para evitar que Cloud Run escale a cero.
+
+    Usa la URL pública del servicio (CLOUD_RUN_URL) para que el tráfico pase por
+    el proxy de Cloud Run y sea contabilizado por el autoscaler. En local, usa localhost.
+    """
     import httpx
+    from contractia.config import CLOUD_RUN_URL
+    base = CLOUD_RUN_URL.rstrip("/") if CLOUD_RUN_URL else "http://localhost:8080"
+    url = f"{base}/health"
     while not stop.is_set():
         try:
             async with httpx.AsyncClient() as client:
-                await client.get("http://localhost:8080/health", timeout=5)
+                await client.get(url, timeout=5)
         except Exception:
             pass
         await asyncio.sleep(interval)

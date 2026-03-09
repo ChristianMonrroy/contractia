@@ -56,6 +56,11 @@ EMAIL_PASSWORD: str         = os.getenv("EMAIL_PASSWORD", "")
 # Para producción: agregar COHERE_API_KEY en GCP Secret Manager.
 COHERE_API_KEY: str         = os.getenv("COHERE_API_KEY", "")
 
+# ── Cloud Run ─────────────────────────────────────────────────────────────────
+# URL pública del servicio. Usada por el keepalive interno para evitar scale-to-zero.
+# Si está vacía (entorno local) el keepalive usa localhost.
+CLOUD_RUN_URL: str          = os.getenv("CLOUD_RUN_URL", "")
+
 # ── Agentic RAG (Scout) ───────────────────────────────────────────────────────
 # Si False (default), el pipeline usa RAG estático (comportamiento v8.8).
 # Si True, el Agente Scout corre antes de los agentes y hace llamadas dinámicas
