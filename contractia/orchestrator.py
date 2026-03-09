@@ -4,6 +4,7 @@ Orquestador principal: coordina segmentación, RAG y agentes multi-agente.
 
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from typing import Callable, Dict, List, Optional, Set
 
 from tqdm.auto import tqdm
@@ -130,18 +131,19 @@ def auditar_consistencia(
     texto_enriquecido = texto_truncado + contexto_rag
 
     hallazgos_totales = []
+    fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
     # ── Fase 1: Jurista + Cronista en paralelo (son independientes entre sí) ──
     with ThreadPoolExecutor(max_workers=2) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
             jurista,
-            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo},
+            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
             cronista,
-            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo},
+            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
         )
         res_jurista = fut_jurista.result()
         res_cronista = fut_cronista.result()
@@ -172,6 +174,7 @@ def auditar_consistencia(
             "idx_loc": str_idx_loc,
             "refs_externas": str_externas,
             "contexto_grafo": contexto_grafo,
+            "fecha_actual": fecha_hoy,
         },
     )
     if isinstance(res_aud, dict) and res_aud.get("hay_inconsistencias"):

@@ -42,13 +42,16 @@ PROMPT_JURISTA = PromptTemplate(
         "4. Lista solo las externas confirmadas.\n"
         "</razonamiento>\n\n"
 
+        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Usa esta fecha como referencia para "
+        "evaluar si los hitos temporales internos del contrato son lógicamente vigentes.\n\n"
+
         "CONTEXTO DEL GRAFO (relaciones de esta sección — úsalo para detectar si una cláusula "
         "invoca una ley que contradice el marco general del contrato):\n"
         "{contexto_grafo}\n\n"
 
         "Texto a analizar:\n{texto}\n"
     ),
-    input_variables=["texto", "contexto_grafo"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -80,6 +83,9 @@ PROMPT_AUDITOR = PromptTemplate(
         "IMPORTANTE: Ignorar años, montos, días calendario y porcentajes.\n"
         "</razonamiento>\n\n"
 
+        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Si el texto menciona fechas concretas, "
+        "verifica si resultan ilógicas en relación al día de hoy.\n\n"
+
         "CRITERIOS DE SEVERIDAD:\n"
         "- ALTA: referencia rota en cláusula de penalidades, plazos críticos o pagos.\n"
         "- MEDIA: referencia rota en obligaciones secundarias o definiciones.\n"
@@ -87,7 +93,7 @@ PROMPT_AUDITOR = PromptTemplate(
 
         "Texto a auditar:\n{texto}\n"
     ),
-    input_variables=["texto", "idx_glob", "idx_sec", "idx_loc", "refs_externas", "contexto_grafo"],
+    input_variables=["texto", "idx_glob", "idx_sec", "idx_loc", "refs_externas", "contexto_grafo", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -126,7 +132,10 @@ PROMPT_CRONISTA = PromptTemplate(
         "  - BAJA: plazo omitido en proceso informativo sin penalidad asociada.\n"
         "</razonamiento>\n\n"
 
+        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Usa esta fecha exacta para calcular si "
+        "los plazos internos han vencido y detectar hitos o fechas de entrega ya superadas.\n\n"
+
         "Texto a analizar:\n{texto}\n"
     ),
-    input_variables=["texto", "contexto_grafo"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )

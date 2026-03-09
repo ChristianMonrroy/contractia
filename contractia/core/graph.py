@@ -201,7 +201,13 @@ def obtener_contexto_grafo(
                 if match:
                     id_ref = match.group(1)
                     if id_ref in mapa_textos:
-                        texto_ref = mapa_textos[id_ref].get("texto", "")[:500]
-                        contexto.append(f"  [TEXTO DE {destino}]: {texto_ref}...")
+                        texto_completo = mapa_textos[id_ref].get("texto", "")
+                        match_pos = re.search(rf"\b{re.escape(id_ref)}\b", texto_completo)
+                        if match_pos:
+                            inicio = max(0, match_pos.start() - 50)
+                            texto_ref = texto_completo[inicio:inicio + 1000]
+                        else:
+                            texto_ref = texto_completo[:1000]
+                        contexto.append(f"  [TEXTO DE {destino}]: ...{texto_ref}...")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."

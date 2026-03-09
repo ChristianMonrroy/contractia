@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.0.0 | **Fecha:** Marzo 2026
+**Versión:** 9.1.0 | **Fecha:** Marzo 2026
 
 ---
 

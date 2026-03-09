@@ -1,10 +1,20 @@
-# ContractIA v9.0.0
+# ContractIA v9.1.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.1.0
+
+| Área | Cambio |
+|------|--------|
+| **Conciencia temporal — Agentes** | Los 3 agentes (Jurista, Auditor, Cronista) reciben `fecha_actual` (fecha del día en formato `YYYY-MM-DD`) en su prompt; permite detectar plazos vencidos, hitos pasados y fechas ilógicas en el contrato |
+| **Jurista** | Nueva instrucción "CONCIENCIA TEMPORAL": evalúa si los hitos temporales internos son lógicamente vigentes respecto al día de hoy |
+| **Auditor** | Nueva instrucción "CONCIENCIA TEMPORAL": verifica si fechas concretas mencionadas en el texto resultan ilógicas en relación al día de hoy |
+| **Cronista** | Nueva instrucción "CONCIENCIA TEMPORAL": calcula si plazos internos han vencido y detecta fechas de entrega ya superadas — el agente más beneficiado por este cambio |
+| **GraphRAG — texto preciso** | `obtener_contexto_grafo` ahora busca la posición exacta de la cláusula referenciada dentro del texto de su sección (regex + offset -50 chars) y extrae 1000 chars desde esa posición; antes tomaba siempre los primeros 500 chars del inicio, perdiendo cláusulas ubicadas en el medio del capítulo |
 
 ## Novedades v9.0.0
 
