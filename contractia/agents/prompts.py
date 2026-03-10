@@ -28,6 +28,11 @@ PROMPT_JURISTA = PromptTemplate(
         "(ej. 'Cláusula 3.2', 'Anexo A', 'numeral 5.1.b').\n"
         "Las referencias internas NO deben incluirse en la salida.\n\n"
 
+        "MANEJO DE EXCEPCIONES (IMPORTANTE): En contratos es común establecer una regla general "
+        "y luego excepciones explícitas (usando 'Excepcionalmente', 'Salvo que', 'Sin perjuicio "
+        "de'). Si el texto declara una excepción a una norma externa, ACÉPTALA como regla "
+        "válida pactada por las partes. NO la reportes como contradicción normativa.\n\n"
+
         "EJEMPLO (few-shot):\n"
         "Texto: '...conforme a la Cláusula 4.1 del presente contrato y según lo dispuesto "
         "en el Código Civil peruano Art. 1764, así como el Reglamento de la Ley 30225...'\n"
@@ -108,6 +113,15 @@ PROMPT_CRONISTA = PromptTemplate(
         "- 'Días' o 'Día' (con mayúscula inicial) = DÍAS HÁBILES.\n"
         "- 'Días Calendario' o 'días calendario' = DÍAS NATURALES.\n"
         "- Mezclar ambos tipos sin conversión explícita = ERROR de ambigüedad (tipo ERROR_PLAZOS).\n\n"
+
+        "MANEJO DE EXCEPCIONES TEMPORALES (IMPORTANTE): Si el contrato establece una regla "
+        "excepcional para un cálculo de plazos (ej. 'Excepcionalmente, para el primer mes se "
+        "contarán X días...'), ACÉPTALA como válida. NO la marques como error lógico ni "
+        "inconsistencia matemática.\n\n"
+
+        "CONCIENCIA DE BORRADOR: Este contrato puede estar en elaboración. NO reportes como "
+        "plazos vencidos las fechas históricas mencionadas en secciones de Antecedentes, "
+        "Considerandos o declaraciones del historial previo a la firma del contrato.\n\n"
 
         "CONTEXTO DEL GRAFO (cadena de eventos y plazos relacionados de otras secciones):\n"
         "{contexto_grafo}\n"

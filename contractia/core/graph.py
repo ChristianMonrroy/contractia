@@ -9,6 +9,10 @@ Mejoras v8.6.0:
 - Prompt de extracción con CoT + Few-Shot (mismo estilo que los agentes)
 - Búsqueda de nodos por regex con word-boundary (evita "5" matchando "15", "25")
 - Profundidad 2 en la consulta del grafo (ego_graph radius=2)
+
+Mejoras v9.2.0:
+- Regla de desambiguación: cláusulas incluyen sección/anexo para evitar colisiones
+- Nueva relación OBLIGA_A: un rol queda obligado a cumplir una cláusula o entregable
 """
 
 import re
@@ -32,12 +36,18 @@ _PROMPT_EXTRACCION = PromptTemplate(
         "- Plazos: '15 días hábiles', '30 días calendario'\n"
         "- Roles: 'Contratista', 'Entidad', 'Supervisor'\n\n"
 
+        "REGLA DE DESAMBIGUACIÓN (MUY IMPORTANTE): Para evitar colisiones entre el contrato "
+        "principal y los anexos, SIEMPRE incluye el nombre de la sección o anexo en la entidad "
+        "de la cláusula. Ejemplo: usa 'Cláusula 7.1 (Capítulo VII)' o "
+        "'Cláusula 7.1 (Anexo 22)' en lugar de solo 'Cláusula 7.1'.\n\n"
+
         "RELACIONES VÁLIDAS (elige SOLO una por tripleta):\n"
         "- REFERENCIA_A: una cláusula cita explícitamente a otra\n"
         "- SE_RIGE_POR: una cláusula se subordina a una ley o norma externa\n"
         "- ESTABLECE_PLAZO: una cláusula define un plazo concreto\n"
         "- MODIFICA_A: una cláusula altera o complementa a otra\n"
-        "- DEPENDE_DE: una obligación está condicionada a otra\n\n"
+        "- DEPENDE_DE: una obligación está condicionada a otra\n"
+        "- OBLIGA_A: un rol o entidad queda obligado a cumplir una cláusula o entregable\n\n"
 
         "EJEMPLO (few-shot):\n"
         "Texto: 'El Contratista deberá cumplir lo señalado en la Cláusula 8.2 "
@@ -57,7 +67,7 @@ _PROMPT_EXTRACCION = PromptTemplate(
         "<razonamiento>\n"
         "1. Identifica todas las entidades mencionadas en el texto.\n"
         "2. Para cada par de entidades, determina si existe una relación explícita.\n"
-        "3. Elige la relación más específica de las 5 válidas.\n"
+        "3. Elige la relación más específica de las 6 válidas.\n"
         "4. Descarta relaciones implícitas o inferidas — solo lo que dice el texto.\n"
         "5. Si no hay relaciones claras, devuelve [].\n"
         "</razonamiento>\n\n"
