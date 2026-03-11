@@ -6,7 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from api.auth import require_admin
-from contractia.telegram.db.database import get_actividad, get_resumen_actividad
+from contractia.telegram.db.database import (
+    get_actividad,
+    get_resumen_actividad,
+    get_auditoria_en_progreso,
+    actualizar_auditoria,
+)
 from contractia.telegram.db.usuarios import (
     activar_usuario,
     cambiar_rol,
@@ -49,6 +54,27 @@ def suspend_user(telegram_id: int, admin: dict = Depends(require_admin)):
 def activate_user(telegram_id: int, admin: dict = Depends(require_admin)):
     activar_usuario(telegram_id)
     return {"detail": "Usuario activado"}
+
+
+@router.get("/auditorias/en-progreso")
+def get_auditoria_activa(admin: dict = Depends(require_admin)):
+    """Devuelve la auditoría actualmente en curso con los datos del usuario que la lanzó."""
+    auditoria = get_auditoria_en_progreso()
+    if not auditoria:
+        return {"en_progreso": False}
+    return {"en_progreso": True, **auditoria}
+
+
+@router.patch("/auditorias/{audit_id}/cancelar")
+def cancel_auditoria_admin(audit_id: str, admin: dict = Depends(require_admin)):
+    """Cancela cualquier auditoría en curso (solo admin)."""
+    actualizar_auditoria(
+        audit_id,
+        status="error",
+        error_detail="Cancelada por el administrador.",
+        progress_msg="Cancelada por admin",
+    )
+    return {"ok": True, "audit_id": audit_id}
 
 
 @router.get("/actividad/resumen")

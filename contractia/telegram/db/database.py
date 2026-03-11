@@ -133,6 +133,22 @@ def hay_auditoria_en_progreso(max_minutos: int = 20) -> bool:
     return (row["cnt"] if row else 0) > 0
 
 
+def get_auditoria_en_progreso(max_minutos: int = 20) -> Optional[dict]:
+    """Devuelve los detalles de la auditoría en curso (si existe), incluyendo email del usuario."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT a.audit_id, a.user_id, a.filename, a.graph_enabled, "
+            "a.progress_msg, a.progress_pct, a.created_at, u.email "
+            "FROM auditorias a "
+            "LEFT JOIN usuarios u ON u.telegram_id = a.user_id "
+            "WHERE a.status = 'processing' "
+            "AND a.created_at > NOW() - INTERVAL '%s minutes' "
+            "ORDER BY a.created_at DESC LIMIT 1",
+            (max_minutos,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def crear_auditoria(audit_id: str, user_id: int, filename: str = "", graph_enabled: bool = False) -> None:
     """Registra una nueva auditoría con estado 'processing'."""
     with get_conn() as conn:
