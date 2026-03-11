@@ -18,9 +18,34 @@ from contractia.telegram.db.usuarios import (
     get_usuario,
     verificar_password,
 )
-from contractia.config import TELEGRAM_ADMIN_ID
+from contractia.config import TELEGRAM_ADMIN_ID, TELEGRAM_TOKEN
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _notify_admin_nuevo_usuario(email: str) -> None:
+    """Envía un mensaje de Telegram al admin cuando se registra un nuevo usuario web."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
+        return
+    try:
+        import httpx
+        httpx.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            json={
+                "chat_id": TELEGRAM_ADMIN_ID,
+                "text": (
+                    f"🔔 *Nuevo usuario registrado (web)*\n\n"
+                    f"📧 Email: `{email}`\n"
+                    f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                    f"⏳ Rol: pendiente de aprobación\n\n"
+                    f"Entra al panel admin para aprobar: https://contractia.pe/admin"
+                ),
+                "parse_mode": "Markdown",
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass  # No interrumpir el flujo si falla la notificación
 
 
 class RegisterRequest(BaseModel):
@@ -109,6 +134,8 @@ def verify(body: VerifyRequest):
         enviar_email(email, asunto, html, texto)
     except Exception:
         pass
+
+    _notify_admin_nuevo_usuario(email)
 
     return {"detail": "Cuenta creada. Pendiente de aprobación por el administrador."}
 
