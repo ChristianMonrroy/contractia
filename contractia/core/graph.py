@@ -5,14 +5,15 @@ Extrae tripletas (entidad, relación, entidad) de cada sección del contrato
 usando el LLM, y construye un DiGraph de networkx. El grafo permite a los
 agentes navegar relaciones entre cláusulas, leyes y plazos.
 
-Mejoras v8.6.0:
-- Prompt de extracción con CoT + Few-Shot (mismo estilo que los agentes)
-- Búsqueda de nodos por regex con word-boundary (evita "5" matchando "15", "25")
-- Profundidad 2 en la consulta del grafo (ego_graph radius=2)
-
-Mejoras v9.2.0:
-- Regla de desambiguación: cláusulas incluyen sección/anexo para evitar colisiones
-- Nueva relación OBLIGA_A: un rol queda obligado a cumplir una cláusula o entregable
+v9.3.0:
+- Prompt de extracción alineado con notebook vs14:
+  · Prohibición estricta de nodos externos (leyes, decretos, normas)
+  · Elimina relación SE_RIGE_POR (solo relaciones internas)
+  · XML tags para delimitar secciones
+  · Sin truncado de texto (se envía sección completa)
+- obtener_contexto_grafo: recorrido directo sucesores+predecesores (depth 1)
+  en lugar de ego_graph(radius=2) — alineado con notebook vs14
+- Búsqueda de nodos por \b word-boundary (alineado con notebook)
 """
 
 import re
@@ -27,53 +28,35 @@ from contractia.agents.base import parse_json_seguro
 
 _PROMPT_EXTRACCION = PromptTemplate(
     template=(
-        "Eres un experto en análisis estructural de contratos legales peruanos. "
-        "Tu tarea es extraer relaciones explícitas entre entidades del texto dado.\n\n"
+        "# ROL\n"
+        "Eres un experto en extracción de datos legales y grafos de conocimiento.\n\n"
 
-        "ENTIDADES VÁLIDAS:\n"
-        "- Cláusulas/numerales: 'Cláusula 5', 'numeral 3.2', 'literal a) del artículo 8'\n"
-        "- Leyes y normas: 'Ley 30225', 'D.S. 344-2018-EF', 'Código Civil'\n"
-        "- Plazos: '15 días hábiles', '30 días calendario'\n"
-        "- Roles: 'Contratista', 'Entidad', 'Supervisor'\n\n"
+        "# TAREA\n"
+        "Analiza el texto de un contrato y extrae las relaciones lógicas internas en formato de tripletas.\n\n"
 
-        "REGLA DE DESAMBIGUACIÓN (MUY IMPORTANTE): Para evitar colisiones entre el contrato "
-        "principal y los anexos, SIEMPRE incluye el nombre de la sección o anexo en la entidad "
-        "de la cláusula. Ejemplo: usa 'Cláusula 7.1 (Capítulo VII)' o "
-        "'Cláusula 7.1 (Anexo 22)' en lugar de solo 'Cláusula 7.1'.\n\n"
+        "# REGLAS DE EXTRACCIÓN\n"
+        "- **Entidades válidas:** Cláusulas, Plazos, Roles, Entregables, Penalidades.\n"
+        "- **REGLA DE DESAMBIGUACIÓN (MUY IMPORTANTE):** Para evitar colisiones entre el contrato "
+        "principal y los anexos, SIEMPRE incluye el nombre de la sección o anexo en la entidad de la "
+        "cláusula. Ejemplo: Usa 'Cláusula 7.1 (Capítulo VII)' o 'Cláusula 7.1 (Anexo 22)' en lugar "
+        "de solo 'Cláusula 7.1'.\n"
+        "- **PROHIBICIÓN ESTRICTA:** NO extraigas, ni menciones, ni crees nodos para leyes, normativas, "
+        "códigos civiles, decretos o cualquier documento externo al contrato. El análisis es 100% interno.\n"
+        "- **Relaciones válidas:** REFERENCIA_A, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE, OBLIGA_A.\n\n"
 
-        "RELACIONES VÁLIDAS (elige SOLO una por tripleta):\n"
-        "- REFERENCIA_A: una cláusula cita explícitamente a otra\n"
-        "- SE_RIGE_POR: una cláusula se subordina a una ley o norma externa\n"
-        "- ESTABLECE_PLAZO: una cláusula define un plazo concreto\n"
-        "- MODIFICA_A: una cláusula altera o complementa a otra\n"
-        "- DEPENDE_DE: una obligación está condicionada a otra\n"
-        "- OBLIGA_A: un rol o entidad queda obligado a cumplir una cláusula o entregable\n\n"
-
-        "EJEMPLO (few-shot):\n"
-        "Texto: 'El Contratista deberá cumplir lo señalado en la Cláusula 8.2 "
-        "dentro de los 15 días hábiles siguientes a la notificación. "
-        "Este plazo se rige por el D.S. 344-2018-EF.'\n"
-        "Extracción correcta:\n"
+        "# FORMATO DE SALIDA\n"
+        "Responde ÚNICAMENTE con un bloque de código JSON válido. No incluyas texto fuera del bloque JSON.\n\n"
+        "```json\n"
         "[\n"
-        "  {\"origen\": \"Cláusula actual\", \"relacion\": \"REFERENCIA_A\", "
-        "\"destino\": \"Cláusula 8.2\", \"contexto\": \"obligación de cumplimiento\"},\n"
-        "  {\"origen\": \"Cláusula actual\", \"relacion\": \"ESTABLECE_PLAZO\", "
-        "\"destino\": \"15 días hábiles\", \"contexto\": \"plazo desde notificación\"},\n"
-        "  {\"origen\": \"Cláusula actual\", \"relacion\": \"SE_RIGE_POR\", "
-        "\"destino\": \"D.S. 344-2018-EF\", \"contexto\": \"marco normativo del plazo\"}\n"
-        "]\n\n"
+        "  {{\"origen\": \"Cláusula 5.1 (Capítulo V)\", \"relacion\": \"REFERENCIA_A\", "
+        "\"destino\": \"Cláusula 8.2 (Capítulo VIII)\", \"contexto\": \"Para el pago de penalidades\"}},\n"
+        "  {{\"origen\": \"Contratista\", \"relacion\": \"OBLIGA_A\", "
+        "\"destino\": \"Cláusula 3 (Anexo 1)\", \"contexto\": \"Entrega de informes\"}}\n"
+        "]\n"
+        "```\n\n"
 
-        "PROCESO (sigue estos pasos):\n"
-        "<razonamiento>\n"
-        "1. Identifica todas las entidades mencionadas en el texto.\n"
-        "2. Para cada par de entidades, determina si existe una relación explícita.\n"
-        "3. Elige la relación más específica de las 6 válidas.\n"
-        "4. Descarta relaciones implícitas o inferidas — solo lo que dice el texto.\n"
-        "5. Si no hay relaciones claras, devuelve [].\n"
-        "</razonamiento>\n\n"
-
-        "Responde SOLO con JSON válido (lista de tripletas o lista vacía []).\n\n"
-        "Texto de la sección:\n{texto}\n"
+        "# DATOS DE ENTRADA\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto"],
 )
@@ -84,6 +67,7 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
     Construye un grafo de conocimiento a partir de las secciones del contrato.
 
     Por cada sección:
+      - Fuerza la creación del nodo del Capítulo/Anexo
       - Llama al LLM para extraer tripletas (origen, relacion, destino, contexto)
       - Añade aristas al grafo con los atributos de relación
       - Añade arista jerárquica: titulo_seccion → origen (relacion=CONTIENE)
@@ -104,11 +88,12 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
         if not contenido.strip():
             continue
 
+        # Forzar la creación del nodo del Capítulo/Anexo
+        G.add_node(titulo, tipo=sec.get("tipo", "DESCONOCIDO"))
+
         try:
-            raw = cadena.invoke({"texto": contenido[:3000]})  # Límite de tokens
-            # Eliminar bloque <razonamiento> antes de parsear
-            raw_limpio = re.sub(r"<razonamiento>.*?</razonamiento>", "", raw, flags=re.DOTALL).strip()
-            tripletas = parse_json_seguro(raw_limpio)
+            raw = cadena.invoke({"texto": contenido})
+            tripletas = parse_json_seguro(raw)
 
             if isinstance(tripletas, list):
                 for t in tripletas:
@@ -144,33 +129,17 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
     return G
 
 
-def _normalizar_id(cid: str) -> str:
-    """Normaliza un ID de cláusula para búsqueda: strip + lowercase."""
-    return cid.strip().lower()
-
-
-def _nodos_matching(G: nx.DiGraph, cid: str) -> List[str]:
-    """
-    Busca nodos del grafo que correspondan al ID de cláusula dado.
-    Usa regex con word-boundary para evitar que "5" matchee "5.1", "15" o "25".
-    """
-    # Escapa el cid para usarlo en regex (ej. "5.1" → "5\\.1")
-    patron = re.compile(r"(?<!\d)" + re.escape(cid) + r"(?!\d)", re.IGNORECASE)
-    return [n for n in G.nodes() if patron.search(str(n))]
-
-
 def obtener_contexto_grafo(
     clausulas_locales: List[str],
     G: nx.DiGraph,
     mapa_textos: Dict[str, Dict],
-    profundidad: int = 2,
 ) -> str:
     """
     Recupera el contexto del grafo relevante para una sección.
 
-    Para cada cláusula de la sección, obtiene un ego-grafo de profundidad
-    `profundidad` (default=2) y devuelve todas las relaciones encontradas.
-    Si el nodo destino es una cláusula conocida, añade un extracto de su texto.
+    Para cada cláusula de la sección recorre sucesores y predecesores directos
+    (profundidad 1), igual que el notebook vs14. Si el destino es una cláusula
+    conocida, añade un extracto de su texto hasta el inicio de la siguiente cláusula.
 
     Returns:
         String con las relaciones encontradas, o mensaje indicando ausencia.
@@ -179,35 +148,29 @@ def obtener_contexto_grafo(
         return "No hay relaciones en el grafo para esta sección."
 
     contexto = []
-    aristas_vistas: set = set()
+    nodos_vistos: set = set()
 
     for cid in clausulas_locales:
-        nodos_grafo = _nodos_matching(G, cid)
+        # Búsqueda por word-boundary: evita que "3.3" matchee "13.3"
+        nodos_grafo = [
+            n for n in G.nodes()
+            if re.search(rf"\b{re.escape(cid)}\b", str(n))
+        ]
 
-        for nodo_raiz in nodos_grafo:
-            # Ego-grafo de profundidad 2: incluye vecinos directos e indirectos
-            try:
-                subgrafo = nx.ego_graph(G, nodo_raiz, radius=profundidad, undirected=False)
-            except Exception:
-                subgrafo = G  # Fallback a grafo completo si falla
+        for nodo in nodos_grafo:
+            if nodo in nodos_vistos:
+                continue
+            nodos_vistos.add(nodo)
 
-            for origen, destino, datos in subgrafo.edges(data=True):
-                arista_key = (origen, destino)
-                if arista_key in aristas_vistas:
-                    continue
-                aristas_vistas.add(arista_key)
-
+            # Sucesores directos
+            for sucesor in G.successors(nodo):
+                datos = G.get_edge_data(nodo, sucesor)
                 rel = datos.get("relacion", "RELACIONADO_CON")
                 ctx = datos.get("contexto", "")
-
-                # Omitir aristas jerárquicas CONTIENE en el contexto (ruido)
-                if rel == "CONTIENE":
-                    continue
-
-                contexto.append(f"- {origen} --[{rel}]--> {destino} (Contexto: {ctx})")
+                contexto.append(f"- {nodo} --[{rel}]--> {sucesor} (Contexto: {ctx})")
 
                 # Si el destino es una cláusula conocida, añadir su texto
-                match = re.search(r"\b(\d+(?:\.\d+)+)\b", str(destino))
+                match = re.search(r"\b(\d+(?:\.\d+)+)\b", str(sucesor))
                 if match:
                     id_ref = match.group(1)
                     if id_ref in mapa_textos:
@@ -215,7 +178,6 @@ def obtener_contexto_grafo(
                         match_pos = re.search(rf"\b{re.escape(id_ref)}\b", texto_completo)
                         if match_pos:
                             inicio = match_pos.start()
-                            # Recorte inteligente: hasta el inicio de la siguiente cláusula
                             texto_restante = texto_completo[inicio + len(id_ref):]
                             siguiente = re.search(
                                 r"\n\s*(?:CL[AÁ]USULA\s+|ART[IÍ]CULO\s+)?\d+\.\d+\b",
@@ -229,6 +191,13 @@ def obtener_contexto_grafo(
                                 texto_ref = texto_completo[inicio:inicio + 4000].strip()
                         else:
                             texto_ref = texto_completo[:4000]
-                        contexto.append(f"  [TEXTO DE {destino}]: ...{texto_ref}...")
+                        contexto.append(f"  [TEXTO RECUPERADO DE {sucesor}]: ...{texto_ref}...")
+
+            # Predecesores directos
+            for predecesor in G.predecessors(nodo):
+                datos = G.get_edge_data(predecesor, nodo)
+                rel = datos.get("relacion", "RELACIONADO_CON")
+                ctx = datos.get("contexto", "")
+                contexto.append(f"- {predecesor} --[{rel}]--> {nodo} (Contexto: {ctx})")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."

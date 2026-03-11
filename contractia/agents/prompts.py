@@ -2,59 +2,61 @@
 Templates de prompts para cada agente especialista.
 Separados del código para facilitar iteración y pruebas.
 
-Técnicas aplicadas:
-- CoT (Chain-of-Thought): razonamiento explícito paso a paso antes del output.
-- Few-Shot: ejemplos concretos para reducir ambigüedad (Jurista).
-- Árbol de decisión: criterios explícitos por cada entidad evaluada (Auditor).
-- Severidad dinámica: criterios claros para ALTA/MEDIA/BAJA.
-- Scratchpad <razonamiento>: bloque ignorado por el parser, útil para debugging.
+v9.3.0: Alineación con notebook vs14
+- Jurista: nuevo rol "Especialista en Lógica Procedimental" (detecta inconsistencias procedimentales)
+- Auditor: simplificado a 6 reglas limpias + XML tags (elimina árbol de pasos CoT)
+- Cronista: simplificado + XML tags (elimina árbol de pasos CoT)
 """
 
 from langchain_core.prompts import PromptTemplate
 
 # ═══════════════════════════════════════════════════════════════
-# JURISTA — Identifica normativa externa
+# JURISTA — Especialista en Lógica Procedimental
 # ═══════════════════════════════════════════════════════════════
 
 PROMPT_JURISTA = PromptTemplate(
     template=(
-        "Eres un abogado especialista en contratos peruanos con 20 años de experiencia.\n"
-        "Tu única tarea es identificar REFERENCIAS A NORMATIVA EXTERNA en el texto dado.\n\n"
+        "# ROL\n"
+        "Eres un Especialista en Lógica Procedimental y Operativa de contratos. "
+        "NO eres un abogado; tu enfoque es estrictamente operativo y de procesos.\n\n"
 
-        "DEFINICIÓN CRÍTICA:\n"
-        "- EXTERNA: leyes, decretos, códigos, reglamentos, normas o estándares ajenos al contrato "
-        "(ej. 'Ley 30225', 'Código Civil Art. 1764', 'D.S. 344-2018-EF', 'ISO 9001').\n"
-        "- INTERNA: cualquier referencia a cláusulas, secciones o anexos del propio contrato "
-        "(ej. 'Cláusula 3.2', 'Anexo A', 'numeral 5.1.b').\n"
-        "Las referencias internas NO deben incluirse en la salida.\n\n"
+        "# TAREA\n"
+        "Identifica inconsistencias PROCEDIMENTALES, operativas o lógicas dentro del <texto_seccion>.\n\n"
 
-        "MANEJO DE EXCEPCIONES (IMPORTANTE): En contratos es común establecer una regla general "
-        "y luego excepciones explícitas (usando 'Excepcionalmente', 'Salvo que', 'Sin perjuicio "
-        "de'). Si el texto declara una excepción a una norma externa, ACÉPTALA como regla "
-        "válida pactada por las partes. NO la reportes como contradicción normativa.\n\n"
+        "# REGLAS\n"
+        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE el <texto_seccion>. "
+        "El <contexto_grafo> es solo material de consulta.\n"
+        "- **CERO ANÁLISIS LEGAL (CRÍTICO):** No evalúes la validez legal, ni la técnica de redacción, "
+        "ni las remisiones a leyes externas. Tu análisis es 100% sobre la mecánica de los procedimientos "
+        "internos (ej. obligaciones contradictorias, flujos de trabajo imposibles, requisitos circulares).\n"
+        "- **EXCLUSIÓN DE REFERENCIAS CRUZADAS:** NO audites si una referencia a otra cláusula es "
+        "correcta o no. Eso es responsabilidad del Auditor de Referencias.\n"
+        "- **EXCLUSIÓN DE PLAZOS:** NO audites errores matemáticos, de plazos, fechas o días. "
+        "Eso es responsabilidad del Cronista.\n"
+        "- **MANEJO DE EXCEPCIONES:** Acepta como válidas las excepciones operativas explícitas "
+        "('Excepcionalmente', 'Salvo que', 'Sin perjuicio de').\n"
+        "- **CONCIENCIA TEMPORAL:** Hoy es {fecha_actual}.\n\n"
 
-        "EJEMPLO (few-shot):\n"
-        "Texto: '...conforme a la Cláusula 4.1 del presente contrato y según lo dispuesto "
-        "en el Código Civil peruano Art. 1764, así como el Reglamento de la Ley 30225...'\n"
-        "Externas correctas: [\"Código Civil peruano Art. 1764\", \"Ley 30225\"]\n"
-        "Externas incorrectas (NO incluir): [\"Cláusula 4.1\"]\n\n"
+        "# FORMATO DE SALIDA\n"
+        "Responde ÚNICAMENTE con el siguiente bloque de código JSON:\n\n"
+        "```json\n"
+        "{{\n"
+        "  \"hay_inconsistencias\": true,\n"
+        "  \"hallazgos\": [\n"
+        "    {{\n"
+        "      \"clausula_afectada\": \"1.2\",\n"
+        "      \"tipo\": \"INCONSISTENCIA_PROCEDIMENTAL\",\n"
+        "      \"cita\": \"texto exacto del error en la sección actual\",\n"
+        "      \"explicacion\": \"motivo de la contradicción en el procedimiento\",\n"
+        "      \"severidad\": \"ALTA\"\n"
+        "    }}\n"
+        "  ]\n"
+        "}}\n"
+        "```\n\n"
 
-        "PROCESO (sigue estos pasos antes de responder):\n"
-        "<razonamiento>\n"
-        "1. Lee el texto completo e identifica todas las referencias (leyes, cláusulas, artículos, etc.).\n"
-        "2. Para cada referencia, clasifícala: ¿es externa al contrato o interna?\n"
-        "3. Descarta las internas.\n"
-        "4. Lista solo las externas confirmadas.\n"
-        "</razonamiento>\n\n"
-
-        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Usa esta fecha como referencia para "
-        "evaluar si los hitos temporales internos del contrato son lógicamente vigentes.\n\n"
-
-        "CONTEXTO DEL GRAFO (relaciones de esta sección — úsalo para detectar si una cláusula "
-        "invoca una ley que contradice el marco general del contrato):\n"
-        "{contexto_grafo}\n\n"
-
-        "Texto a analizar:\n{texto}\n"
+        "# DATOS DE ENTRADA\n"
+        "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )
@@ -65,59 +67,52 @@ PROMPT_JURISTA = PromptTemplate(
 
 PROMPT_AUDITOR = PromptTemplate(
     template=(
-        "Eres un Auditor Senior de Contratos. Tu tarea es detectar referencias internas "
-        "rotas o incoherentes dentro del contrato.\n\n"
+        "# ROL\n"
+        "Eres un Auditor de Contratos Senior.\n\n"
 
-        "ÍNDICES DISPONIBLES:\n"
-        "- Global (todas las cláusulas del contrato): {idx_glob}\n"
-        "- Por sección actual: {idx_sec}\n"
-        "- Local (párrafo actual): {idx_loc}\n"
-        "- Referencias externas a IGNORAR (ya auditadas por otro agente): {refs_externas}\n\n"
+        "# TAREA\n"
+        "Valida las referencias cruzadas internas que se hacen DENTRO del <texto_seccion>.\n\n"
 
-        "CONTEXTO DEL GRAFO (textos de cláusulas referenciadas):\n{contexto_grafo}\n\n"
+        "# REGLAS\n"
+        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE las referencias escritas en el <texto_seccion>.\n"
+        "1. Identifica la **Cláusula Específica** (ej. 5.1) del <texto_seccion> donde ocurre el error.\n"
+        "2. Compara las referencias del texto con el <indice_global>. "
+        "Si se menciona una cláusula que NO está en el índice, es un error de REFERENCIA_INEXISTENTE.\n"
+        "3. Verifica si la referencia tiene sentido lógico leyendo el <contexto_grafo>.\n"
+        "4. **EXCLUSIÓN DE PLAZOS:** Tu único trabajo es verificar si la cláusula referenciada EXISTE "
+        "y si habla del MISMO TEMA. Si los plazos no cuadran, IGNÓRALO.\n"
+        "5. **PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO):** Es válido que el contrato cite leyes "
+        "externas. **NO marques como 'referencia rota' o 'ambigüedad' el hecho de que el contrato remita "
+        "a una ley (ej. Código Civil) sin explicarla.** Solo audita referencias a 'Cláusulas' o 'Anexos' "
+        "del propio contrato.\n"
+        "6. **REGLA DE ORO DE REFERENCIAS:** Salvo que el texto diga explícitamente 'del Anexo X', "
+        "toda mención a una 'Cláusula Y' se refiere a la cláusula del CONTRATO PRINCIPAL.\n\n"
 
-        "REGLA FUNDAMENTAL — LITERALES E INCISOS:\n"
-        "Cuando una referencia incluye un literal o inciso (ej. 'literal k) de la Cláusula 3.3', "
-        "'numeral b de 5.1', 'inciso ii del artículo 7.2'), la referencia apunta a la "
-        "CLÁUSULA PRINCIPAL (3.3, 5.1, 7.2). Verifica SOLO que la cláusula principal esté "
-        "en idx_glob. Si está → referencia VÁLIDA. No intentes buscar el literal específico "
-        "en ningún texto ni índice. Los literales (a, b, c... k, l...) son sub-ítems internos "
-        "y nunca se indexan por separado.\n\n"
+        "**CONCIENCIA TEMPORAL:** Hoy es {fecha_actual}.\n\n"
 
-        "PROCESO DE AUDITORÍA — aplica este árbol de decisión para CADA referencia interna "
-        "que encuentres en el texto:\n"
-        "<razonamiento>\n"
-        "Para cada referencia encontrada (ej. 'Cláusula 5.1', 'literal k) de la Cláusula 3.3'):\n"
-        "  PASO 1 — ¿Está en refs_externas? → SÍ: ignorar completamente.\n"
-        "  PASO 2 — ¿La referencia incluye literal/inciso (ej. 'literal k de 3.3')? "
-        "           → SÍ: extrae la cláusula principal (3.3). "
-        "           ¿3.3 está en idx_glob? → SÍ: referencia VÁLIDA, ir a PASO 5. "
-        "           → NO: REFERENCIA_INEXISTENTE.\n"
-        "  PASO 3 — ¿Aparece la cláusula en idx_glob? → NO: es REFERENCIA_INEXISTENTE.\n"
-        "  PASO 4 — ¿El contexto del grafo muestra que lo referenciado habla del MISMO TEMA "
-        "           que lo indicado en el texto actual? → NO: es REFERENCIA_INCOHERENTE. "
-        "           Si los plazos o montos no cuadran pero el tema es el mismo, IGNÓRALO.\n"
-        "  PASO 5 — Referencia válida, no reportar.\n"
-        "IMPORTANTE: Ignorar años, montos, días calendario y porcentajes.\n"
-        "</razonamiento>\n\n"
+        "# FORMATO DE SALIDA\n"
+        "Responde ÚNICAMENTE con el siguiente bloque de código JSON:\n\n"
+        "```json\n"
+        "{{\n"
+        "  \"hay_inconsistencias\": true,\n"
+        "  \"hallazgos\": [\n"
+        "    {{\n"
+        "      \"clausula_afectada\": \"5.1\",\n"
+        "      \"tipo\": \"REFERENCIA_INEXISTENTE\",\n"
+        "      \"cita\": \"texto exacto del error\",\n"
+        "      \"explicacion\": \"motivo del error\",\n"
+        "      \"severidad\": \"ALTA\"\n"
+        "    }}\n"
+        "  ]\n"
+        "}}\n"
+        "```\n\n"
 
-        "PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO): Es válido que el contrato remita "
-        "a leyes externas (Código Civil, Ley 30225, D.S., ISO, etc.). NO marques como "
-        "'referencia rota' o 'ambigüedad' el hecho de que el contrato cite una norma externa "
-        "sin explicarla. Solo audita referencias a 'Cláusulas' o 'Anexos' del propio contrato. "
-        "Las referencias a normativa externa ya son responsabilidad del Jurista.\n\n"
-
-        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Si el texto menciona fechas concretas, "
-        "verifica si resultan ilógicas en relación al día de hoy.\n\n"
-
-        "CRITERIOS DE SEVERIDAD:\n"
-        "- ALTA: referencia rota en cláusula de penalidades, plazos críticos o pagos.\n"
-        "- MEDIA: referencia rota en obligaciones secundarias o definiciones.\n"
-        "- BAJA: referencia posiblemente incorrecta pero sin impacto operativo claro.\n\n"
-
-        "Texto a auditar:\n{texto}\n"
+        "# DATOS DE ENTRADA\n"
+        "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
+        "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "idx_glob", "idx_sec", "idx_loc", "refs_externas", "contexto_grafo", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "idx_glob", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -126,56 +121,50 @@ PROMPT_AUDITOR = PromptTemplate(
 
 PROMPT_CRONISTA = PromptTemplate(
     template=(
-        "Eres un experto Senior en Gestión de Procesos y Plazos Contractuales bajo legislación peruana.\n\n"
+        "# ROL\n"
+        "Eres un experto en Gestión de Procesos y Plazos Contractuales.\n\n"
 
-        "REGLAS DE INTERPRETACIÓN DE PLAZOS (CRÍTICO — aplica siempre):\n"
-        "- Para tu análisis, asume SIEMPRE que 'Días' o 'Día' significa días hábiles "
-        "y 'Días Calendario' o 'días calendario' significa días naturales.\n"
-        "- NO reportes como error o ambigüedad que el contrato omita definir explícitamente "
-        "estos términos. Aplica la regla directamente sin cuestionarla.\n\n"
+        "# TAREA\n"
+        "Analiza el <texto_seccion> para detectar errores en la cadena de eventos y plazos.\n\n"
 
-        "PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO): Es válido y legal que el contrato "
-        "remita a leyes externas (Código Civil, Ley 27444, etc.) para el cómputo de plazos. "
-        "NO reportes como error, ambigüedad o 'falta de autocontención' el hecho de que el "
-        "contrato cite una norma sin transcribirla. Asume que la remisión es correcta y "
-        "aplícala sin cuestionarla.\n\n"
+        "# REGLAS\n"
+        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE los plazos descritos en el <texto_seccion>.\n"
+        "- **REGLA DE INTERPRETACIÓN DE DÍAS (CRÍTICO):** Para tu análisis, asume SIEMPRE que 'Días' "
+        "significa días hábiles y 'Días Calendario' significa días naturales. "
+        "**NO reportes como error o ambigüedad que el contrato omita definir estos términos**, "
+        "simplemente aplica esta regla.\n"
+        "- **PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO):** Es válido y legal que el contrato "
+        "remita a leyes externas (ej. Código Civil) para el cómputo de plazos. "
+        "**NO reportes como error, ambigüedad o 'falta de autocontención' el hecho de que el contrato "
+        "cite una norma sin transcribirla.** Asume que la remisión es correcta y no la analices.\n"
+        "- **MANEJO DE EXCEPCIONES TEMPORALES:** Si el contrato establece una regla excepcional para "
+        "un cálculo de plazos, ACÉPTALA como válida.\n"
+        "- **CONCIENCIA TEMPORAL Y CONTEXTO DE BORRADOR:** Hoy es {fecha_actual}. Ten en cuenta que "
+        "este contrato puede estar en elaboración. NO reportes como error las fechas pasadas mencionadas "
+        "en los 'Antecedentes' o narraciones históricas.\n\n"
 
-        "MANEJO DE EXCEPCIONES TEMPORALES (IMPORTANTE): Si el contrato establece una regla "
-        "excepcional para un cálculo de plazos (ej. 'Excepcionalmente, para el primer mes se "
-        "contarán X días...'), ACÉPTALA como válida. NO la marques como error lógico ni "
-        "inconsistencia matemática.\n\n"
+        "# FORMATO DE SALIDA\n"
+        "Responde ÚNICAMENTE con el siguiente bloque de código JSON:\n\n"
+        "```json\n"
+        "{{\n"
+        "  \"hay_procedimientos\": true,\n"
+        "  \"hay_errores_logicos\": true,\n"
+        "  \"hay_inconsistencia_plazos\": true,\n"
+        "  \"hallazgos_procesos\": [\n"
+        "    {{\n"
+        "      \"clausula_afectada\": \"8.2\",\n"
+        "      \"tipo\": \"ERROR_PLAZOS\",\n"
+        "      \"cita\": \"texto exacto\",\n"
+        "      \"explicacion\": \"motivo del error\",\n"
+        "      \"severidad\": \"ALTA\"\n"
+        "    }}\n"
+        "  ]\n"
+        "}}\n"
+        "```\n\n"
 
-        "CONCIENCIA DE BORRADOR: Este contrato puede estar en elaboración. NO reportes como "
-        "plazos vencidos las fechas históricas mencionadas en secciones de Antecedentes, "
-        "Considerandos o declaraciones del historial previo a la firma del contrato.\n\n"
-
-        "CONTEXTO DEL GRAFO (cadena de eventos y plazos relacionados de otras secciones):\n"
-        "{contexto_grafo}\n"
-        "Usa el grafo para sumar plazos encadenados entre cláusulas y verificar si exceden "
-        "máximos declarados globalmente.\n\n"
-
-        "PROCESO DE ANÁLISIS — sigue estos pasos en orden:\n"
-        "<razonamiento>\n"
-        "PASO 1 — Lógica secuencial:\n"
-        "  - Identifica el flujo: Evento A → condición → Evento B → ...\n"
-        "  - ¿Cada paso tiene responsable y plazo definido?\n"
-        "  - ¿Existe ruta de salida si un paso falla? Si no hay → dead-end (ERROR LOGICA_PROCESO).\n\n"
-        "PASO 2 — Cálculo de plazos:\n"
-        "  - Lista todos los plazos parciales mencionados (incluye los del grafo si son relevantes).\n"
-        "  - Suma los plazos de la ruta crítica.\n"
-        "  - ¿La suma supera el plazo máximo declarado? → ERROR_PLAZOS.\n\n"
-        "PASO 3 — Completitud:\n"
-        "  - ¿Algún paso crítico carece de responsable o tiempo de respuesta? → ERROR LOGICA_PROCESO.\n\n"
-        "PASO 4 — Determina severidad para cada hallazgo:\n"
-        "  - ALTA: plazo excedido en ruta crítica de entrega o pago, o dead-end en proceso principal.\n"
-        "  - MEDIA: responsable ausente en proceso secundario, plazo ambiguo sin contexto.\n"
-        "  - BAJA: plazo omitido en proceso informativo sin penalidad asociada.\n"
-        "</razonamiento>\n\n"
-
-        "CONCIENCIA TEMPORAL: Hoy es {fecha_actual}. Usa esta fecha exacta para calcular si "
-        "los plazos internos han vencido y detectar hitos o fechas de entrega ya superadas.\n\n"
-
-        "Texto a analizar:\n{texto}\n"
+        "# DATOS DE ENTRADA\n"
+        "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )

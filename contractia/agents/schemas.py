@@ -7,18 +7,22 @@ from typing import List
 from pydantic import BaseModel, Field
 
 
-class SalidaJurista(BaseModel):
-    referencias_externas: List[str] = Field(
-        description="Lista de leyes, decretos, códigos o artículos externos mencionados."
-    )
-
-
 class Hallazgo(BaseModel):
     clausula_afectada: str = Field(description="Número específico de la cláusula (ej. '5.1').")
     tipo: str = Field(description="Tipo de error.")
     cita: str = Field(description="Texto exacto.")
     explicacion: str = Field(description="Detalle del error.")
     severidad: str = Field(description="ALTA, MEDIA, BAJA")
+
+
+class SalidaJurista(BaseModel):
+    hay_inconsistencias: bool = Field(
+        description="True si se detectaron inconsistencias procedimentales."
+    )
+    hallazgos: List[Hallazgo] = Field(
+        default_factory=list,
+        description="Lista de inconsistencias procedimentales encontradas.",
+    )
 
 
 class SalidaAuditor(BaseModel):

@@ -1,11 +1,18 @@
 """
 Orquestador principal: coordina segmentación, RAG y agentes multi-agente.
+
+v9.3.0: Alineación con notebook vs14
+- Jurista ahora detecta inconsistencias procedimentales (no normativa externa)
+- Los 3 agentes se ejecutan en paralelo (son independientes entre sí)
+- Auditor ya no recibe idx_sec, idx_loc ni refs_externas
+- sleep entre secciones: 0.5s → 2s
+- auditar_consistencia() con firma simplificada
 """
 
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional
 
 from tqdm.auto import tqdm
 
@@ -23,7 +30,6 @@ from contractia.core.segmenter import (
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 
 # Máximo de caracteres por sección enviada a los agentes.
-# Secciones muy largas generan prompts que tardan mucho en Gemini 2.5 Pro.
 _MAX_SECTION_CHARS = 8_000
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
@@ -72,20 +78,17 @@ def _rag_estatico(retriever, texto_truncado: str) -> str:
 
 def auditar_consistencia(
     texto_seccion: str,
-    indice_secciones: List[Dict],
     indice_global_clausulas: List[str],
-    indice_clausulas_seccion: List[str],
-    section_nums_to_ignore: Set[str],
     llm,
     retriever=None,
     vector_store=None,
     contexto_grafo: str = "",
 ) -> List[Dict]:
-    """Audita una sección individual con los tres agentes.
+    """Audita una sección individual con los tres agentes en paralelo.
 
-    Jurista y Cronista se ejecutan en paralelo (son independientes).
-    El Auditor se ejecuta después del Jurista (necesita sus referencias externas).
-    Cada agente reintenta hasta _MAX_REINTENTOS veces antes de devolver vacío.
+    Los tres agentes (Jurista, Auditor, Cronista) son independientes entre sí
+    y se ejecutan concurrentemente. Cada agente reintenta hasta _MAX_REINTENTOS
+    veces antes de devolver vacío.
     """
 
     if not ENABLE_LLM or llm is None:
@@ -118,14 +121,7 @@ def auditar_consistencia(
         else:
             contexto_rag = _rag_estatico(retriever, texto_truncado)
 
-    # Preparar índices (sin LLM, rápido)
-    str_idx_sec = ", ".join([f"{x['tipo']} {x['n']}" for x in indice_secciones])
     str_idx_glob = ", ".join(indice_global_clausulas)
-    local_filtrado = [
-        x for x in indice_clausulas_seccion
-        if x not in section_nums_to_ignore and not (x.isdigit() and int(x) > 100)
-    ]
-    str_idx_loc = ", ".join(local_filtrado) if local_filtrado else "Ninguna"
 
     # Texto enriquecido: texto original + contexto RAG/Scout para los 3 agentes
     texto_enriquecido = texto_truncado + contexto_rag
@@ -133,12 +129,22 @@ def auditar_consistencia(
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
-    # ── Fase 1: Jurista + Cronista en paralelo (son independientes entre sí) ──
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    # ── Los 3 agentes son independientes → se ejecutan en paralelo ──────────────
+    with ThreadPoolExecutor(max_workers=3) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
             jurista,
             {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
+        )
+        fut_auditor = pool.submit(
+            _ejecutar_con_reintento,
+            auditor,
+            {
+                "texto": texto_enriquecido,
+                "idx_glob": str_idx_glob,
+                "contexto_grafo": contexto_grafo,
+                "fecha_actual": fecha_hoy,
+            },
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
@@ -146,41 +152,27 @@ def auditar_consistencia(
             {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
         )
         res_jurista = fut_jurista.result()
+        res_auditor = fut_auditor.result()
         res_cronista = fut_cronista.result()
 
-    # Procesar resultado del Jurista
-    if isinstance(res_jurista, list):
-        lista_externa = [str(x) for x in res_jurista]
-    elif isinstance(res_jurista, dict):
-        lista_externa = res_jurista.get("referencias_externas", [])
-    else:
-        lista_externa = []
-    str_externas = ", ".join(lista_externa) if lista_externa else "Ninguna"
+    # Procesar resultado del Jurista (inconsistencias procedimentales)
+    if isinstance(res_jurista, dict) and res_jurista.get("hay_inconsistencias"):
+        hallazgos_totales.extend(res_jurista.get("hallazgos", []))
+    elif isinstance(res_jurista, list):
+        hallazgos_totales.extend(res_jurista)
 
-    # Procesar resultado del Cronista
+    # Procesar resultado del Auditor (referencias cruzadas)
+    if isinstance(res_auditor, dict) and res_auditor.get("hay_inconsistencias"):
+        hallazgos_totales.extend(res_auditor.get("hallazgos", []))
+    elif isinstance(res_auditor, list):
+        hallazgos_totales.extend(res_auditor)
+
+    # Procesar resultado del Cronista (plazos)
     if isinstance(res_cronista, dict):
         if res_cronista.get("hay_errores_logicos") or res_cronista.get("hay_inconsistencia_plazos"):
             hallazgos_totales.extend(res_cronista.get("hallazgos_procesos", []))
     elif isinstance(res_cronista, list):
         hallazgos_totales.extend(res_cronista)
-
-    # ── Fase 2: Auditor con reintentos (usa refs_externas del Jurista) ──
-    res_aud = _ejecutar_con_reintento(
-        auditor,
-        {
-            "texto": texto_enriquecido,
-            "idx_glob": str_idx_glob,
-            "idx_sec": str_idx_sec,
-            "idx_loc": str_idx_loc,
-            "refs_externas": str_externas,
-            "contexto_grafo": contexto_grafo,
-            "fecha_actual": fecha_hoy,
-        },
-    )
-    if isinstance(res_aud, dict) and res_aud.get("hay_inconsistencias"):
-        hallazgos_totales.extend(res_aud.get("hallazgos", []))
-    elif isinstance(res_aud, list):
-        hallazgos_totales.extend(res_aud)
 
     return hallazgos_totales
 
@@ -196,7 +188,7 @@ def ejecutar_auditoria_contrato(
       1. Segmentación regex
       2. Construcción de índices
       3. Creación de vector store RAG (si está habilitado)
-      4. Auditoría multi-agente por sección (Jurista+Cronista en paralelo, luego Auditor)
+      4. Auditoría multi-agente por sección (3 agentes en paralelo)
 
     Args:
         progress_callback: función(pct: int, msg: str) -> bool.
@@ -207,7 +199,6 @@ def ejecutar_auditoria_contrato(
     indice_secciones = crear_indice_capitulos_anexos(secciones)
     indice_global_clausulas = crear_indice_global_clausulas(secciones)
     mapa_clausula_a_seccion = construir_mapa_clausula_a_seccion(secciones)
-    section_nums_to_ignore = _get_all_section_numbers_as_str(secciones)
 
     # ── RAG: crear vector store ──
     retriever = None
@@ -266,10 +257,7 @@ def ejecutar_auditoria_contrato(
         try:
             hallazgos = auditar_consistencia(
                 texto_seccion=sec.get("contenido", ""),
-                indice_secciones=indice_secciones,
                 indice_global_clausulas=indice_global_clausulas,
-                indice_clausulas_seccion=idx_local,
-                section_nums_to_ignore=section_nums_to_ignore,
                 llm=llm,
                 retriever=retriever,
                 vector_store=vector_store,
@@ -283,7 +271,7 @@ def ejecutar_auditoria_contrato(
                     "hallazgos": hallazgos,
                 })
 
-            time.sleep(0.5)  # Pausa breve entre secciones
+            time.sleep(2)  # Pausa entre secciones (alineado con notebook vs14)
 
         except Exception as e:
             print(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
