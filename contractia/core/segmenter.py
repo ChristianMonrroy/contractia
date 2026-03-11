@@ -504,13 +504,6 @@ def construir_mapa_clausula_a_seccion(secciones: List[Dict]) -> Dict[str, Dict]:
             elif tipo == "CAPITULO" and mapa[cid]["tipo"] == "ANEXO":
                 # Prioridad absoluta: CAPITULO sobre ANEXO (igual que vs14)
                 mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
-
-            # Indexar literales en lista (a, b, c... cualquier letra) de esta cláusula
-            for lid in _extraer_literales_lista(contenido, cid):
-                if lid not in mapa:
-                    mapa[lid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
-                elif tipo == "CAPITULO" and mapa[lid]["tipo"] == "ANEXO":
-                    mapa[lid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
     return mapa
 
 
