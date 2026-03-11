@@ -214,10 +214,21 @@ def obtener_contexto_grafo(
                         texto_completo = mapa_textos[id_ref].get("texto", "")
                         match_pos = re.search(rf"\b{re.escape(id_ref)}\b", texto_completo)
                         if match_pos:
-                            inicio = max(0, match_pos.start() - 50)
-                            texto_ref = texto_completo[inicio:inicio + 1000]
+                            inicio = match_pos.start()
+                            # Recorte inteligente: hasta el inicio de la siguiente cláusula
+                            texto_restante = texto_completo[inicio + len(id_ref):]
+                            siguiente = re.search(
+                                r"\n\s*(?:CL[AÁ]USULA\s+|ART[IÍ]CULO\s+)?\d+\.\d+\b",
+                                texto_restante,
+                                re.IGNORECASE,
+                            )
+                            if siguiente:
+                                fin = inicio + len(id_ref) + siguiente.start()
+                                texto_ref = texto_completo[inicio:fin].strip()
+                            else:
+                                texto_ref = texto_completo[inicio:inicio + 4000].strip()
                         else:
-                            texto_ref = texto_completo[:1000]
+                            texto_ref = texto_completo[:4000]
                         contexto.append(f"  [TEXTO DE {destino}]: ...{texto_ref}...")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."

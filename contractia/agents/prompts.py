@@ -76,10 +76,19 @@ PROMPT_AUDITOR = PromptTemplate(
 
         "CONTEXTO DEL GRAFO (textos de cláusulas referenciadas):\n{contexto_grafo}\n\n"
 
+        "REGLA ESPECIAL — LITERALES E INCISOS (aplica antes que cualquier otro paso):\n"
+        "Cuando el texto dice 'literal k) de la Cláusula 3.3', 'numeral b de 5.1', "
+        "'inciso ii del artículo 7.2' o expresiones similares donde un literal alfabético "
+        "o romano acompaña a una cláusula, la referencia es a la CLÁUSULA PRINCIPAL (ej. 3.3, 5.1, 7.2). "
+        "Los literales son sub-ítems internos de una cláusula y NO se indexan por separado. "
+        "Verifica solo que la cláusula principal (X.Y) exista en idx_glob — NUNCA busques 'X.Y.k'.\n\n"
+
         "PROCESO DE AUDITORÍA — aplica este árbol de decisión para CADA referencia interna "
         "que encuentres en el texto:\n"
         "<razonamiento>\n"
-        "Para cada referencia encontrada (ej. 'Cláusula 5.1', 'numeral 3.2.a'):\n"
+        "Para cada referencia encontrada (ej. 'Cláusula 5.1', 'literal k) de la Cláusula 3.3'):\n"
+        "  PASO 0 — ¿Es una referencia con literal/inciso (ej. 'literal k de 3.3')? "
+        "           → Extrae solo la cláusula principal (3.3) para los pasos siguientes.\n"
         "  PASO 1 — ¿Está en refs_externas? → SÍ: ignorar completamente.\n"
         "  PASO 2 — ¿Aparece en idx_glob? → NO: es REFERENCIA_INEXISTENTE (severidad según impacto).\n"
         "  PASO 3 — ¿El contexto del grafo muestra que lo referenciado habla del MISMO TEMA "

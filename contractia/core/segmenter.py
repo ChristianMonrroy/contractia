@@ -439,7 +439,10 @@ def construir_mapa_clausula_a_seccion(secciones: List[Dict]) -> Dict[str, Dict]:
 
         for cid in _extraer_numeros_clausula(contenido, prefijo):
             if cid not in mapa:
-                mapa[cid] = {"tipo": tipo, "seccion": titulo}
+                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
+            elif tipo == "CAPITULO" and mapa[cid]["tipo"] == "ANEXO":
+                # Prioridad absoluta: CAPITULO sobre ANEXO (igual que vs14)
+                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
     return mapa
 
 
