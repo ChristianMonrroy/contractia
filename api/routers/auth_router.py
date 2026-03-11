@@ -23,8 +23,8 @@ from contractia.config import TELEGRAM_ADMIN_ID, TELEGRAM_TOKEN
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _notify_admin_nuevo_usuario(email: str) -> None:
-    """Envía un mensaje de Telegram al admin cuando se registra un nuevo usuario web."""
+def _notify_admin_nuevo_usuario(email: str, web_id: int) -> None:
+    """Envía un mensaje de Telegram al admin con botones inline para aprobar/rechazar."""
     if not TELEGRAM_TOKEN or not TELEGRAM_ADMIN_ID:
         return
     try:
@@ -36,11 +36,21 @@ def _notify_admin_nuevo_usuario(email: str) -> None:
                 "text": (
                     f"🔔 *Nuevo usuario registrado (web)*\n\n"
                     f"📧 Email: `{email}`\n"
-                    f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                    f"⏳ Rol: pendiente de aprobación\n\n"
-                    f"Entra al panel admin para aprobar: https://contractia.pe/admin"
+                    f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+                    f"¿Qué rol le asignas?"
                 ),
                 "parse_mode": "Markdown",
+                "reply_markup": {
+                    "inline_keyboard": [
+                        [
+                            {"text": "👤 Básico",   "callback_data": f"aprobar_basico_{web_id}"},
+                            {"text": "🔍 Auditor",  "callback_data": f"aprobar_auditor_{web_id}"},
+                        ],
+                        [
+                            {"text": "🚫 Rechazar", "callback_data": f"aprobar_rechazar_{web_id}"},
+                        ],
+                    ]
+                },
             },
             timeout=5,
         )
@@ -135,7 +145,7 @@ def verify(body: VerifyRequest):
     except Exception:
         pass
 
-    _notify_admin_nuevo_usuario(email)
+    _notify_admin_nuevo_usuario(email, web_id)
 
     return {"detail": "Cuenta creada. Pendiente de aprobación por el administrador."}
 
