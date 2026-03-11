@@ -210,6 +210,67 @@ def _extraer_numeros_clausula(texto_capitulo: str, prefijo_capitulo: str) -> Lis
     return list(ids_encontrados)
 
 
+# Detecta literales al inicio de línea: "a)", "b.", "a.-", "a) ", con indentación ≤ 8 espacios
+_LITERAL_ITEM_RX = re.compile(
+    r"(?m)^\s{0,8}([a-z])\s*[).]\s*[-]?\s+\S",
+)
+
+# Delimitador de la siguiente cláusula al mismo nivel
+_NEXT_CLAUSE_RX = re.compile(
+    r"\n\s*(?:CL[AÁ]USULA\s+|ART[IÍ]CULO\s+)?\d+\.\d+\b",
+    re.IGNORECASE,
+)
+
+
+def _extraer_literales_lista(texto_seccion: str, clausula_id: str) -> Set[str]:
+    """
+    Detecta literales en lista (a), b), c)... hasta donde llegue la secuencia)
+    dentro del bloque de texto de una cláusula específica y los registra como
+    'clausula_id.a', 'clausula_id.b', etc.
+
+    Solo activa si encuentra 'a)' en el bloque (las listas legales siempre empiezan
+    desde 'a') o si hay 3+ letras consecutivas (robustez ante formateos distintos).
+    """
+    ids: Set[str] = set()
+
+    # Localizar el bloque de texto de esta cláusula
+    match_inicio = re.search(rf"\b{re.escape(clausula_id)}\b", texto_seccion)
+    if not match_inicio:
+        return ids
+
+    inicio = match_inicio.start()
+    texto_desde = texto_seccion[inicio + len(clausula_id):]
+
+    siguiente = _NEXT_CLAUSE_RX.search(texto_desde)
+    bloque = texto_desde[: siguiente.start()].strip() if siguiente else texto_desde[:5000].strip()
+
+    # Recolectar letras encontradas como ítems de lista
+    letras: Set[str] = set()
+    for m in _LITERAL_ITEM_RX.finditer(bloque):
+        letras.add(m.group(1).lower())
+
+    if not letras:
+        return ids
+
+    letras_ord = sorted(letras, key=lambda c: ord(c))
+
+    # Condición de activación:
+    # (1) La lista empieza desde 'a' (convención legal), o
+    # (2) Hay 3 o más letras consecutivas (p.ej. k, l, m)
+    empieza_en_a = "a" in letras
+    consecutivas = sum(
+        1 for i in range(1, len(letras_ord))
+        if ord(letras_ord[i]) - ord(letras_ord[i - 1]) == 1
+    )
+    if not empieza_en_a and consecutivas < 2:
+        return ids
+
+    for letra in letras:
+        ids.add(f"{clausula_id}.{letra}")
+
+    return ids
+
+
 def _validar_secuencia_clausulas(
     numeros_encontrados: List[str], prefijo: str
 ) -> Tuple[bool, List[str], int]:
@@ -443,6 +504,13 @@ def construir_mapa_clausula_a_seccion(secciones: List[Dict]) -> Dict[str, Dict]:
             elif tipo == "CAPITULO" and mapa[cid]["tipo"] == "ANEXO":
                 # Prioridad absoluta: CAPITULO sobre ANEXO (igual que vs14)
                 mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
+
+            # Indexar literales en lista (a, b, c... cualquier letra) de esta cláusula
+            for lid in _extraer_literales_lista(contenido, cid):
+                if lid not in mapa:
+                    mapa[lid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
+                elif tipo == "CAPITULO" and mapa[lid]["tipo"] == "ANEXO":
+                    mapa[lid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
     return mapa
 
 
