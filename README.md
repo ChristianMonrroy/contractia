@@ -1,10 +1,19 @@
-# ContractIA v9.1.0
+# ContractIA v9.2.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.2.0
+
+| Área | Cambio |
+|------|--------|
+| **Auditor — Externalidades** | Nueva regla "PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES": el Auditor ya no marcará como 'referencia rota' las citas a leyes externas (Código Civil, Ley 30225, D.S., ISO). Solo audita referencias a Cláusulas y Anexos del propio contrato; la normativa externa es responsabilidad del Jurista |
+| **Auditor — Mismo tema** | El PASO 3 del árbol de decisión ahora exige que la referencia hable del **mismo tema** (no solo que sea coherente). Si los plazos o montos difieren pero el tema es el mismo, se ignora la discrepancia; reduce falsos positivos en referencias a cláusulas con datos actualizados |
+| **Cronista — Días = hábiles** | Eliminada la regla que marcaba como error la falta de definición explícita de "Días" vs "Días Calendario". El Cronista ahora asume directamente: `Días` = hábiles, `Días Calendario` = naturales, sin reportar ambigüedad por omisión |
+| **Cronista — Externalidades** | Nueva regla "PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES": el Cronista ya no reportará como error ni ambigüedad que el contrato remita a leyes externas (Código Civil, Ley 27444) para el cómputo de plazos |
 
 ## Novedades v9.1.0
 

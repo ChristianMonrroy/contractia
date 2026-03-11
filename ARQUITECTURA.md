@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.1.0 | **Fecha:** Marzo 2026
+**Versión:** 9.2.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -373,9 +373,11 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 |---|---|---|
 | **Chain-of-Thought (CoT)** | Jurista, Auditor, Cronista | Bloque `<razonamiento>` con pasos explícitos antes del output; el parser lo ignora en producción |
 | **Few-Shot** | Jurista | Ejemplo concreto de referencia externa vs. interna para reducir falsos positivos |
-| **Árbol de decisión** | Auditor | 4 pasos explícitos por cada referencia: check en refs_externas → idx_glob → coherencia semántica → descartar |
+| **Árbol de decisión** | Auditor | 4 pasos explícitos por cada referencia: check en refs_externas → idx_glob → mismo tema (grafo) → descartar; plazos/montos distintos pero mismo tema = no reportar |
 | **Severidad dinámica** | Auditor, Cronista | Criterios ALTA/MEDIA/BAJA explícitos en el prompt; antes hardcodeado a ALTA |
 | **Conciencia temporal** | Jurista, Auditor, Cronista | `{fecha_actual}` inyectada en cada prompt (v9.1.0); permite detectar plazos vencidos y fechas contractuales ilógicas respecto al día de hoy |
+| **Prohibición de externalidades** | Auditor, Cronista | Regla explícita (v9.2.0): no marcar como error las citas a leyes externas; solo auditar referencias a Cláusulas/Anexos propios del contrato |
+| **Días = hábiles (por defecto)** | Cronista | (v9.2.0) Asume directamente `Días`=hábiles, `Días Calendario`=naturales; no reporta ambigüedad por omisión de definición |
 
 Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)` (v8.5.0). El schema Pydantic correspondiente (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`) garantiza salida válida sin parser regex. Si `with_structured_output` no está disponible (ej. backend Ollama), el `AgenteEspecialista` cae a `StrOutputParser` + `parse_json_seguro` como fallback.
 
