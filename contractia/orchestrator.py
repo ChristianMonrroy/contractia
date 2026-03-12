@@ -34,7 +34,9 @@ from contractia.core.segmenter import (
     crear_indice_de_clausulas_por_seccion,
     crear_indice_global_clausulas,
     separar_en_secciones,
+    separar_en_secciones_con_metadata,
 )
+from contractia.core.graph import generar_imagen_grafo
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
@@ -206,7 +208,7 @@ def ejecutar_auditoria_contrato(
                            Llamada al iniciar cada sección.
                            Si devuelve True, el loop se detiene (cancelación externa).
     """
-    secciones = separar_en_secciones(texto_contrato)
+    secciones, metadata_tecnica = separar_en_secciones_con_metadata(texto_contrato)
     indice_secciones = crear_indice_capitulos_anexos(secciones)
     indice_global_clausulas = crear_indice_global_clausulas(secciones)
     mapa_clausula_a_seccion = construir_mapa_clausula_a_seccion(secciones)
@@ -287,9 +289,16 @@ def ejecutar_auditoria_contrato(
         except Exception as e:
             print(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
 
+    # Generar imagen del grafo (None si GraphRAG no estaba activo)
+    imagen_grafo_png: Optional[bytes] = generar_imagen_grafo(grafo) if grafo is not None else None
+
     return {
         "secciones": secciones,
         "indice_secciones": indice_secciones,
         "indice_global_clausulas": indice_global_clausulas,
         "resultados_auditoria": resultados_auditoria,
+        # Datos técnicos para el informe admin
+        "metadata_tecnica": metadata_tecnica,
+        "grafo": grafo,
+        "imagen_grafo_png": imagen_grafo_png,
     }

@@ -399,6 +399,54 @@ def _post_secciones(text: str, spans: List[Tuple[int, int, str, str]]) -> List[D
 # API pública
 # ═══════════════════════════════════════════════════════════════
 
+def _computar_metadata_tecnica(secciones: List[Dict]) -> Dict:
+    """
+    Calcula la metadata técnica de Fase 0 y Fase 0.5 a partir de las secciones
+    ya separadas. Devuelve un dict con info estructural y validación de secuencia.
+    """
+    caps = [s["titulo"] for s in secciones if s["tipo"] == "CAPITULO"]
+    anxs = [s["titulo"] for s in secciones if s["tipo"] == "ANEXO"]
+
+    validacion: List[Dict] = []
+    for s in secciones:
+        if s.get("tipo") != "CAPITULO":
+            continue
+        titulo = s.get("titulo", "N/A")
+        contenido = s.get("contenido", "")
+        num_raw = _extraer_num_cap(titulo)
+
+        prefijo = ""
+        if num_raw.isdigit():
+            prefijo = num_raw
+        elif num_raw != "?":
+            num_int = _roman_to_int(num_raw)
+            if num_int > 0:
+                prefijo = str(num_int)
+        if not prefijo:
+            continue
+
+        clausulas = _extraer_numeros_clausula(contenido, prefijo)
+        if not clausulas:
+            continue
+
+        valido, faltantes, n = _validar_secuencia_clausulas(clausulas, prefijo)
+        validacion.append({
+            "seccion": titulo,
+            "n_clausulas": n,
+            "valido": valido,
+            "faltantes": faltantes,
+        })
+
+    return {
+        "n_capitulos": len(caps),
+        "n_anexos": len(anxs),
+        "n_secciones": len(secciones),
+        "capitulos": caps,
+        "anexos": anxs,
+        "validacion_clausulas": validacion,
+    }
+
+
 def separar_en_secciones(texto_contrato: str) -> List[Dict]:
     """Separa el contrato en capítulos y anexos, valida secuencia de cláusulas."""
     t = _norm_text(texto_contrato)
@@ -440,6 +488,60 @@ def separar_en_secciones(texto_contrato: str) -> List[Dict]:
             print(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
 
     return secciones
+
+
+def separar_en_secciones_con_metadata(
+    texto_contrato: str,
+) -> Tuple[List[Dict], Dict]:
+    """
+    Igual que separar_en_secciones() pero además devuelve metadata técnica
+    con los resultados de Fase 0 y Fase 0.5.
+
+    Returns:
+        (secciones, metadata_tecnica)
+        metadata_tecnica: dict con n_capitulos, n_anexos, n_secciones,
+                          capitulos, anexos, validacion_clausulas.
+    """
+    t = _norm_text(texto_contrato)
+    spans = _find_sections(t)
+    secciones = _post_secciones(t, spans)
+
+    caps = [s["titulo"] for s in secciones if s["tipo"] == "CAPITULO"]
+    anxs = [s["titulo"] for s in secciones if s["tipo"] == "ANEXO"]
+
+    print("\n--- FASE 0: Análisis Estructural (Separando en Capítulos/Anexos) ---")
+    print(f"Detectados {len(caps)} capítulos y {len(anxs)} anexos (total {len(secciones)} secciones).")
+    print("\n--- FASE 0.5: Auditoría de Secuencia de Cláusulas ---")
+
+    for s in secciones:
+        if s.get("tipo") != "CAPITULO":
+            continue
+        titulo = s.get("titulo", "N/A")
+        contenido = s.get("contenido", "")
+        num_raw = _extraer_num_cap(titulo)
+
+        prefijo = ""
+        if num_raw.isdigit():
+            prefijo = num_raw
+        elif num_raw != "?":
+            num_int = _roman_to_int(num_raw)
+            if num_int > 0:
+                prefijo = str(num_int)
+        if not prefijo:
+            continue
+
+        clausulas = _extraer_numeros_clausula(contenido, prefijo)
+        if not clausulas:
+            continue
+
+        valido, faltantes, n = _validar_secuencia_clausulas(clausulas, prefijo)
+        if valido:
+            print(f"  ✓ {titulo} ({n} cláusulas, secuencia válida)")
+        else:
+            print(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
+
+    metadata = _computar_metadata_tecnica(secciones)
+    return secciones, metadata
 
 
 def crear_indice_capitulos_anexos(secciones: List[Dict]) -> List[Dict]:

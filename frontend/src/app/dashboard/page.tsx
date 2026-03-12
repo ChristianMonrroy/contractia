@@ -17,6 +17,7 @@ import {
   XCircle,
   Loader2,
   History,
+  FlaskConical,
 } from "lucide-react";
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -54,6 +55,7 @@ export default function DashboardPage() {
   const [audits, setAudits] = useState<AuditRow[]>([]);
   const [loadingAudits, setLoadingAudits] = useState(false);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [downloadingTecnico, setDownloadingTecnico] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
@@ -75,6 +77,23 @@ export default function DashboardPage() {
   const roleInfo = ROLE_LABELS[user.rol] || ROLE_LABELS["basico"];
   const isPending = user.rol === "pendiente";
   const canAudit = user.rol === "auditor" || user.rol === "admin";
+
+  const handleDownloadTecnico = async (audit_id: string, filename: string | null) => {
+    setDownloadingTecnico(audit_id);
+    try {
+      const res = await contractsAPI.downloadTechnicalPdf(audit_id);
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (filename?.replace(/\.[^.]+$/, "") || "contrato") + "_tecnico.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("No se pudo descargar el informe técnico.");
+    } finally {
+      setDownloadingTecnico(null);
+    }
+  };
 
   const handleCancel = async (audit_id: string) => {
     if (!confirm("¿Cancelar esta auditoría? No se puede deshacer.")) return;
@@ -241,6 +260,17 @@ export default function DashboardPage() {
                                 >
                                   Ver informe →
                                 </Link>
+                              )}
+                              {a.status === "done" && user.rol === "admin" && a.metadata_tecnica && (
+                                <button
+                                  onClick={() => handleDownloadTecnico(a.audit_id, a.filename)}
+                                  disabled={downloadingTecnico === a.audit_id}
+                                  className="inline-flex items-center gap-1 text-xs font-medium text-purple-600 hover:text-purple-800 hover:underline whitespace-nowrap disabled:opacity-50"
+                                  title="Descargar informe técnico (admin)"
+                                >
+                                  <FlaskConical className="w-3 h-3" />
+                                  {downloadingTecnico === a.audit_id ? "..." : "Técnico"}
+                                </button>
                               )}
                               {a.status === "processing" && (
                                 <>

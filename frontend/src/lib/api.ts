@@ -97,6 +97,9 @@ export const contractsAPI = {
   downloadAuditPdf: (audit_id: string) =>
     api.get(`/contracts/audit/${audit_id}/pdf`, { responseType: "blob" }),
 
+  downloadTechnicalPdf: (audit_id: string) =>
+    api.get(`/contracts/audit/${audit_id}/pdf-tecnico`, { responseType: "blob" }),
+
   loadAuditAsSession: (audit_id: string) =>
     api.post<{ session_id: string; filename: string; graph_enabled: boolean }>(
       "/contracts/session/from-audit",
@@ -147,6 +150,7 @@ export interface AuditRow {
   progress_pct: number | null;
   error_detail: string | null;
   graph_enabled: boolean | null;
+  metadata_tecnica: string | null;
   created_at: string;
   updated_at: string;
 }

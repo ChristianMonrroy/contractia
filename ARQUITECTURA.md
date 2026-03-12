@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.2.0 | **Fecha:** Marzo 2026
+**Versión:** 9.4.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -57,7 +57,7 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │  provider.py     │
          │                  │
          │  VertexAI        │
-         │  (Gemini 2.5 Pro)│
+         │  (Gemini 3.1 Pro)│
          └──────────────────┘
 
 ┌─────────────────────────────────────┐
@@ -109,9 +109,10 @@ contractia/
     ├── sessions.py             # Sesiones en memoria (autenticación activa)
     ├── auth/crypto.py          # OTP y generación de passwords
     ├── correo/                 # SMTP Gmail + generación de PDF (fpdf2)
-    │   ├── sender.py           # Envío vía Gmail SMTP con soporte adjunto PDF
+    │   ├── sender.py           # Envío vía Gmail SMTP; soporta 2 PDFs adjuntos
     │   ├── templates.py        # HTML templates (verificación, bienvenida, auditoría)
-    │   └── pdf_report.py       # Markdown → PDF (fpdf2, pure Python)
+    │   ├── pdf_report.py       # Markdown → PDF auditoría (fpdf2, pure Python)
+    │   └── pdf_report_tecnico.py # Informe técnico admin: Fase 0/0.5 + GraphRAG PNG
     ├── db/
     │   ├── database.py         # PostgreSQL, init_db(), auditorias CRUD,
     │   │                       # get_actividad(), get_resumen_actividad()
@@ -169,7 +170,7 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 | Archivo | Responsabilidad |
 |---------|----------------|
 | `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
-| `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia (ej. pasa de cláusula 5 a 7 sin la 6). No usa LLM. |
+| `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia (ej. pasa de cláusula 5 a 7 sin la 6). No usa LLM. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 como dict (para el informe técnico admin). |
 | `graph.py` | Construye el grafo de conocimiento GraphRAG. Para cada sección llama al LLM con un prompt CoT+Few-Shot que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. Expone `obtener_contexto_grafo()` para que los agentes consulten relaciones entre cláusulas. |
 | `report.py` | Transforma el diccionario de resultados del orquestador en un informe Markdown legible, agrupando hallazgos por sección y añadiendo resumen ejecutivo. |
 
@@ -225,7 +226,7 @@ Implementa el pipeline RAG completo:
 | `main.py` | Entry point de FastAPI. Registra los routers, configura CORS, monta el endpoint de webhook de Telegram y arranca la inicialización de la DB al levantar. |
 | `auth.py` | Generación y verificación de tokens JWT (HS256, 8h). Dependencia `get_current_user()` usada en todas las rutas protegidas. |
 | `routers/auth_router.py` | Endpoints `/auth/*`: registro con OTP por email, verificación, login, reset de contraseña. |
-| `routers/contracts_router.py` | Endpoints `/contracts/*`: subir contrato, abrir sesión RAG, consulta interactiva, lanzar auditoría (como `BackgroundTask`), polling de progreso, descarga PDF. |
+| `routers/contracts_router.py` | Endpoints `/contracts/*`: subir contrato, abrir sesión RAG, consulta interactiva, lanzar auditoría (como `BackgroundTask`), polling de progreso, descarga PDF. Nuevo endpoint `GET /audit/{id}/pdf-tecnico` (requiere rol admin): reconstruye grafo desde JSON, genera imagen PNG y PDF técnico on-the-fly. |
 | `routers/admin_router.py` | Endpoints `/admin/*`: listar usuarios, cambiar roles, ver logs de actividad y resumen de uso. Solo accesible con rol `admin`. |
 
 ---
@@ -435,7 +436,10 @@ logs              (id, telegram_id, accion, detalle, timestamp,
                    duracion_segundos, canal TEXT DEFAULT 'bot', n_hallazgos)
 auditorias        (audit_id PK, user_id, status, informe, n_hallazgos,
                    n_secciones, error_detail, progress_msg, progress_pct,
-                   filename, created_at, updated_at)
+                   filename, graph_enabled, texto_contrato,
+                   metadata_tecnica TEXT,   -- JSON Fase 0/0.5 (solo admins)
+                   graph_data TEXT,         -- JSON nx.node_link_data (solo admins)
+                   created_at, updated_at)
 ```
 
 ---

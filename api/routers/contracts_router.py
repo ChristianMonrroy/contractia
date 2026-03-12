@@ -21,6 +21,7 @@ from contractia.llm.provider import build_llm
 from contractia.orchestrator import ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 from contractia.telegram.correo.pdf_report import generar_pdf_auditoria
+from contractia.telegram.correo.pdf_report_tecnico import generar_pdf_tecnico
 from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_auditoria_lista
 from contractia.telegram.db.database import (
@@ -278,7 +279,10 @@ async def start_audit(
     tmp_file = tmp_dir / f"contrato{ext}"
     tmp_file.write_bytes(await file.read())
 
-    background_tasks.add_task(_run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"], graph_enabled)
+    background_tasks.add_task(
+        _run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"],
+        graph_enabled, usuario["rol"] == "admin",
+    )
     return {"audit_id": audit_id, "status": "processing"}
 
 
@@ -315,6 +319,61 @@ def download_audit_pdf(audit_id: str, user: dict = Depends(get_current_user)):
         print(f"[PDF] Error generando PDF para {audit_id}: {traceback.format_exc()}")
         raise HTTPException(500, f"Error al generar PDF: {type(e).__name__}: {str(e)[:300]}")
     nombre = filename.rsplit(".", 1)[0] + "_informe.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{nombre}"'},
+    )
+
+
+@router.get("/audit/{audit_id}/pdf-tecnico")
+def download_technical_pdf(audit_id: str, user: dict = Depends(get_current_user)):
+    """Genera y devuelve el informe técnico (admin) en PDF para descarga."""
+    if user.get("rol") != "admin":
+        raise HTTPException(403, "Solo administradores pueden descargar el informe técnico.")
+
+    import json
+    import networkx as nx
+    from contractia.core.graph import generar_imagen_grafo
+
+    result = get_auditoria(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    if result["status"] != "done":
+        raise HTTPException(400, "El informe aún no está disponible.")
+
+    mt_json = result.get("metadata_tecnica")
+    if not mt_json:
+        raise HTTPException(404, "No hay datos técnicos para esta auditoría (¿fue realizada por un admin?).")
+
+    try:
+        metadata_tecnica = json.loads(mt_json)
+    except Exception:
+        raise HTTPException(500, "Error deserializando metadata técnica.")
+
+    # Reconstruir grafo si está disponible
+    grafo = None
+    imagen_grafo_png = None
+    gd_json = result.get("graph_data")
+    if gd_json:
+        try:
+            grafo = nx.node_link_graph(json.loads(gd_json))
+            imagen_grafo_png = generar_imagen_grafo(grafo)
+        except Exception as ge:
+            print(f"[PDF-TECNICO] Error reconstruyendo grafo: {ge}")
+
+    filename = result.get("filename") or "contrato"
+    try:
+        pdf_bytes = generar_pdf_tecnico(
+            metadata_tecnica=metadata_tecnica,
+            grafo=grafo,
+            imagen_grafo_png=imagen_grafo_png,
+            filename_contrato=filename,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Error al generar PDF técnico: {type(e).__name__}: {str(e)[:300]}")
+
+    nombre = filename.rsplit(".", 1)[0] + "_tecnico.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -373,7 +432,7 @@ async def _keepalive(stop: asyncio.Event, interval: int = 30) -> None:
         await asyncio.sleep(interval)
 
 
-async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False):
+async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False, is_admin: bool = False):
     import shutil
     _stop_keepalive = asyncio.Event()
     _keepalive_task = asyncio.create_task(_keepalive(_stop_keepalive))
@@ -423,6 +482,29 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             registrar_auditoria(user_id)
             tipo_rag = "GraphRAG" if graph_enabled else "RAG"
             _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos, tipo_rag=tipo_rag)
+            # Serializar datos técnicos (solo admins)
+            import json
+            import networkx as nx
+            metadata_tecnica = resultado.get("metadata_tecnica")
+            grafo = resultado.get("grafo")
+            imagen_grafo_png = resultado.get("imagen_grafo_png")
+
+            if is_admin and metadata_tecnica:
+                try:
+                    mt_json = json.dumps(metadata_tecnica, ensure_ascii=False)
+                    gd_json = None
+                    if grafo is not None and grafo.number_of_nodes() > 0:
+                        gd_json = json.dumps(
+                            nx.node_link_data(grafo), ensure_ascii=False
+                        )
+                    actualizar_auditoria(
+                        audit_id,
+                        metadata_tecnica=mt_json,
+                        graph_data=gd_json,
+                    )
+                except Exception as te:
+                    print(f"[TECNICO] No se pudo guardar metadata técnica: {te}")
+
             actualizar_auditoria(
                 audit_id,
                 status="done",
@@ -442,10 +524,27 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                     pdf_bytes = generar_pdf_auditoria(md, filename)
                 except Exception as pdf_err:
                     print(f"[PDF] No se pudo generar PDF adjunto: {pdf_err}")
+
+                # PDF técnico (solo admins)
+                pdf_tecnico_bytes = None
+                adjunto_tecnico_nombre = filename.rsplit(".", 1)[0] + "_tecnico.pdf"
+                if is_admin and metadata_tecnica:
+                    try:
+                        pdf_tecnico_bytes = generar_pdf_tecnico(
+                            metadata_tecnica=metadata_tecnica,
+                            grafo=grafo,
+                            imagen_grafo_png=imagen_grafo_png,
+                            filename_contrato=filename,
+                        )
+                    except Exception as pt_err:
+                        print(f"[PDF-TECNICO] No se pudo generar: {pt_err}")
+
                 enviar_email(
                     email, asunto, html, texto_plain,
                     adjunto_pdf=pdf_bytes,
                     adjunto_nombre=adjunto_nombre,
+                    adjunto_pdf_tecnico=pdf_tecnico_bytes,
+                    adjunto_nombre_tecnico=adjunto_tecnico_nombre,
                 )
             except Exception as mail_err:
                 print(f"[EMAIL] No se pudo enviar notificación a {email}: {mail_err}")

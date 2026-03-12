@@ -16,9 +16,10 @@ v9.3.0:
 - Búsqueda de nodos por \b word-boundary (alineado con notebook)
 """
 
+import io
 import re
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import networkx as nx
 from langchain_core.output_parsers import StrOutputParser
@@ -201,3 +202,85 @@ def obtener_contexto_grafo(
                 contexto.append(f"- {predecesor} --[{rel}]--> {nodo} (Contexto: {ctx})")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."
+
+
+def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 80) -> Optional[bytes]:
+    """
+    Genera una imagen PNG del grafo de conocimiento y la devuelve como bytes.
+
+    Usa el backend Agg de matplotlib (sin GUI) para compatibilidad con Cloud Run.
+    Si el grafo tiene más de max_nodos nodos, dibuja solo los más conectados.
+
+    Returns:
+        bytes PNG si el grafo tiene nodos, None si el grafo es None o vacío.
+    """
+    if G is None or G.number_of_nodes() == 0:
+        return None
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")  # Backend sin GUI, compatible con Cloud Run
+        import matplotlib.pyplot as plt
+
+        # Si hay demasiados nodos, filtrar a los más conectados
+        if G.number_of_nodes() > max_nodos:
+            grado = dict(G.degree())
+            top_nodos = sorted(grado, key=grado.get, reverse=True)[:max_nodos]
+            G = G.subgraph(top_nodos)
+
+        fig, ax = plt.subplots(figsize=(18, 12))
+
+        # Layout jerárquico si es un DAG, de lo contrario spring
+        try:
+            pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
+        except Exception:
+            pos = nx.spring_layout(G, seed=42, k=2.5)
+
+        # Colorear nodos por tipo
+        colores = []
+        for nodo in G.nodes():
+            tipo = G.nodes[nodo].get("tipo", "")
+            if tipo == "CAPITULO":
+                colores.append("#4A90D9")
+            elif tipo == "ANEXO":
+                colores.append("#E67E22")
+            else:
+                colores.append("#95A5A6")
+
+        nx.draw_networkx(
+            G,
+            pos=pos,
+            ax=ax,
+            node_color=colores,
+            node_size=800,
+            font_size=6,
+            arrows=True,
+            arrowsize=12,
+            edge_color="#AAAAAA",
+            width=0.8,
+        )
+
+        # Etiquetas de aristas (relaciones)
+        edge_labels = {(u, v): d.get("relacion", "") for u, v, d in G.edges(data=True)}
+        nx.draw_networkx_edge_labels(
+            G, pos=pos, edge_labels=edge_labels,
+            font_size=5, ax=ax,
+        )
+
+        ax.set_title(
+            f"Grafo de Conocimiento ContractIA — "
+            f"{G.number_of_nodes()} nodos, {G.number_of_edges()} relaciones",
+            fontsize=12,
+        )
+        ax.axis("off")
+        plt.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+
+    except Exception as e:
+        print(f"⚠️ No se pudo generar imagen del grafo: {e}")
+        return None

@@ -1,10 +1,35 @@
-# ContractIA v9.2.0
+# ContractIA v9.4.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 3.1 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.4.0
+
+| Área | Cambio |
+|------|--------|
+| **Informe Técnico (Admin)** | Nuevo PDF técnico exclusivo para usuarios `admin`: incluye análisis estructural (Fase 0/0.5), validación de secuencia de cláusulas con gaps detectados, estadísticas del grafo GraphRAG (nodos, aristas, tipos de relación, top-10 conectados), listado completo de relaciones y visualización del grafo como imagen PNG |
+| **`segmenter.py`** | Nueva función `separar_en_secciones_con_metadata()` que devuelve `(secciones, metadata_tecnica)` con datos de Fase 0 y 0.5; calcula secuencias de cláusulas con detalle de gaps |
+| **`graph.py`** | Nueva función `generar_imagen_grafo()` usando matplotlib Agg (sin GUI, compatible Cloud Run); colorea nodos por tipo (capítulo/anexo), dibuja relaciones etiquetadas, devuelve bytes PNG |
+| **`orchestrator.py`** | Retorna `metadata_tecnica`, `grafo` e `imagen_grafo_png` en el resultado de auditoría |
+| **`pdf_report_tecnico.py`** | Nuevo generador de PDF técnico (fpdf2); encabezado corporativo, tablas de validación, listado de aristas, imagen del grafo embebida |
+| **`sender.py`** | Soporte para segundo PDF adjunto en el email (`adjunto_pdf_tecnico`, `adjunto_nombre_tecnico`) |
+| **`database.py`** | Nuevas columnas `metadata_tecnica TEXT` y `graph_data TEXT` en `auditorias`; migraciones idempotentes |
+| **`contracts_router.py`** | Guarda metadata y grafo serializado (JSON node-link) cuando es admin; nuevo endpoint `GET /contracts/audit/{id}/pdf-tecnico` (requiere rol admin); envía PDF técnico como segundo adjunto en el email |
+| **Dashboard** | Botón "Técnico" (ícono FlaskConical, color púrpura) en historial de auditorías — visible solo para admins cuando hay datos técnicos disponibles |
+
+## Novedades v9.3.0 — v9.3.2
+
+| Área | Cambio |
+|------|--------|
+| **v9.3.2 — Separación RAG** | `contexto_rag` pasa como variable separada `{contexto_rag}` con tag `<contexto_rag>` (antes mezclado en `{texto}`); los agentes ya no pueden auditar contenido del contexto RAG |
+| **v9.3.2 — Tipos explícitos** | Cada agente restringe el campo `tipo` a valores exactos: Jurista→`INCONSISTENCIA_PROCEDIMENTAL`, Auditor→`REFERENCIA_INEXISTENTE\|REFERENCIA_ROTA`, Cronista→`ERROR_PLAZOS\|ERROR_LOGICO` |
+| **v9.3.1 — Sin truncado** | Eliminado `_MAX_SECTION_CHARS`: se envía el texto completo de cada sección a los agentes |
+| **v9.3.0 — Jurista rediseñado** | Nuevo rol "Especialista en Lógica Procedimental": detecta inconsistencias operativas internas (no normativa externa) |
+| **v9.3.0 — Auditor simplificado** | 6 reglas limpias + XML tags; prohibición absoluta de auditar referencias a leyes/decretos externos |
+| **v9.3.0 — Agentes paralelos** | Los 3 agentes se ejecutan en paralelo con `ThreadPoolExecutor(max_workers=3)` |
 
 ## Novedades v9.2.0
 
@@ -233,6 +258,7 @@ ContractIA/
 | `GET`  | `/contracts/audits` | Historial de auditorías del usuario |
 | `GET`  | `/contracts/audit/{id}` | Polling de estado y resultado de auditoría |
 | `GET`  | `/contracts/audit/{id}/pdf` | Descarga el informe en PDF |
+| `GET`  | `/contracts/audit/{id}/pdf-tecnico` | Descarga el informe técnico en PDF (solo admin) |
 | `PATCH`| `/contracts/audit/{id}/cancelar` | Cancela una auditoría atascada |
 
 ### Admin (`/admin`)

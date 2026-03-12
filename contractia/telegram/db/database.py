@@ -109,6 +109,9 @@ def init_db() -> None:
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS progress_pct INTEGER DEFAULT 0")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS graph_enabled BOOLEAN DEFAULT FALSE")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS texto_contrato TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS technical_report_url TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS metadata_tecnica TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS graph_data TEXT")
 
 
 def get_texto_auditoria(audit_id: str) -> Optional[str]:
@@ -164,7 +167,8 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
     with get_conn() as conn:
         row = conn.execute(
             "SELECT status, informe, n_hallazgos, n_secciones, "
-            "error_detail, progress_msg, progress_pct, filename, graph_enabled "
+            "error_detail, progress_msg, progress_pct, filename, graph_enabled, "
+            "technical_report_url "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
@@ -176,7 +180,8 @@ def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT audit_id, status, filename, n_hallazgos, n_secciones, "
-            "progress_msg, progress_pct, error_detail, graph_enabled, created_at, updated_at "
+            "progress_msg, progress_pct, error_detail, graph_enabled, "
+            "technical_report_url, created_at, updated_at "
             "FROM auditorias WHERE user_id = %s "
             "ORDER BY created_at DESC LIMIT %s",
             (user_id, limit),
