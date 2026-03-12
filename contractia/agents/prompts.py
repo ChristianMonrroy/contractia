@@ -6,6 +6,15 @@ v9.3.0: Alineación con notebook vs14
 - Jurista: nuevo rol "Especialista en Lógica Procedimental" (detecta inconsistencias procedimentales)
 - Auditor: simplificado a 6 reglas limpias + XML tags (elimina árbol de pasos CoT)
 - Cronista: simplificado + XML tags (elimina árbol de pasos CoT)
+
+v9.3.1: Sin truncado de sección (igual que notebook)
+- Eliminado _MAX_SECTION_CHARS: se envía el texto completo de cada sección
+
+v9.3.2: Reducción de falsos positivos y duplicados
+- contexto_rag separado en su propio tag <contexto_rag> (evita contaminación de sección)
+- Jurista/Auditor/Cronista: tipo restringido a valores explícitos
+- Auditor: criterio explícito para ignorar leyes/decretos externos
+- Cronista: ejemplo negativo explícito para regla de días
 """
 
 from langchain_core.prompts import PromptTemplate
@@ -24,8 +33,9 @@ PROMPT_JURISTA = PromptTemplate(
         "Identifica inconsistencias PROCEDIMENTALES, operativas o lógicas dentro del <texto_seccion>.\n\n"
 
         "# REGLAS\n"
-        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE el <texto_seccion>. "
-        "El <contexto_grafo> es solo material de consulta.\n"
+        "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE el contenido de <texto_seccion>. "
+        "El <contexto_grafo> y el <contexto_rag> son SOLO material de consulta — NUNCA los audites. "
+        "Si encuentras un error en el contexto, ignóralo completamente.\n"
         "- **CERO ANÁLISIS LEGAL (CRÍTICO):** No evalúes la validez legal, ni la técnica de redacción, "
         "ni las remisiones a leyes externas. Tu análisis es 100% sobre la mecánica de los procedimientos "
         "internos (ej. obligaciones contradictorias, flujos de trabajo imposibles, requisitos circulares).\n"
@@ -35,7 +45,9 @@ PROMPT_JURISTA = PromptTemplate(
         "Eso es responsabilidad del Cronista.\n"
         "- **MANEJO DE EXCEPCIONES:** Acepta como válidas las excepciones operativas explícitas "
         "('Excepcionalmente', 'Salvo que', 'Sin perjuicio de').\n"
-        "- **CONCIENCIA TEMPORAL:** Hoy es {fecha_actual}.\n\n"
+        "- **CONCIENCIA TEMPORAL:** Hoy es {fecha_actual}.\n"
+        "- **TIPO PERMITIDO:** El campo `tipo` SOLO puede ser: `INCONSISTENCIA_PROCEDIMENTAL`. "
+        "No uses ningún otro valor.\n\n"
 
         "# FORMATO DE SALIDA\n"
         "Responde ÚNICAMENTE con el siguiente bloque de código JSON:\n\n"
@@ -56,9 +68,10 @@ PROMPT_JURISTA = PromptTemplate(
 
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -74,7 +87,9 @@ PROMPT_AUDITOR = PromptTemplate(
         "Valida las referencias cruzadas internas que se hacen DENTRO del <texto_seccion>.\n\n"
 
         "# REGLAS\n"
-        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE las referencias escritas en el <texto_seccion>.\n"
+        "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE las referencias escritas en <texto_seccion>. "
+        "El <contexto_grafo> y el <contexto_rag> son SOLO material de consulta — NUNCA los audites. "
+        "Si encuentras un error en el contexto, ignóralo completamente.\n"
         "1. Identifica la **Cláusula Específica** (ej. 5.1) del <texto_seccion> donde ocurre el error.\n"
         "2. Compara las referencias del texto con el <indice_global>. "
         "Si se menciona una cláusula que NO está en el índice, es un error de REFERENCIA_INEXISTENTE.\n"
@@ -82,11 +97,14 @@ PROMPT_AUDITOR = PromptTemplate(
         "4. **EXCLUSIÓN DE PLAZOS:** Tu único trabajo es verificar si la cláusula referenciada EXISTE "
         "y si habla del MISMO TEMA. Si los plazos no cuadran, IGNÓRALO.\n"
         "5. **PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO):** Es válido que el contrato cite leyes "
-        "externas. **NO marques como 'referencia rota' o 'ambigüedad' el hecho de que el contrato remita "
-        "a una ley (ej. Código Civil) sin explicarla.** Solo audita referencias a 'Cláusulas' o 'Anexos' "
-        "del propio contrato.\n"
+        "externas. **Si la referencia contiene 'Ley', 'Decreto', 'Código', 'artículo X de la Ley Y', "
+        "o cualquier número de norma legal (ej. 'Decreto Legislativo Nro. 295', 'Ley Nro. 32441'): "
+        "IGNÓRALA completamente. No la audites, no la reportes.** "
+        "Solo audita referencias a 'Cláusulas' o 'Anexos' del propio contrato.\n"
         "6. **REGLA DE ORO DE REFERENCIAS:** Salvo que el texto diga explícitamente 'del Anexo X', "
-        "toda mención a una 'Cláusula Y' se refiere a la cláusula del CONTRATO PRINCIPAL.\n\n"
+        "toda mención a una 'Cláusula Y' se refiere a la cláusula del CONTRATO PRINCIPAL.\n"
+        "- **TIPOS PERMITIDOS:** El campo `tipo` SOLO puede ser: `REFERENCIA_INEXISTENTE` o "
+        "`REFERENCIA_ROTA`. No uses ningún otro valor.\n\n"
 
         "**CONCIENCIA TEMPORAL:** Hoy es {fecha_actual}.\n\n"
 
@@ -110,9 +128,10 @@ PROMPT_AUDITOR = PromptTemplate(
         "# DATOS DE ENTRADA\n"
         "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "idx_glob", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "contexto_rag", "idx_glob", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -128,20 +147,26 @@ PROMPT_CRONISTA = PromptTemplate(
         "Analiza el <texto_seccion> para detectar errores en la cadena de eventos y plazos.\n\n"
 
         "# REGLAS\n"
-        "- **REGLA DE ENFOQUE:** Audita ÚNICAMENTE los plazos descritos en el <texto_seccion>.\n"
+        "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE los plazos descritos en <texto_seccion>. "
+        "El <contexto_grafo> y el <contexto_rag> son SOLO material de consulta — NUNCA los audites. "
+        "Si encuentras un error en el contexto, ignóralo completamente.\n"
         "- **REGLA DE INTERPRETACIÓN DE DÍAS (CRÍTICO):** Para tu análisis, asume SIEMPRE que 'Días' "
         "significa días hábiles y 'Días Calendario' significa días naturales. "
         "**NO reportes como error o ambigüedad que el contrato omita definir estos términos**, "
-        "simplemente aplica esta regla.\n"
+        "simplemente aplica esta regla. "
+        "EJEMPLO PROHIBIDO: 'Los plazos se contabilizan desde el Día siguiente' → NO reportar. "
+        "Aplica la regla (días hábiles) y continúa sin generar hallazgo.\n"
         "- **PROHIBICIÓN ABSOLUTA DE EXTERNALIDADES (CRÍTICO):** Es válido y legal que el contrato "
-        "remita a leyes externas (ej. Código Civil) para el cómputo de plazos. "
+        "remita a leyes externas (ej. Código Civil, artículo 183) para el cómputo de plazos. "
         "**NO reportes como error, ambigüedad o 'falta de autocontención' el hecho de que el contrato "
         "cite una norma sin transcribirla.** Asume que la remisión es correcta y no la analices.\n"
         "- **MANEJO DE EXCEPCIONES TEMPORALES:** Si el contrato establece una regla excepcional para "
         "un cálculo de plazos, ACÉPTALA como válida.\n"
         "- **CONCIENCIA TEMPORAL Y CONTEXTO DE BORRADOR:** Hoy es {fecha_actual}. Ten en cuenta que "
         "este contrato puede estar en elaboración. NO reportes como error las fechas pasadas mencionadas "
-        "en los 'Antecedentes' o narraciones históricas.\n\n"
+        "en los 'Antecedentes' o narraciones históricas.\n"
+        "- **TIPOS PERMITIDOS:** El campo `tipo` SOLO puede ser: `ERROR_PLAZOS` o `ERROR_LOGICO`. "
+        "No uses ningún otro valor.\n\n"
 
         "# FORMATO DE SALIDA\n"
         "Responde ÚNICAMENTE con el siguiente bloque de código JSON:\n\n"
@@ -164,7 +189,8 @@ PROMPT_CRONISTA = PromptTemplate(
 
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )

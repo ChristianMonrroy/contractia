@@ -11,6 +11,10 @@ v9.3.0: Alineación con notebook vs14
 v9.3.1: Sin truncado de sección (igual que notebook)
 - Eliminado _MAX_SECTION_CHARS: se envía el texto completo de cada sección
 - Evita falsos positivos por literales cortados (ej. literal k de Cláusula 3.3)
+
+v9.3.2: Reducción de falsos positivos y duplicados
+- contexto_rag se pasa como variable separada {contexto_rag} (no mezclado en {texto})
+- Evita que los agentes auditen contenido del contexto RAG en lugar de la sección
 """
 
 import time
@@ -121,33 +125,42 @@ def auditar_consistencia(
 
     str_idx_glob = ", ".join(indice_global_clausulas)
 
-    # Texto enriquecido: texto completo de la sección + contexto RAG/Scout
-    texto_enriquecido = texto_seccion + contexto_rag
-
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
     # ── Los 3 agentes son independientes → se ejecutan en paralelo ──────────────
+    # texto_seccion y contexto_rag se pasan separados para evitar contaminación
     with ThreadPoolExecutor(max_workers=3) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
             jurista,
-            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
+            {
+                "texto": texto_seccion,
+                "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
+                "fecha_actual": fecha_hoy,
+            },
         )
         fut_auditor = pool.submit(
             _ejecutar_con_reintento,
             auditor,
             {
-                "texto": texto_enriquecido,
+                "texto": texto_seccion,
                 "idx_glob": str_idx_glob,
                 "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
             cronista,
-            {"texto": texto_enriquecido, "contexto_grafo": contexto_grafo, "fecha_actual": fecha_hoy},
+            {
+                "texto": texto_seccion,
+                "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
+                "fecha_actual": fecha_hoy,
+            },
         )
         res_jurista = fut_jurista.result()
         res_auditor = fut_auditor.result()
