@@ -62,7 +62,7 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 text-blue-200 text-sm font-medium px-4 py-2 rounded-full mb-6 backdrop-blur-sm border border-white/10">
             <Bot className="w-4 h-4" />
-            Impulsado por Gemini 2.5 Pro + Multi-Agentes IA
+            Impulsado por Gemini 3.1 Pro + Multi-Agentes IA
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6 tracking-tight">
             Auditoría inteligente<br />
@@ -204,7 +204,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="bg-[#0f2040] text-white/50 py-8 px-4 text-center text-sm">
         <p>© 2025 ContractIA — Sistema de auditoría inteligente de contratos</p>
-        <p className="mt-1">Desarrollado con IA generativa · Gemini 2.5 Pro · LangChain</p>
+        <p className="mt-1">Desarrollado con IA generativa · Gemini 3.1 Pro · LangChain</p>
       </footer>
     </div>
   );
