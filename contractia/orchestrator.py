@@ -7,6 +7,10 @@ v9.3.0: Alineación con notebook vs14
 - Auditor ya no recibe idx_sec, idx_loc ni refs_externas
 - sleep entre secciones: 0.5s → 2s
 - auditar_consistencia() con firma simplificada
+
+v9.3.1: Sin truncado de sección (igual que notebook)
+- Eliminado _MAX_SECTION_CHARS: se envía el texto completo de cada sección
+- Evita falsos positivos por literales cortados (ej. literal k de Cláusula 3.3)
 """
 
 import time
@@ -28,9 +32,6 @@ from contractia.core.segmenter import (
     separar_en_secciones,
 )
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
-
-# Máximo de caracteres por sección enviada a los agentes.
-_MAX_SECTION_CHARS = 8_000
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
 _MAX_REINTENTOS = 3
@@ -96,16 +97,13 @@ def auditar_consistencia(
 
     jurista, auditor, cronista = crear_agentes(llm)
 
-    # Truncar sección para evitar prompts gigantes (→ lentitud / timeouts en Gemini)
-    texto_truncado = texto_seccion[:_MAX_SECTION_CHARS]
-
     # ── RAG: contexto adicional (estático o agéntico según config) ──────────────
     contexto_rag = ""
     if retriever is not None:
         if AGENTIC_RAG_ENABLED and vector_store is not None:
             try:
                 scout = crear_scout(llm, retriever, vector_store)
-                ctx_scout = scout.ejecutar(texto_truncado)
+                ctx_scout = scout.ejecutar(texto_seccion)
                 if ctx_scout:
                     contexto_rag = (
                         "\n\n--- CONTEXTO AGÉNTICO (Scout v9.0) ---\n"
@@ -114,17 +112,17 @@ def auditar_consistencia(
                     )
                     print(f"   🔍 Scout: {len(ctx_scout)} chars de contexto enriquecido")
                 else:
-                    contexto_rag = _rag_estatico(retriever, texto_truncado)
+                    contexto_rag = _rag_estatico(retriever, texto_seccion)
             except Exception as e:
                 print(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
-                contexto_rag = _rag_estatico(retriever, texto_truncado)
+                contexto_rag = _rag_estatico(retriever, texto_seccion)
         else:
-            contexto_rag = _rag_estatico(retriever, texto_truncado)
+            contexto_rag = _rag_estatico(retriever, texto_seccion)
 
     str_idx_glob = ", ".join(indice_global_clausulas)
 
-    # Texto enriquecido: texto original + contexto RAG/Scout para los 3 agentes
-    texto_enriquecido = texto_truncado + contexto_rag
+    # Texto enriquecido: texto completo de la sección + contexto RAG/Scout
+    texto_enriquecido = texto_seccion + contexto_rag
 
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
