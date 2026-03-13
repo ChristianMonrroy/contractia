@@ -24,6 +24,10 @@ VERTEXAI_PROJECT: str           = os.getenv("VERTEXAI_PROJECT", "")
 VERTEXAI_LOCATION: str          = os.getenv("VERTEXAI_LOCATION", "us-central1")
 VERTEXAI_MODEL: str             = os.getenv("VERTEXAI_MODEL", "gemini-2.5-pro")
 VERTEXAI_FALLBACK: str          = os.getenv("VERTEXAI_FALLBACK", "gemini-2.5-pro")
+VERTEXAI_MODELOS_PERMITIDOS: list = [
+    "gemini-2.5-pro",
+    "gemini-3.1-pro-preview",
+]
 VERTEXAI_TEMPERATURE: float     = float(os.getenv("VERTEXAI_TEMPERATURE", "0.0"))
 VERTEXAI_MAX_TOKENS: int        = int(os.getenv("VERTEXAI_MAX_OUTPUT_TOKENS", "8192"))
 VERTEXAI_EMBEDDING_MODEL: str   = os.getenv("VERTEXAI_EMBEDDING_MODEL", "text-embedding-004")

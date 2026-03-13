@@ -45,6 +45,7 @@ _mapa_textos: dict = {}
 class QueryRequest(BaseModel):
     pregunta: str
     session_id: str
+    modelo: str = "gemini-2.5-pro"
 
 
 class FromAuditRequest(BaseModel):
@@ -226,7 +227,9 @@ async def query_contract(
         except Exception as e:
             print(f"[QUERY] Error GraphRAG: {e}")
 
-    llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS
+    modelo = body.modelo if body.modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
+    llm = await asyncio.get_event_loop().run_in_executor(None, lambda: build_llm(model_override=modelo))
     prompt = _PROMPT.format(contexto=contexto, seccion_grafo=seccion_grafo, pregunta=body.pregunta)
     start = time.time()
     respuesta = await asyncio.get_event_loop().run_in_executor(None, lambda: llm.invoke(prompt))
@@ -246,6 +249,7 @@ async def query_contract(
 async def start_audit(
     file: UploadFile = File(...),
     graph_enabled: bool = Form(False),
+    modelo: str = Form("gemini-2.5-pro"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     user: dict = Depends(get_current_user),
 ):
@@ -279,9 +283,11 @@ async def start_audit(
     tmp_file = tmp_dir / f"contrato{ext}"
     tmp_file.write_bytes(await file.read())
 
+    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS
+    modelo_validado = modelo if modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
     background_tasks.add_task(
         _run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"],
-        graph_enabled, usuario["rol"] == "admin",
+        graph_enabled, usuario["rol"] == "admin", modelo_validado,
     )
     return {"audit_id": audit_id, "status": "processing"}
 
@@ -432,7 +438,7 @@ async def _keepalive(stop: asyncio.Event, interval: int = 30) -> None:
         await asyncio.sleep(interval)
 
 
-async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False, is_admin: bool = False):
+async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, email: str, graph_enabled: bool = False, is_admin: bool = False, modelo: str = "gemini-2.5-pro"):
     import shutil
     _stop_keepalive = asyncio.Event()
     _keepalive_task = asyncio.create_task(_keepalive(_stop_keepalive))
@@ -461,14 +467,15 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
 
             modo = "RAG + GraphRAG" if graph_enabled else "RAG"
             actualizar_auditoria(audit_id, progress_msg=f"Construyendo base de conocimiento ({modo})...", progress_pct=30)
-            llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            llm = await asyncio.get_event_loop().run_in_executor(None, lambda: build_llm(model_override=modelo))
 
             actualizar_auditoria(audit_id, progress_msg="Auditando sección 1…", progress_pct=55)
             progress_cb = _make_progress_callback(audit_id)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(
-                    texto, llm, graph_enabled=graph_enabled, progress_callback=progress_cb
+                    texto, llm, graph_enabled=graph_enabled,
+                    progress_callback=progress_cb, modelo=modelo,
                 )
             )
             duracion = round(time.time() - start, 1)

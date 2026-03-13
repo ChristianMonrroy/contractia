@@ -42,6 +42,7 @@ function AuditContent() {
   const [progressMsg, setProgressMsg] = useState("");
   const [graphEnabled, setGraphEnabled] = useState(false);
   const [queryGraphEnabled, setQueryGraphEnabled] = useState(false);
+  const [modeloSeleccionado, setModeloSeleccionado] = useState("gemini-2.5-pro");
   const [progressPct, setProgressPct] = useState(0);
   const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -143,7 +144,7 @@ function AuditContent() {
     setProgressMsg("Iniciando...");
     setProgressPct(5);
     try {
-      const res = await contractsAPI.audit(uploadedFile, graphEnabled);
+      const res = await contractsAPI.audit(uploadedFile, graphEnabled, modeloSeleccionado);
       const auditId = res.data.audit_id;
       setCurrentAuditId(auditId);
       const poll = setInterval(async () => {
@@ -202,7 +203,7 @@ function AuditContent() {
     setQuestion("");
     setQueryLoading(true);
     try {
-      const res = await contractsAPI.query({ session_id: sessionId, pregunta: q });
+      const res = await contractsAPI.query({ session_id: sessionId, pregunta: q, modelo: modeloSeleccionado });
       setMessages((prev) => [...prev, { role: "ai", text: res.data.respuesta }]);
     } catch {
       setMessages((prev) => [...prev, { role: "ai", text: "❌ Error al procesar la pregunta." }]);
@@ -369,6 +370,47 @@ function AuditContent() {
                 </div>
                 <div className="text-xs text-slate-500">RAG + grafo de conocimiento. Detecta relaciones entre cláusulas.</div>
                 <div className="text-xs text-slate-400 mt-1">Indexado: ~5-10 min</div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Selector de modelo LLM (visible en idle/error, ambos modos) */}
+        {(status === "idle" || status === "error") && (
+          <div className="mb-6">
+            <p className="text-sm font-medium text-slate-600 mb-3">Modelo de IA</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <button
+                onClick={() => setModeloSeleccionado("gemini-2.5-pro")}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  modeloSeleccionado === "gemini-2.5-pro"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                }`}
+              >
+                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                  Gemini 2.5 Pro
+                  {modeloSeleccionado === "gemini-2.5-pro" && (
+                    <span className="ml-2 text-xs text-blue-600 font-medium">✓ Seleccionado</span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500">Modelo estable. Ideal para la mayoría de contratos.</div>
+              </button>
+              <button
+                onClick={() => setModeloSeleccionado("gemini-3.1-pro-preview")}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  modeloSeleccionado === "gemini-3.1-pro-preview"
+                    ? "border-emerald-500 bg-emerald-50"
+                    : "border-slate-200 hover:border-slate-300 bg-white"
+                }`}
+              >
+                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                  Gemini 3.1 Pro Preview
+                  {modeloSeleccionado === "gemini-3.1-pro-preview" && (
+                    <span className="ml-2 text-xs text-emerald-600 font-medium">✓ Seleccionado</span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-500">Modelo avanzado. Mayor razonamiento y precisión.</div>
               </button>
             </div>
           </div>

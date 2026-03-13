@@ -32,6 +32,7 @@ async def ejecutar_auditoria(
     context: ContextTypes.DEFAULT_TYPE,
     ruta_archivo: str,
     graph_enabled: bool = False,
+    modelo: str = "gemini-2.5-pro",
 ) -> None:
     """Orquesta la auditoría completa y envía el informe al usuario."""
     if _auditoria_lock.locked():
@@ -59,16 +60,22 @@ async def ejecutar_auditoria(
                 return
 
             modo = "RAG + GraphRAG" if graph_enabled else "RAG"
+            nombre_modelo = "Gemini 3.1 Pro Preview" if modelo == "gemini-3.1-pro-preview" else "Gemini 2.5 Pro"
             await update.message.reply_text(
                 f"🔍 Analizando el contrato con los agentes de IA \\({modo}\\)\\.\\.\\.\n"
+                f"_Modelo: {nombre_modelo}_\n"
                 "_Esto puede tardar varios minutos según el tamaño del contrato\\._",
                 parse_mode="MarkdownV2",
             )
 
-            llm = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            llm = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: build_llm(model_override=modelo)
+            )
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: ejecutar_auditoria_contrato(texto, llm, graph_enabled=graph_enabled)
+                None, lambda: ejecutar_auditoria_contrato(
+                    texto, llm, graph_enabled=graph_enabled, modelo=modelo
+                )
             )
             duracion = round(time.time() - start, 1)
 
@@ -95,6 +102,7 @@ async def ejecutar_auditoria(
                     caption=(
                         f"📋 *Informe de Auditoría ContractIA*\n"
                         f"• Modo: {modo}\n"
+                        f"• Modelo: {nombre_modelo}\n"
                         f"• Secciones con hallazgos: {n_secciones}\n"
                         f"• Total de hallazgos: {n_hallazgos}"
                     ),

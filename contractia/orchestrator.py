@@ -195,6 +195,7 @@ def ejecutar_auditoria_contrato(
     llm,
     graph_enabled: bool = GRAPH_ENABLED,
     progress_callback: Optional[Callable[[int, str], bool]] = None,
+    modelo: Optional[str] = None,
 ) -> Dict:
     """
     Pipeline completo de auditoría:
@@ -207,6 +208,8 @@ def ejecutar_auditoria_contrato(
         progress_callback: función(pct: int, msg: str) -> bool.
                            Llamada al iniciar cada sección.
                            Si devuelve True, el loop se detiene (cancelación externa).
+        modelo: ID de modelo VertexAI a usar (ej. 'gemini-3.1-pro-preview').
+                Si None, usa el default de config (VERTEXAI_MODEL).
     """
     secciones, metadata_tecnica = separar_en_secciones_con_metadata(texto_contrato)
     indice_secciones = crear_indice_capitulos_anexos(secciones)
@@ -301,4 +304,5 @@ def ejecutar_auditoria_contrato(
         "metadata_tecnica": metadata_tecnica,
         "grafo": grafo,
         "imagen_grafo_png": imagen_grafo_png,
+        "modelo_usado": modelo or "gemini-2.5-pro",
     }

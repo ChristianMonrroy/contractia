@@ -17,23 +17,34 @@ from contractia.config import (
     VERTEXAI_LOCATION,
     VERTEXAI_MAX_TOKENS,
     VERTEXAI_MODEL,
+    VERTEXAI_MODELOS_PERMITIDOS,
     VERTEXAI_PROJECT,
     VERTEXAI_TEMPERATURE,
 )
 
 
-def build_llm():
+def build_llm(model_override: str | None = None):
     """
     Construye e inicializa el LLM según LLM_PROVIDER.
     Intenta el modelo principal; si falla, usa el fallback.
+
+    Args:
+        model_override: ID de modelo VertexAI a usar en lugar del default de config.
+                        Debe estar en VERTEXAI_MODELOS_PERMITIDOS.
     """
     if not ENABLE_LLM:
         raise RuntimeError("ENABLE_LLM=false. Actívalo en .env para usar el LLM.")
 
+    if model_override and model_override not in VERTEXAI_MODELOS_PERMITIDOS:
+        raise ValueError(
+            f"Modelo '{model_override}' no permitido. "
+            f"Usa uno de: {VERTEXAI_MODELOS_PERMITIDOS}"
+        )
+
     if LLM_PROVIDER == "ollama":
         return _build_ollama()
     elif LLM_PROVIDER == "vertexai":
-        return _build_vertexai()
+        return _build_vertexai(model_override=model_override)
     else:
         raise ValueError(f"LLM_PROVIDER no reconocido: '{LLM_PROVIDER}'. Usa 'ollama' o 'vertexai'.")
 
@@ -63,7 +74,7 @@ def _build_ollama():
     raise RuntimeError("No se pudo inicializar ningún modelo Ollama.")
 
 
-def _build_vertexai():
+def _build_vertexai(model_override: str | None = None):
     import vertexai
     from langchain_google_vertexai import ChatVertexAI
 
@@ -89,7 +100,12 @@ def _build_vertexai():
     vertexai.init(project=VERTEXAI_PROJECT, location=VERTEXAI_LOCATION)
     print(f"✅ Vertex AI inicializado. Proyecto: {VERTEXAI_PROJECT}")
 
-    for model_name in [VERTEXAI_MODEL, VERTEXAI_FALLBACK]:
+    # Si hay override, usarlo como primer candidato; fallback al default de config
+    modelos_a_intentar = (
+        [model_override, VERTEXAI_FALLBACK] if model_override
+        else [VERTEXAI_MODEL, VERTEXAI_FALLBACK]
+    )
+    for model_name in modelos_a_intentar:
         try:
             print(f"ℹ️  Inicializando Vertex AI: {model_name}")
             llm = ChatVertexAI(

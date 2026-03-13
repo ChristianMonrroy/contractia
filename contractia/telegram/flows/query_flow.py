@@ -47,15 +47,14 @@ _PROMPT = (
     "RESPUESTA:"
 )
 
-# LLM compartido para toda la sesión del bot
-_llm = None
+# LLM cacheado por nombre de modelo
+_llm_cache: dict = {}
 
 
-def get_llm():
-    global _llm
-    if _llm is None:
-        _llm = build_llm()
-    return _llm
+def get_llm(modelo: str = "gemini-2.5-pro"):
+    if modelo not in _llm_cache:
+        _llm_cache[modelo] = build_llm(model_override=modelo)
+    return _llm_cache[modelo]
 
 
 async def indexar_contrato(
@@ -63,6 +62,7 @@ async def indexar_contrato(
     context: ContextTypes.DEFAULT_TYPE,
     ruta_archivo: str,
     graph_enabled: bool = False,
+    modelo: str = "gemini-2.5-pro",
 ) -> bool:
     """
     Extrae el texto del contrato, genera embeddings y guarda el retriever en sesión.
@@ -103,7 +103,7 @@ async def indexar_contrato(
                 "_(Esto agrega ~2-3 minutos adicionales)_",
                 parse_mode="Markdown",
             )
-            llm = get_llm()
+            llm = get_llm(modelo)
             mapa_textos = {
                 s.get("numero", ""): s
                 for s in secciones
@@ -148,6 +148,7 @@ async def responder_pregunta(
         )
         return
 
+    modelo = context.user_data.get("modelo", "gemini-2.5-pro")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
     try:
@@ -176,7 +177,7 @@ async def responder_pregunta(
             bloque_grafo=bloque_grafo,
             pregunta=pregunta,
         )
-        llm = get_llm()
+        llm = get_llm(modelo)
 
         start = time.time()
         respuesta = await asyncio.get_event_loop().run_in_executor(

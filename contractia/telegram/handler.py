@@ -5,15 +5,16 @@ Implementa una máquina de estados almacenada en context.user_data["estado"].
 No usa ConversationHandler para tener control total del flujo multi-paso.
 
 Estados:
-    INICIO              → usuario sin sesión activa
-    REGISTRO_EMAIL      → esperando el email del nuevo usuario
-    REGISTRO_CODIGO     → esperando el código OTP de verificación
-    LOGIN_PASSWORD      → esperando contraseña
-    MENU                → usuario autenticado, en el menú principal
-    SELECCIONANDO_GRAFO → eligió modo, esperando si activa GraphRAG (Sí/No)
-    ESPERANDO_ARCHIVO   → elegió modo + GraphRAG, debe subir el PDF/DOCX
-    MODO_PREGUNTAS      → contrato indexado, loop de preguntas
-    ADMIN_ROL_ID        → admin ingresando el telegram_id a modificar
+    INICIO               → usuario sin sesión activa
+    REGISTRO_EMAIL       → esperando el email del nuevo usuario
+    REGISTRO_CODIGO      → esperando el código OTP de verificación
+    LOGIN_PASSWORD       → esperando contraseña
+    MENU                 → usuario autenticado, en el menú principal
+    SELECCIONANDO_GRAFO  → eligió modo, esperando si activa GraphRAG (Sí/No)
+    SELECCIONANDO_MODELO → eligió GraphRAG, esperando selección de modelo IA
+    ESPERANDO_ARCHIVO    → eligió modo + GraphRAG + modelo, debe subir el PDF/DOCX
+    MODO_PREGUNTAS       → contrato indexado, loop de preguntas
+    ADMIN_ROL_ID         → admin ingresando el telegram_id a modificar
 """
 
 import os
@@ -63,6 +64,7 @@ REGISTRO_CODIGO = "registro_codigo"
 LOGIN_PASSWORD = "login_password"
 MENU = "menu"
 SELECCIONANDO_GRAFO = "seleccionando_grafo"
+SELECCIONANDO_MODELO = "seleccionando_modelo"
 ESPERANDO_ARCHIVO = "esperando_archivo"
 MODO_PREGUNTAS = "modo_preguntas"
 ADMIN_ROL_ID = "admin_rol_id"
@@ -208,6 +210,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     rol = usuario["rol"]
     modo = context.user_data.get("modo_pendiente", "preguntas")
     graph_enabled = context.user_data.get("graph_enabled", False)
+    modelo = context.user_data.get("modelo", "gemini-2.5-pro")
 
     # Verificar permisos y límites
     if modo == "auditoria":
@@ -258,9 +261,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         if modo == "auditoria":
             _set_estado(context, MENU)
-            await ejecutar_auditoria(update, context, tmp.name, graph_enabled=graph_enabled)
+            await ejecutar_auditoria(update, context, tmp.name, graph_enabled=graph_enabled, modelo=modelo)
         else:
-            exito = await indexar_contrato(update, context, tmp.name, graph_enabled=graph_enabled)
+            exito = await indexar_contrato(update, context, tmp.name, graph_enabled=graph_enabled, modelo=modelo)
             if exito:
                 _set_estado(context, MODO_PREGUNTAS)
             else:
@@ -310,6 +313,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if _estado(context) != SELECCIONANDO_GRAFO:
             return
         context.user_data["graph_enabled"] = (data == "graph_si")
+        _set_estado(context, SELECCIONANDO_MODELO)
+        keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🔵 Gemini 2.5 Pro",         callback_data="modelo_25"),
+                InlineKeyboardButton("🟢 Gemini 3.1 Pro Preview", callback_data="modelo_31"),
+            ]
+        ])
+        await query.message.reply_text(
+            "🤖 *¿Qué modelo de IA quieres usar?*\n\n"
+            "• *Gemini 2.5 Pro*: modelo estable y probado.\n"
+            "• *Gemini 3.1 Pro Preview*: modelo avanzado, más potente.",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    elif data in ("modelo_25", "modelo_31"):
+        if _estado(context) != SELECCIONANDO_MODELO:
+            return
+        context.user_data["modelo"] = "gemini-2.5-pro" if data == "modelo_25" else "gemini-3.1-pro-preview"
         _set_estado(context, ESPERANDO_ARCHIVO)
         await query.message.reply_text("📎 Envíame el contrato en PDF o DOCX:")
 
