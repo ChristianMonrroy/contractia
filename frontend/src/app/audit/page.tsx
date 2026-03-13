@@ -572,10 +572,21 @@ function AuditContent() {
                     </div>
 
                     {progressMsg && (
-                      <p className="text-blue-600 font-medium text-sm mb-4">{progressMsg}</p>
+                      <p className="text-blue-600 font-medium text-sm mb-3">{progressMsg}</p>
                     )}
 
-                    <div className="flex justify-center gap-6 text-sm text-slate-400 mt-4 mb-4">
+                    {/* Modelo en uso */}
+                    <div className="flex justify-center mb-4">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                        modeloSeleccionado === "gemini-3.1-pro-preview"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-blue-50 text-blue-700 border border-blue-200"
+                      }`}>
+                        🤖 {modeloSeleccionado === "gemini-3.1-pro-preview" ? "Gemini 3.1 Pro Preview" : "Gemini 2.5 Pro"}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-center gap-6 text-sm text-slate-400 mt-2 mb-4">
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>Jurista</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-150"></span>Auditor</span>
                       <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse delay-300"></span>Cronista</span>
