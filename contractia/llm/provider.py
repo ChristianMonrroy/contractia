@@ -97,8 +97,11 @@ def _build_vertexai(model_override: str | None = None):
     except Exception as _e:
         print(f"⚠️  model_rebuild parcial (no crítico): {_e}")
 
-    vertexai.init(project=VERTEXAI_PROJECT, location=VERTEXAI_LOCATION)
-    print(f"✅ Vertex AI inicializado. Proyecto: {VERTEXAI_PROJECT}")
+    # Modelos preview recientes (gemini-3.x) requieren el endpoint global
+    _candidate = model_override or VERTEXAI_MODEL
+    location = "global" if (_candidate and "gemini-3." in _candidate) else VERTEXAI_LOCATION
+    vertexai.init(project=VERTEXAI_PROJECT, location=location)
+    print(f"✅ Vertex AI inicializado. Proyecto: {VERTEXAI_PROJECT}, Location: {location}")
 
     # Si hay override, usarlo como primer candidato; fallback al default de config
     modelos_a_intentar = (
