@@ -4,7 +4,9 @@ El wrapper _PGConn mantiene la misma interfaz que sqlite3 para minimizar
 cambios en el resto del código (solo se necesita ? → %s en los queries).
 """
 
+import json
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 import psycopg2
@@ -117,6 +119,8 @@ def init_db() -> None:
         # v9.7.0: sistema de cola de auditorías
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS gcs_uri TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS queue_position INTEGER")
+        # v9.8.0: logs de diagnóstico por auditoría
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS audit_logs JSONB DEFAULT '[]'")
 
 
 def get_texto_auditoria(audit_id: str) -> Optional[str]:
@@ -183,11 +187,30 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
             "SELECT status, informe, n_hallazgos, n_secciones, "
             "error_detail, progress_msg, progress_pct, filename, graph_enabled, "
             "technical_report_url, metadata_tecnica, graph_data, modelo_usado, "
-            "created_at, queue_position, gcs_uri "
+            "created_at, queue_position, gcs_uri, "
+            "COALESCE(audit_logs, '[]'::jsonb) AS audit_logs "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def agregar_log_auditoria(audit_id: str, msg: str, nivel: str = "INFO") -> None:
+    """Añade una entrada al array JSONB audit_logs de una auditoría.
+
+    Nunca lanza excepción — el logging no debe interrumpir el flujo principal.
+    """
+    entry = json.dumps([{"ts": datetime.now(timezone.utc).isoformat(), "nivel": nivel, "msg": msg}])
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "UPDATE auditorias "
+                "SET audit_logs = COALESCE(audit_logs, '[]'::jsonb) || %s::jsonb "
+                "WHERE audit_id = %s",
+                (entry, audit_id),
+            )
+    except Exception:
+        pass
 
 
 def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:

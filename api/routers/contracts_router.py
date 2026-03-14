@@ -30,6 +30,7 @@ from contractia.telegram.db.database import (
     crear_auditoria, get_auditoria, actualizar_auditoria,
     get_auditorias_usuario, get_texto_auditoria, get_conn,
     get_n_auditorias_pendientes_usuario, recalcular_posiciones_cola,
+    agregar_log_auditoria,
 )
 from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
@@ -449,13 +450,14 @@ def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
 
 
 def _make_progress_callback(audit_id: str):
-    """Devuelve un callback que actualiza el progreso en DB.
+    """Devuelve un callback que actualiza el progreso en DB y añade entrada al log.
 
     Retorna True si la auditoría fue cancelada externamente (el loop debe detenerse).
     """
     def callback(pct: int, msg: str) -> bool:
         try:
             actualizar_auditoria(audit_id, progress_pct=pct, progress_msg=msg)
+            agregar_log_auditoria(audit_id, f"[{pct:3d}%] {msg}")
             state = get_auditoria(audit_id)
             return bool(state and state.get("status") != "processing")
         except Exception:
@@ -483,6 +485,8 @@ async def _queue_worker() -> None:
             if not state or state["status"] != "queued":
                 continue
 
+            agregar_log_auditoria(job.audit_id, f"Trabajo recibido de la cola — archivo: {job.filename}")
+
             # Verificar TTL (8 horas por defecto)
             created_at = state.get("created_at")
             if created_at:
@@ -490,6 +494,7 @@ async def _queue_worker() -> None:
                     created_at = created_at.replace(tzinfo=timezone.utc)
                 age = datetime.now(timezone.utc) - created_at
                 if age > timedelta(hours=QUEUE_JOB_TTL_HOURS):
+                    agregar_log_auditoria(job.audit_id, f"Trabajo expirado: {age.seconds//3600}h {(age.seconds%3600)//60}m en cola (TTL={QUEUE_JOB_TTL_HOURS}h)", nivel="WARN")
                     actualizar_auditoria(
                         job.audit_id,
                         status="error",
@@ -504,13 +509,16 @@ async def _queue_worker() -> None:
             tmp_dir = None
             if job.local_tmp_dir and Path(job.local_tmp_dir).exists():
                 tmp_dir = Path(job.local_tmp_dir)
+                agregar_log_auditoria(job.audit_id, "Archivo disponible en almacenamiento temporal local")
             elif job.gcs_uri:
+                agregar_log_auditoria(job.audit_id, f"Descargando archivo desde GCS: {job.gcs_uri}")
                 tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{job.user_id}_"))
                 dest = await asyncio.get_event_loop().run_in_executor(
                     None, lambda: download_audit_file(job.gcs_uri, tmp_dir)
                 )
                 if dest is None:
                     shutil.rmtree(tmp_dir, ignore_errors=True)
+                    agregar_log_auditoria(job.audit_id, "ERROR: No se pudo descargar el archivo desde GCS", nivel="ERROR")
                     actualizar_auditoria(
                         job.audit_id,
                         status="error",
@@ -519,7 +527,9 @@ async def _queue_worker() -> None:
                         queue_position=None,
                     )
                     continue
+                agregar_log_auditoria(job.audit_id, f"Archivo descargado correctamente: {dest.name}")
             else:
+                agregar_log_auditoria(job.audit_id, "ERROR: Archivo no disponible — servidor reiniciado sin GCS configurado", nivel="ERROR")
                 actualizar_auditoria(
                     job.audit_id,
                     status="error",
@@ -530,6 +540,7 @@ async def _queue_worker() -> None:
                 continue
 
             # Pasar a processing y recalcular posiciones del resto de la cola
+            agregar_log_auditoria(job.audit_id, f"Iniciando procesamiento — modelo: {job.modelo}, GraphRAG: {job.graph_enabled}")
             actualizar_auditoria(
                 job.audit_id,
                 status="processing",
@@ -553,6 +564,7 @@ async def _queue_worker() -> None:
 
         except Exception as e:
             print(f"[QUEUE WORKER] Error inesperado procesando {job.audit_id}: {e}")
+            agregar_log_auditoria(job.audit_id, f"Error inesperado en worker: {type(e).__name__}: {e}", nivel="ERROR")
         finally:
             queue.task_done()
 
@@ -587,11 +599,14 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
     _keepalive_task = asyncio.create_task(_keepalive(_stop_keepalive))
     async with _auditoria_lock:
         try:
+            agregar_log_auditoria(audit_id, f"=== Auditoría iniciada === archivo: {filename} | modelo: {modelo} | GraphRAG: {graph_enabled}")
             actualizar_auditoria(audit_id, progress_msg="Extrayendo texto del documento...", progress_pct=10)
+            agregar_log_auditoria(audit_id, "Extrayendo texto del documento...")
 
             def _ocr_progress(pct: int, msg: str) -> None:
                 try:
                     actualizar_auditoria(audit_id, progress_pct=pct, progress_msg=msg)
+                    agregar_log_auditoria(audit_id, f"[OCR] {msg}")
                 except Exception:
                     pass
 
@@ -599,8 +614,11 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 None, lambda: procesar_documentos_carpeta(tmp_dir, ocr_progress=_ocr_progress)
             )
             if not texto:
+                agregar_log_auditoria(audit_id, "ERROR: No se pudo extraer texto del documento", nivel="ERROR")
                 actualizar_auditoria(audit_id, status="error", error_detail="No se pudo extraer texto.")
                 return
+
+            agregar_log_auditoria(audit_id, f"Texto extraído correctamente ({len(texto):,} caracteres)")
 
             # Guardar texto para reutilizarlo en consultas interactivas futuras
             try:
@@ -610,9 +628,12 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
 
             modo = "RAG + GraphRAG" if graph_enabled else "RAG"
             actualizar_auditoria(audit_id, progress_msg=f"Construyendo base de conocimiento ({modo})...", progress_pct=30)
+            agregar_log_auditoria(audit_id, f"Construyendo base de conocimiento ({modo})...")
             llm = await asyncio.get_event_loop().run_in_executor(None, lambda: build_llm(model_override=modelo))
+            agregar_log_auditoria(audit_id, f"Modelo LLM cargado: {modelo}")
 
             actualizar_auditoria(audit_id, progress_msg="Auditando sección 1…", progress_pct=55)
+            agregar_log_auditoria(audit_id, "Ejecutando auditoría multiagente (Jurista · Auditor · Cronista)...")
             progress_cb = _make_progress_callback(audit_id)
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
@@ -624,6 +645,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             duracion = round(time.time() - start, 1)
 
             actualizar_auditoria(audit_id, progress_msg="Generando informe final...", progress_pct=90)
+            agregar_log_auditoria(audit_id, "Generando informe final...")
             modelo_usado = resultado.get("modelo_usado", modelo)
             md = render_auditoria_markdown(resultado, modelo=modelo_usado)
             n_hallazgos = sum(
@@ -659,6 +681,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 except Exception as te:
                     print(f"[TECNICO] No se pudo guardar metadata técnica: {te}")
 
+            agregar_log_auditoria(audit_id, f"=== Completado === {n_hallazgos} hallazgos | {n_secciones} secciones | {duracion}s | modelo: {modelo_usado}")
             actualizar_auditoria(
                 audit_id,
                 status="done",
@@ -708,6 +731,8 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             import traceback
             detail = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}"
             print(f"[AUDIT ERROR] {audit_id}: {detail}")
+            agregar_log_auditoria(audit_id, f"ERROR: {type(e).__name__}: {str(e)[:300]}", nivel="ERROR")
+            agregar_log_auditoria(audit_id, traceback.format_exc()[-600:], nivel="ERROR")
             actualizar_auditoria(audit_id, status="error", error_detail=str(e)[:500], progress_msg="Error")
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
