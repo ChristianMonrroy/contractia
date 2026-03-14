@@ -24,9 +24,12 @@ from contractia.telegram.correo.pdf_report import generar_pdf_auditoria
 from contractia.telegram.correo.pdf_report_tecnico import generar_pdf_tecnico
 from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_auditoria_lista
+from contractia.queue.audit_queue import AuditJob, enqueue_audit, get_audit_queue
+from contractia.queue.storage import delete_audit_file, download_audit_file, upload_audit_file
 from contractia.telegram.db.database import (
-    crear_auditoria, get_auditoria, actualizar_auditoria, hay_auditoria_en_progreso,
+    crear_auditoria, get_auditoria, actualizar_auditoria,
     get_auditorias_usuario, get_texto_auditoria, get_conn,
+    get_n_auditorias_pendientes_usuario, recalcular_posiciones_cola,
 )
 from contractia.telegram.db.uso import puede_auditar, puede_preguntar, registrar_auditoria, registrar_pregunta
 from contractia.telegram.db.usuarios import get_usuario
@@ -267,8 +270,15 @@ async def start_audit(
     if not puede_auditar(user_id, usuario["rol"]):
         raise HTTPException(429, "Límite diario de auditorías alcanzado.")
 
-    if hay_auditoria_en_progreso(max_minutos=20):
-        raise HTTPException(503, "Hay una auditoría en proceso. Intenta en unos minutos.")
+    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS, MODELOS_SOLO_ADMIN, MAX_QUEUE_PER_USER
+    modelo_validado = modelo if modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
+    if modelo_validado in MODELOS_SOLO_ADMIN and usuario["rol"] != "admin":
+        raise HTTPException(403, "Este modelo solo está disponible para administradores.")
+
+    # Límite de trabajos en cola por usuario
+    n_pendientes = get_n_auditorias_pendientes_usuario(user_id)
+    if n_pendientes >= MAX_QUEUE_PER_USER:
+        raise HTTPException(429, f"Límite de {MAX_QUEUE_PER_USER} auditorías pendientes alcanzado. Espera a que terminen las actuales.")
 
     ext = Path(file.filename or "contrato").suffix.lower()
     if ext not in (".pdf", ".docx"):
@@ -279,26 +289,44 @@ async def start_audit(
 
     filename = file.filename or f"contrato{ext}"
     audit_id = str(uuid.uuid4())
-    crear_auditoria(audit_id, user_id, filename=filename, graph_enabled=graph_enabled)
+    file_bytes = await file.read()
 
-    tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
-    tmp_file = tmp_dir / f"contrato{ext}"
-    tmp_file.write_bytes(await file.read())
-
-    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS, MODELOS_SOLO_ADMIN
-    modelo_validado = modelo if modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
-    if modelo_validado in MODELOS_SOLO_ADMIN and usuario["rol"] != "admin":
-        raise HTTPException(403, "Este modelo solo está disponible para administradores.")
-    # asyncio.create_task crea una Task independiente del scope ASGI de la request.
-    # Con BackgroundTasks, si el browser cierra la conexión antes de que inicie
-    # run_in_executor, uvicorn cancela el scope y _run_audit recibe CancelledError.
-    asyncio.create_task(
-        _run_audit(
-            audit_id, user_id, tmp_dir, filename, usuario["email"],
-            graph_enabled, usuario["rol"] == "admin", modelo_validado,
-        )
+    # Intentar subir a GCS para persistencia (fallback: guardar en /tmp)
+    gcs_uri = await asyncio.get_event_loop().run_in_executor(
+        None, lambda: upload_audit_file(audit_id, file_bytes, ext)
     )
-    return {"audit_id": audit_id, "status": "processing"}
+    local_tmp_dir = None
+    if not gcs_uri:
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{user_id}_"))
+        (tmp_dir / f"contrato{ext}").write_bytes(file_bytes)
+        local_tmp_dir = str(tmp_dir)
+
+    # Calcular posición en cola (posición = número de trabajos pendientes + 1)
+    queue_position = n_pendientes + 1
+
+    crear_auditoria(
+        audit_id, user_id,
+        filename=filename,
+        graph_enabled=graph_enabled,
+        status="queued",
+        queue_position=queue_position,
+        gcs_uri=gcs_uri,
+    )
+
+    job = AuditJob(
+        audit_id=audit_id,
+        user_id=user_id,
+        filename=filename,
+        email=usuario["email"],
+        graph_enabled=graph_enabled,
+        is_admin=usuario["rol"] == "admin",
+        modelo=modelo_validado,
+        gcs_uri=gcs_uri,
+        local_tmp_dir=local_tmp_dir,
+    )
+    await enqueue_audit(job)
+
+    return {"audit_id": audit_id, "status": "queued", "queue_position": queue_position}
 
 
 @router.get("/audits")
@@ -401,18 +429,22 @@ def download_technical_pdf(audit_id: str, user: dict = Depends(get_current_user)
 
 @router.patch("/audit/{audit_id}/cancelar")
 def cancel_audit(audit_id: str, user: dict = Depends(get_current_user)):
-    """Cancela una auditoría atascada marcándola como error en la DB."""
+    """Cancela una auditoría en proceso o en cola."""
     result = get_auditoria(audit_id)
     if not result:
         raise HTTPException(404, "Auditoría no encontrada.")
-    if result["status"] != "processing":
-        raise HTTPException(400, "Solo se pueden cancelar auditorías en proceso.")
+    if result["status"] not in ("processing", "queued"):
+        raise HTTPException(400, "Solo se pueden cancelar auditorías en proceso o en cola.")
     actualizar_auditoria(
         audit_id,
         status="error",
         error_detail="Cancelada por el usuario.",
         progress_msg="Cancelada",
+        queue_position=None,
     )
+    # Recalcular posiciones si se canceló una auditoría en cola
+    if result["status"] == "queued":
+        recalcular_posiciones_cola()
     return {"ok": True}
 
 
@@ -429,6 +461,105 @@ def _make_progress_callback(audit_id: str):
         except Exception:
             return False
     return callback
+
+
+async def _queue_worker() -> None:
+    """Worker que procesa auditorías de la cola secuencialmente.
+
+    Corre como asyncio.Task independiente durante toda la vida de la app.
+    Consume jobs uno a uno: verifica cancelación, TTL y disponibilidad del
+    archivo antes de llamar a _run_audit.
+    """
+    import shutil
+    from datetime import datetime, timezone, timedelta
+    from contractia.config import QUEUE_JOB_TTL_HOURS
+
+    queue = get_audit_queue()
+    while True:
+        job: AuditJob = await queue.get()
+        try:
+            # Verificar si fue cancelada mientras esperaba en cola
+            state = get_auditoria(job.audit_id)
+            if not state or state["status"] != "queued":
+                continue
+
+            # Verificar TTL (8 horas por defecto)
+            created_at = state.get("created_at")
+            if created_at:
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                age = datetime.now(timezone.utc) - created_at
+                if age > timedelta(hours=QUEUE_JOB_TTL_HOURS):
+                    actualizar_auditoria(
+                        job.audit_id,
+                        status="error",
+                        error_detail=f"Expirada: trabajo en cola por más de {QUEUE_JOB_TTL_HOURS} horas.",
+                        progress_msg="Expirada",
+                        queue_position=None,
+                    )
+                    delete_audit_file(job.gcs_uri)
+                    continue
+
+            # Preparar directorio temporal con el archivo del contrato
+            tmp_dir = None
+            if job.local_tmp_dir and Path(job.local_tmp_dir).exists():
+                tmp_dir = Path(job.local_tmp_dir)
+            elif job.gcs_uri:
+                tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_audit_{job.user_id}_"))
+                dest = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: download_audit_file(job.gcs_uri, tmp_dir)
+                )
+                if dest is None:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    actualizar_auditoria(
+                        job.audit_id,
+                        status="error",
+                        error_detail="No se pudo recuperar el archivo del trabajo en cola.",
+                        progress_msg="Error al recuperar archivo",
+                        queue_position=None,
+                    )
+                    continue
+            else:
+                actualizar_auditoria(
+                    job.audit_id,
+                    status="error",
+                    error_detail="Archivo no disponible (servidor reiniciado sin GCS configurado).",
+                    progress_msg="Archivo no disponible",
+                    queue_position=None,
+                )
+                continue
+
+            # Pasar a processing y recalcular posiciones del resto de la cola
+            actualizar_auditoria(
+                job.audit_id,
+                status="processing",
+                progress_msg="Iniciando...",
+                progress_pct=0,
+                queue_position=None,
+            )
+            recalcular_posiciones_cola()
+
+            # Ejecutar la auditoría completa
+            await _run_audit(
+                job.audit_id, job.user_id, tmp_dir, job.filename,
+                job.email, job.graph_enabled, job.is_admin, job.modelo,
+            )
+
+            # Limpiar archivo GCS al terminar
+            if job.gcs_uri:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: delete_audit_file(job.gcs_uri)
+                )
+
+        except Exception as e:
+            print(f"[QUEUE WORKER] Error inesperado procesando {job.audit_id}: {e}")
+        finally:
+            queue.task_done()
+
+
+def start_queue_worker() -> asyncio.Task:
+    """Lanza el worker de la cola como asyncio.Task. Llamar desde el lifespan de FastAPI."""
+    return asyncio.create_task(_queue_worker())
 
 
 async def _keepalive(stop: asyncio.Event, interval: int = 30) -> None:

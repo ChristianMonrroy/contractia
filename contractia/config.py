@@ -81,3 +81,12 @@ CLOUD_RUN_URL: str          = os.getenv("CLOUD_RUN_URL", "")
 AGENTIC_RAG_ENABLED: bool   = _bool(os.getenv("AGENTIC_RAG_ENABLED", "false"))
 SCOUT_MAX_ITER: int         = int(os.getenv("SCOUT_MAX_ITER", "2"))
 SCOUT_MAX_TOKENS: int       = int(os.getenv("SCOUT_MAX_TOKENS", "3000"))
+
+# ── Cola de auditorías (v9.7.0) ───────────────────────────────────────────────
+# Bucket de Cloud Storage para persistir archivos mientras esperan en cola.
+# Si está vacío, los archivos permanecen en /tmp (se pierden si Cloud Run reinicia).
+AUDIT_QUEUE_BUCKET: str     = os.getenv("AUDIT_QUEUE_BUCKET", "")
+# Máximo de auditorías queued+processing por usuario (evita abuso).
+MAX_QUEUE_PER_USER: int     = int(os.getenv("MAX_QUEUE_PER_USER", "5"))
+# Horas antes de que un trabajo en cola expire automáticamente.
+QUEUE_JOB_TTL_HOURS: int    = int(os.getenv("QUEUE_JOB_TTL_HOURS", "8"))

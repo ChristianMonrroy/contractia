@@ -34,11 +34,13 @@ const ROLE_LIMITS: Record<string, string> = {
   admin:     "Acceso ilimitado",
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, queuePosition }: { status: string; queuePosition?: number | null }) {
   if (status === "done")
     return <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" />Completada</span>;
   if (status === "error")
     return <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" />Error</span>;
+  if (status === "queued")
+    return <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full"><Clock className="w-3 h-3" />En cola{queuePosition != null ? ` · #${queuePosition}` : ""}</span>;
   return <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full"><Loader2 className="w-3 h-3 animate-spin" />En proceso</span>;
 }
 
@@ -71,6 +73,16 @@ export default function DashboardPage() {
         .finally(() => setLoadingAudits(false));
     }
   }, [user]);
+
+  // Auto-refresh cada 8s si hay auditorías en proceso o en cola
+  useEffect(() => {
+    const hayActivas = audits.some((a) => a.status === "processing" || a.status === "queued");
+    if (!hayActivas) return;
+    const id = setInterval(() => {
+      contractsAPI.getAudits().then((res) => setAudits(res.data)).catch(() => {});
+    }, 8_000);
+    return () => clearInterval(id);
+  }, [audits]);
 
   if (!user) return null;
 
@@ -250,8 +262,8 @@ export default function DashboardPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <StatusBadge status={a.status} />
-                            {a.status === "processing" && a.progress_msg && (
+                            <StatusBadge status={a.status} queuePosition={a.queue_position} />
+                            {(a.status === "processing" || a.status === "queued") && a.progress_msg && (
                               <p className="text-xs text-slate-400 mt-0.5">{a.progress_msg}</p>
                             )}
                           </td>
@@ -283,13 +295,13 @@ export default function DashboardPage() {
                                   {downloadingTecnico === a.audit_id ? "..." : "Técnico"}
                                 </button>
                               )}
-                              {a.status === "processing" && (
+                              {(a.status === "processing" || a.status === "queued") && (
                                 <>
                                   <Link
                                     href={`/audit?audit_id=${a.audit_id}`}
                                     className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
                                   >
-                                    Ver progreso →
+                                    {a.status === "queued" ? "Ver estado →" : "Ver progreso →"}
                                   </Link>
                                   <button
                                     onClick={() => handleCancel(a.audit_id)}

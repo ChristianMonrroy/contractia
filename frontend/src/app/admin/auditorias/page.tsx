@@ -11,6 +11,7 @@ import {
   XCircle,
   Loader2,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -21,7 +22,7 @@ const MODEL_LABEL: Record<string, string> = {
   "claude-opus-4-6": "Claude Opus",
 };
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, queuePosition }: { status: string; queuePosition?: number | null }) {
   if (status === "done")
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
@@ -32,6 +33,12 @@ function StatusBadge({ status }: { status: string }) {
     return (
       <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
         <XCircle className="w-3 h-3" />Error
+      </span>
+    );
+  if (status === "queued")
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+        <Clock className="w-3 h-3" />En cola{queuePosition != null ? ` · #${queuePosition}` : ""}
       </span>
     );
   return (
@@ -82,10 +89,10 @@ export default function AdminAuditoriasPage() {
     if (isAdmin) cargar();
   }, [isAdmin, cargar]);
 
-  // Auto-refresh cada 10s si hay auditorías en proceso
+  // Auto-refresh cada 10s si hay auditorías en proceso o en cola
   useEffect(() => {
-    const hayEnProceso = rows.some((r) => r.status === "processing");
-    if (!hayEnProceso) return;
+    const hayActivas = rows.some((r) => r.status === "processing" || r.status === "queued");
+    if (!hayActivas) return;
     const id = setInterval(cargar, 10_000);
     return () => clearInterval(id);
   }, [rows, cargar]);
@@ -112,6 +119,7 @@ export default function AdminAuditoriasPage() {
   if (!isAdmin) return null;
 
   const enProceso = rows.filter((r) => r.status === "processing").length;
+  const enCola = rows.filter((r) => r.status === "queued").length;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -128,7 +136,11 @@ export default function AdminAuditoriasPage() {
               {lastRefresh && (
                 <p className="text-xs text-gray-400 mt-0.5">
                   Actualizado: {lastRefresh.toLocaleTimeString("es-PE")}
-                  {enProceso > 0 && <span className="ml-2 text-blue-500">· auto-refresh activo ({enProceso} en curso)</span>}
+                  {(enProceso > 0 || enCola > 0) && (
+                    <span className="ml-2 text-blue-500">
+                      · auto-refresh activo ({[enProceso > 0 && `${enProceso} en curso`, enCola > 0 && `${enCola} en cola`].filter(Boolean).join(", ")})
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -144,7 +156,7 @@ export default function AdminAuditoriasPage() {
         </div>
 
         {/* Stats rápidas */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
             <p className="text-2xl font-bold text-gray-800">{rows.length}</p>
             <p className="text-xs text-gray-500 mt-1">Total auditorías</p>
@@ -152,6 +164,10 @@ export default function AdminAuditoriasPage() {
           <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
             <p className="text-2xl font-bold text-blue-600">{enProceso}</p>
             <p className="text-xs text-gray-500 mt-1">En proceso</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
+            <p className="text-2xl font-bold text-amber-600">{enCola}</p>
+            <p className="text-xs text-gray-500 mt-1">En cola</p>
           </div>
           <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
             <p className="text-2xl font-bold text-green-600">{rows.filter((r) => r.status === "done").length}</p>
@@ -190,7 +206,7 @@ export default function AdminAuditoriasPage() {
                   rows.map((row) => (
                     <tr
                       key={row.audit_id}
-                      className={`hover:bg-gray-50 transition-colors ${row.status === "processing" ? "bg-blue-50/30" : ""}`}
+                      className={`hover:bg-gray-50 transition-colors ${row.status === "processing" ? "bg-blue-50/30" : row.status === "queued" ? "bg-amber-50/30" : ""}`}
                     >
                       <td className="px-4 py-3">
                         <div className="text-sm font-medium text-gray-800">{row.email || "—"}</div>
@@ -215,7 +231,7 @@ export default function AdminAuditoriasPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <StatusBadge status={row.status} />
+                        <StatusBadge status={row.status} queuePosition={row.queue_position} />
                         {row.status === "processing" && row.progress_msg && (
                           <p className="text-xs text-gray-400 mt-1">{row.progress_msg}</p>
                         )}
@@ -226,6 +242,9 @@ export default function AdminAuditoriasPage() {
                               style={{ width: `${row.progress_pct}%` }}
                             />
                           </div>
+                        )}
+                        {row.status === "queued" && row.progress_msg && (
+                          <p className="text-xs text-amber-500 mt-1">{row.progress_msg}</p>
                         )}
                         {row.status === "error" && row.error_detail && (
                           <p className="text-xs text-red-400 mt-1 max-w-[200px] truncate" title={row.error_detail}>
@@ -253,13 +272,13 @@ export default function AdminAuditoriasPage() {
                               Ver informe →
                             </Link>
                           )}
-                          {row.status === "processing" && (
+                          {(row.status === "processing" || row.status === "queued") && (
                             <>
                               <Link
                                 href={`/audit?audit_id=${row.audit_id}`}
                                 className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
                               >
-                                Ver progreso →
+                                {row.status === "queued" ? "Ver estado →" : "Ver progreso →"}
                               </Link>
                               <button
                                 onClick={() => handleCancel(row.audit_id)}

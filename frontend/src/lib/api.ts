@@ -77,7 +77,7 @@ export const contractsAPI = {
     form.append("file", file);
     form.append("graph_enabled", String(graphEnabled));
     form.append("modelo", modelo);
-    return api.post<{ audit_id: string; status: string }>(
+    return api.post<{ audit_id: string; status: string; queue_position: number | null }>(
       "/contracts/audit",
       form,
       { headers: { "Content-Type": "multipart/form-data" } }
@@ -85,7 +85,7 @@ export const contractsAPI = {
   },
 
   getAudit: (audit_id: string) =>
-    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; progress_pct?: number; filename?: string }>(
+    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; progress_pct?: number; filename?: string; queue_position?: number | null }>(
       `/contracts/audit/${audit_id}`
     ),
 
@@ -160,6 +160,7 @@ export interface AuditRow {
   graph_enabled: boolean | null;
   metadata_tecnica: string | null;
   modelo_usado: string | null;
+  queue_position: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -175,6 +176,7 @@ export interface AdminAuditRow {
   error_detail: string | null;
   graph_enabled: boolean | null;
   modelo_usado: string | null;
+  queue_position: number | null;
   created_at: string;
   updated_at: string;
   email: string | null;

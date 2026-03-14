@@ -114,6 +114,9 @@ def init_db() -> None:
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS graph_data TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS modelo_usado TEXT DEFAULT 'gemini-2.5-pro'")
         conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS modelo_usado TEXT")
+        # v9.7.0: sistema de cola de auditorías
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS gcs_uri TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS queue_position INTEGER")
 
 
 def get_texto_auditoria(audit_id: str) -> Optional[str]:
@@ -154,13 +157,22 @@ def get_auditoria_en_progreso(max_minutos: int = 20) -> Optional[dict]:
     return dict(row) if row else None
 
 
-def crear_auditoria(audit_id: str, user_id: int, filename: str = "", graph_enabled: bool = False) -> None:
-    """Registra una nueva auditoría con estado 'processing'."""
+def crear_auditoria(
+    audit_id: str,
+    user_id: int,
+    filename: str = "",
+    graph_enabled: bool = False,
+    status: str = "queued",
+    queue_position: Optional[int] = None,
+    gcs_uri: Optional[str] = None,
+) -> None:
+    """Registra una nueva auditoría en la cola."""
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO auditorias (audit_id, user_id, status, filename, progress_msg, progress_pct, graph_enabled) "
-            "VALUES (%s, %s, 'processing', %s, 'Iniciando...', 0, %s)",
-            (audit_id, user_id, filename, graph_enabled),
+            "INSERT INTO auditorias "
+            "(audit_id, user_id, status, filename, progress_msg, progress_pct, graph_enabled, queue_position, gcs_uri) "
+            "VALUES (%s, %s, %s, %s, 'En cola...', 0, %s, %s, %s)",
+            (audit_id, user_id, status, filename, graph_enabled, queue_position, gcs_uri),
         )
 
 
@@ -170,7 +182,8 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
         row = conn.execute(
             "SELECT status, informe, n_hallazgos, n_secciones, "
             "error_detail, progress_msg, progress_pct, filename, graph_enabled, "
-            "technical_report_url, metadata_tecnica, graph_data, modelo_usado "
+            "technical_report_url, metadata_tecnica, graph_data, modelo_usado, "
+            "created_at, queue_position, gcs_uri "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
@@ -183,7 +196,8 @@ def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:
         rows = conn.execute(
             "SELECT audit_id, status, filename, n_hallazgos, n_secciones, "
             "progress_msg, progress_pct, error_detail, graph_enabled, "
-            "technical_report_url, metadata_tecnica, modelo_usado, created_at, updated_at "
+            "technical_report_url, metadata_tecnica, modelo_usado, "
+            "queue_position, created_at, updated_at "
             "FROM auditorias WHERE user_id = %s "
             "ORDER BY created_at DESC LIMIT %s",
             (user_id, limit),
@@ -210,7 +224,7 @@ def get_todas_auditorias(limit: int = 100) -> list:
         rows = conn.execute(
             "SELECT a.audit_id, a.status, a.filename, a.n_hallazgos, a.n_secciones, "
             "a.progress_msg, a.progress_pct, a.error_detail, a.graph_enabled, "
-            "a.modelo_usado, a.created_at, a.updated_at, "
+            "a.modelo_usado, a.queue_position, a.created_at, a.updated_at, "
             "u.email, u.rol "
             "FROM auditorias a "
             "LEFT JOIN usuarios u ON u.telegram_id = a.user_id "
@@ -218,6 +232,47 @@ def get_todas_auditorias(limit: int = 100) -> list:
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_auditorias_en_cola() -> list:
+    """Devuelve auditorías queued y processing ordenadas por created_at (para reconstitución al reinicio)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT a.audit_id, a.user_id, a.filename, a.graph_enabled, "
+            "a.modelo_usado, a.gcs_uri, a.created_at, "
+            "u.email, u.rol "
+            "FROM auditorias a "
+            "LEFT JOIN usuarios u ON u.telegram_id = a.user_id "
+            "WHERE a.status IN ('queued', 'processing') "
+            "ORDER BY a.created_at ASC",
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_n_auditorias_pendientes_usuario(user_id: int) -> int:
+    """Cuenta auditorías queued + processing de un usuario (para límite de cola)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM auditorias "
+            "WHERE user_id = %s AND status IN ('queued', 'processing')",
+            (user_id,),
+        ).fetchone()
+    return row["cnt"] if row else 0
+
+
+def recalcular_posiciones_cola() -> None:
+    """Actualiza queue_position para todas las auditorías en cola, ordenadas por created_at."""
+    with get_conn() as conn:
+        conn.execute("""
+            UPDATE auditorias SET queue_position = sub.pos
+            FROM (
+                SELECT audit_id,
+                       ROW_NUMBER() OVER (ORDER BY created_at ASC) AS pos
+                FROM auditorias
+                WHERE status = 'queued'
+            ) sub
+            WHERE auditorias.audit_id = sub.audit_id
+        """)
 
 
 def get_actividad(

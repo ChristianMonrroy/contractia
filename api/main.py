@@ -24,9 +24,10 @@ from telegram.ext import (
 
 from api.routers.admin_router import router as admin_router
 from api.routers.auth_router import router as auth_router
-from api.routers.contracts_router import router as contracts_router
+from api.routers.contracts_router import router as contracts_router, start_queue_worker
 from contractia.config import TELEGRAM_ADMIN_ID, TELEGRAM_TOKEN
-from contractia.telegram.db.database import init_db
+from contractia.queue.audit_queue import AuditJob, enqueue_audit
+from contractia.telegram.db.database import init_db, get_auditorias_en_cola, actualizar_auditoria
 from contractia.telegram.handler import (
     cmd_admin,
     cmd_cancel,
@@ -56,6 +57,36 @@ async def lifespan(app: FastAPI):
     # Base de datos
     init_db()
     logger.info("✅ Base de datos inicializada.")
+
+    # Reconstitución de la cola al arrancar (por si Cloud Run reinició con trabajos pendientes)
+    try:
+        jobs_pendientes = get_auditorias_en_cola()
+        if jobs_pendientes:
+            logger.info(f"🔄 Reconstituyendo {len(jobs_pendientes)} trabajo(s) pendiente(s) en cola...")
+        for job_data in jobs_pendientes:
+            actualizar_auditoria(
+                job_data["audit_id"],
+                status="queued",
+                progress_msg="En cola (reconstitución tras reinicio)",
+                progress_pct=0,
+            )
+            job = AuditJob(
+                audit_id=job_data["audit_id"],
+                user_id=job_data["user_id"],
+                filename=job_data.get("filename") or "",
+                email=job_data.get("email") or "",
+                graph_enabled=bool(job_data.get("graph_enabled")),
+                is_admin=job_data.get("rol") == "admin",
+                modelo=job_data.get("modelo_usado") or "gemini-2.5-pro",
+                gcs_uri=job_data.get("gcs_uri"),
+            )
+            await enqueue_audit(job)
+    except Exception as e:
+        logger.warning(f"⚠️ Error en reconstitución de cola: {e}")
+
+    # Worker de cola de auditorías
+    _queue_worker_task = start_queue_worker()
+    logger.info("✅ Worker de cola de auditorías iniciado.")
 
     # Bot de Telegram
     _tg_app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -90,6 +121,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    _queue_worker_task.cancel()
     await _tg_app.stop()
     await _tg_app.shutdown()
     logger.info("Bot detenido.")

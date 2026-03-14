@@ -40,6 +40,8 @@ function AuditContent() {
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
   const [queryLoading, setQueryLoading] = useState(false);
   const [progressMsg, setProgressMsg] = useState("");
+  const [isQueued, setIsQueued] = useState(false);
+  const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [graphEnabled, setGraphEnabled] = useState(false);
   const [queryGraphEnabled, setQueryGraphEnabled] = useState(false);
   const [modeloSeleccionado, setModeloSeleccionado] = useState("gemini-2.5-pro");
@@ -82,6 +84,12 @@ function AuditContent() {
         if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
         if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
         if (check.data.filename) setFilename(check.data.filename);
+        if (check.data.status === "queued") {
+          setIsQueued(true);
+          setQueuePosition(check.data.queue_position ?? null);
+        } else {
+          setIsQueued(false);
+        }
         if (check.data.status === "done") {
           clearInterval(poll);
           setProgressPct(100);
@@ -152,6 +160,12 @@ function AuditContent() {
           const check = await contractsAPI.getAudit(auditId);
           if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
           if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
+          if (check.data.status === "queued") {
+            setIsQueued(true);
+            setQueuePosition(check.data.queue_position ?? null);
+          } else {
+            setIsQueued(false);
+          }
           if (check.data.status === "done") {
             clearInterval(poll);
             setProgressPct(100);
@@ -596,47 +610,65 @@ function AuditContent() {
 
                 {status === "running" && (
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-card p-10">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-[#1e3a5f] text-lg">Auditoría en progreso</h3>
-                      <span className="text-2xl font-bold text-blue-600 tabular-nums">{progressPct}%</span>
-                    </div>
+                    {isQueued ? (
+                      /* Panel de cola */
+                      <div className="text-center">
+                        <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                          <Clock className="w-8 h-8 text-amber-500" />
+                        </div>
+                        <h3 className="font-semibold text-[#1e3a5f] text-lg mb-1">Auditoría en cola</h3>
+                        {queuePosition != null && (
+                          <p className="text-amber-600 font-bold text-2xl mb-2">#{queuePosition}</p>
+                        )}
+                        <p className="text-slate-500 text-sm mb-4">
+                          Tu auditoría comenzará automáticamente cuando terminen las anteriores.
+                        </p>
+                        <p className="text-slate-400 text-xs">Puedes cerrar esta página — recibirás un email cuando termine</p>
+                      </div>
+                    ) : (
+                      /* Panel de progreso normal */
+                      <>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-[#1e3a5f] text-lg">Auditoría en progreso</h3>
+                          <span className="text-2xl font-bold text-blue-600 tabular-nums">{progressPct}%</span>
+                        </div>
 
-                    {/* Barra de progreso */}
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden mb-3">
-                      <div
-                        className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-700 ease-out"
-                        style={{ width: `${progressPct}%` }}
-                      />
-                    </div>
+                        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden mb-3">
+                          <div
+                            className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-blue-400 transition-all duration-700 ease-out"
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
 
-                    {progressMsg && (
-                      <p className="text-blue-600 font-medium text-sm mb-3">{progressMsg}</p>
+                        {progressMsg && (
+                          <p className="text-blue-600 font-medium text-sm mb-3">{progressMsg}</p>
+                        )}
+
+                        <div className="flex justify-center mb-4">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
+                            modeloSeleccionado === "gemini-3.1-pro-preview" ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : modeloSeleccionado === "claude-sonnet-4-6" ? "bg-violet-50 text-violet-700 border border-violet-200"
+                            : modeloSeleccionado === "claude-opus-4-6" ? "bg-orange-50 text-orange-700 border border-orange-200"
+                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}>
+                            🤖 {
+                              modeloSeleccionado === "gemini-3.1-pro-preview" ? "Gemini 3.1 Pro Preview"
+                              : modeloSeleccionado === "claude-sonnet-4-6" ? "Claude Sonnet 4.6"
+                              : modeloSeleccionado === "claude-opus-4-6" ? "Claude Opus 4.6"
+                              : "Gemini 2.5 Pro"
+                            }
+                          </span>
+                        </div>
+
+                        <div className="flex justify-center gap-6 text-sm text-slate-400 mt-2 mb-4">
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>Jurista</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-150"></span>Auditor</span>
+                          <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse delay-300"></span>Cronista</span>
+                        </div>
+                        <p className="text-slate-400 text-sm text-center">Puedes cerrar esta página y volver más tarde</p>
+                        <p className="text-slate-300 text-xs text-center mt-1">Recibirás un email al terminar</p>
+                      </>
                     )}
-
-                    {/* Modelo en uso */}
-                    <div className="flex justify-center mb-4">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                        modeloSeleccionado === "gemini-3.1-pro-preview" ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        : modeloSeleccionado === "claude-sonnet-4-6" ? "bg-violet-50 text-violet-700 border border-violet-200"
-                        : modeloSeleccionado === "claude-opus-4-6" ? "bg-orange-50 text-orange-700 border border-orange-200"
-                        : "bg-blue-50 text-blue-700 border border-blue-200"
-                      }`}>
-                        🤖 {
-                          modeloSeleccionado === "gemini-3.1-pro-preview" ? "Gemini 3.1 Pro Preview"
-                          : modeloSeleccionado === "claude-sonnet-4-6" ? "Claude Sonnet 4.6"
-                          : modeloSeleccionado === "claude-opus-4-6" ? "Claude Opus 4.6"
-                          : "Gemini 2.5 Pro"
-                        }
-                      </span>
-                    </div>
-
-                    <div className="flex justify-center gap-6 text-sm text-slate-400 mt-2 mb-4">
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>Jurista</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse delay-150"></span>Auditor</span>
-                      <span className="flex items-center gap-1.5"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse delay-300"></span>Cronista</span>
-                    </div>
-                    <p className="text-slate-400 text-sm text-center">Puedes cerrar esta página y volver más tarde</p>
-                    <p className="text-slate-300 text-xs text-center mt-1">Recibirás un email al terminar</p>
                   </div>
                 )}
 
