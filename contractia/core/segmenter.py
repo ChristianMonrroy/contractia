@@ -600,12 +600,32 @@ def construir_mapa_clausula_a_seccion(secciones: List[Dict]) -> Dict[str, Dict]:
         if not prefijo:
             continue
 
-        for cid in _extraer_numeros_clausula(contenido, prefijo):
+        ids = _extraer_numeros_clausula(contenido, prefijo)
+        ids.sort(key=_key_sort_clauses)
+
+        # Segmentación por Diccionario Exacto (igual que vs16)
+        posiciones = []
+        for cid in ids:
+            pattern = rf'(?:^|\n)\s*(?:CL[AÁ]USULA\s+|ART[IÍ]CULO\s+|SECCI[ÓO]N\s+)?(?:N[°º]\s*)?{re.escape(cid)}\b'
+            m = re.search(pattern, contenido, re.IGNORECASE)
+            if m:
+                posiciones.append((cid, m.start()))
+            else:
+                m2 = re.search(rf'\b{re.escape(cid)}\b', contenido)
+                if m2:
+                    posiciones.append((cid, m2.start()))
+
+        posiciones.sort(key=lambda x: x[1])
+
+        for i, (cid, start_pos) in enumerate(posiciones):
+            end_pos = posiciones[i + 1][1] if i + 1 < len(posiciones) else len(contenido)
+            texto_exacto = contenido[start_pos:end_pos].strip()
+
             if cid not in mapa:
-                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
+                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": texto_exacto}
             elif tipo == "CAPITULO" and mapa[cid]["tipo"] == "ANEXO":
-                # Prioridad absoluta: CAPITULO sobre ANEXO (igual que vs14)
-                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": contenido}
+                # Prioridad absoluta: CAPITULO sobre ANEXO (igual que vs16)
+                mapa[cid] = {"tipo": tipo, "seccion": titulo, "texto": texto_exacto}
     return mapa
 
 
