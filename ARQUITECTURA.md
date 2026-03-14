@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.6.0 | **Fecha:** Marzo 2026
+**Versión:** 9.7.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -172,8 +172,8 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 | Archivo | Responsabilidad |
 |---------|----------------|
 | `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
-| `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia (ej. pasa de cláusula 5 a 7 sin la 6). No usa LLM. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 como dict (para el informe técnico admin). |
-| `graph.py` | Construye el grafo de conocimiento GraphRAG. Para cada sección llama al LLM con un prompt CoT+Few-Shot que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. Expone `obtener_contexto_grafo()` para que los agentes consulten relaciones entre cláusulas. |
+| `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia. `construir_mapa_clausula_a_seccion()` usa "Segmentación por Diccionario Exacto" (alineado con notebook vs16): localiza la posición exacta de cada cláusula y extrae solo su texto hasta la siguiente, no el capítulo completo. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 (para el informe técnico admin). |
+| `graph.py` | Construye el grafo de conocimiento GraphRAG. Para cada sección llama al LLM con un prompt que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. `obtener_contexto_grafo()` recupera el texto preciso de cada cláusula referenciada directamente desde `mapa_textos` (sin truncado ni búsqueda posicional, alineado con vs16); relación por defecto `CONECTA_CON`. |
 | `report.py` | Transforma el diccionario de resultados del orquestador en un informe Markdown legible, agrupando hallazgos por sección y añadiendo resumen ejecutivo. |
 
 ---
@@ -183,7 +183,7 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 | Archivo | Responsabilidad |
 |---------|----------------|
 | `base.py` | Define `AgenteEspecialista`: wrapper que combina un `PromptTemplate` con el LLM y devuelve la salida parseada. Incluye `parse_json_seguro()` para manejar JSON malformado del LLM (comas extra, bloques markdown, comentarios). |
-| `prompts.py` | Contiene los tres `PromptTemplate` de los agentes (Jurista, Auditor, Cronista). Aquí se concentra todo el prompt engineering: CoT, Few-Shot, árbol de decisión, criterios de severidad y conciencia temporal (`{fecha_actual}`). |
+| `prompts.py` | Contiene los tres `PromptTemplate` de los agentes (Jurista, Auditor, Cronista). Estructura alineada con notebook vs16: `# SISTEMA / Motor automatizado...` + `# REGLAS DE PROCESAMIENTO` con ENFOQUE ESTRICTO, EXCLUSIÓN LEGAL, LÓGICA NO LINEAL (Jurista), JERARQUÍA DOCUMENTAL (Auditor), SUSPENSIÓN DE PLAZOS (Cronista), LÍMITES DEL SISTEMA y PARÁMETRO TEMPORAL. Adiciones propias de ContractIA: `{contexto_rag}` y `TIPOS PERMITIDOS` por agente. |
 | `schemas.py` | Define los esquemas Pydantic de salida (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`). Usados con `with_structured_output()` para garantizar JSON válido sin parser regex. |
 | `factory.py` | Funciones de fábrica (`crear_jurista()`, `crear_auditor()`, `crear_cronista()`) que instancian `AgenteEspecialista` con el prompt y schema correctos. Desacopla la creación del uso. |
 
@@ -370,17 +370,20 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 | **Auditor** | Valida referencias internas | Texto + contexto RAG + índices + grafo | `SalidaAuditor`: hallazgos de referencias rotas |
 | **Cronista** | Analiza procesos y plazos | Texto + contexto grafo | `SalidaCronista`: hallazgos de errores lógicos y de plazos |
 
-**Técnicas de Prompt Engineering aplicadas (v8.5.0):**
+**Técnicas de Prompt Engineering aplicadas:**
 
 | Técnica | Agente(s) | Descripción |
 |---|---|---|
 | **Chain-of-Thought (CoT)** | Jurista, Auditor, Cronista | Bloque `<razonamiento>` con pasos explícitos antes del output; el parser lo ignora en producción |
 | **Few-Shot** | Jurista | Ejemplo concreto de referencia externa vs. interna para reducir falsos positivos |
-| **Árbol de decisión** | Auditor | 4 pasos explícitos por cada referencia: check en refs_externas → idx_glob → mismo tema (grafo) → descartar; plazos/montos distintos pero mismo tema = no reportar |
-| **Severidad dinámica** | Auditor, Cronista | Criterios ALTA/MEDIA/BAJA explícitos en el prompt; antes hardcodeado a ALTA |
-| **Conciencia temporal** | Jurista, Auditor, Cronista | `{fecha_actual}` inyectada en cada prompt (v9.1.0); permite detectar plazos vencidos y fechas contractuales ilógicas respecto al día de hoy |
-| **Prohibición de externalidades** | Auditor, Cronista | Regla explícita (v9.2.0): no marcar como error las citas a leyes externas; solo auditar referencias a Cláusulas/Anexos propios del contrato |
-| **Días = hábiles (por defecto)** | Cronista | (v9.2.0) Asume directamente `Días`=hábiles, `Días Calendario`=naturales; no reporta ambigüedad por omisión de definición |
+| **Árbol de decisión** | Auditor | Pasos explícitos por cada referencia: VALIDACIÓN DE ÍNDICE → VALIDACIÓN TEMÁTICA → descartar plazos/montos distintos del mismo tema |
+| **Severidad dinámica** | Auditor, Cronista | Criterios ALTA/MEDIA/BAJA explícitos en el prompt |
+| **Conciencia temporal** | Jurista, Auditor, Cronista | `{fecha_actual}` inyectada como PARÁMETRO TEMPORAL; detecta plazos vencidos y fechas ilógicas |
+| **Prohibición de externalidades** | Auditor, Cronista | EXCLUSIÓN LEGAL / EXCLUSIÓN DE LEYES EXTERNAS: no marcar como error las citas a leyes externas |
+| **Días = hábiles (por defecto)** | Cronista | CONSTANTES DE TIEMPO: asume `Días`=hábiles, `Días Calendario`=naturales sin exigir definición explícita |
+| **Lógica no lineal** | Jurista | LÓGICA NO LINEAL (v9.7.0): cláusulas paralelas/alternativas/preventivas no se marcan como contradictorias |
+| **Jerarquía documental** | Auditor | JERARQUÍA DOCUMENTAL (v9.7.0): Apéndices pertenecen a Anexos, no se exigen en el índice global |
+| **Suspensión de plazos** | Cronista | SUSPENSIÓN DE PLAZOS (v9.7.0): días de subsanación del Concesionario no se suman al plazo de evaluación del Concedente |
 
 Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)` (v8.5.0). El schema Pydantic correspondiente (`SalidaJurista`, `SalidaAuditor`, `SalidaCronista`) garantiza salida válida sin parser regex. Si `with_structured_output` no está disponible (ej. backend Ollama), el `AgenteEspecialista` cae a `StrOutputParser` + `parse_json_seguro` como fallback.
 
@@ -411,9 +414,12 @@ Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)`
 
 ## 8. LLM y Proveedores
 
-| Proveedor | Modelo principal | Uso |
+| Proveedor | Modelo | Uso |
 |---|---|---|
-| `vertexai` | Gemini 3.1 Pro Preview | Producción |
+| `vertexai` | Gemini 2.5 Pro | Producción (default) |
+| `vertexai` | Gemini 3.1 Pro Preview | Producción (throttle: agentes serie, 10s pausa, GraphRAG 8s) |
+| `vertexai` (Model Garden `us-east5`) | Claude Sonnet 4.6 | Admin — throttle activo; Scout omitido por cuota |
+| `vertexai` (Model Garden `us-east5`) | Claude Opus 4.6 | Admin — throttle activo; Scout omitido por cuota |
 | `ollama` | deepseek-r1:8b / qwen3:8b | Desarrollo local |
 
 ---

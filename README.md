@@ -1,10 +1,22 @@
-# ContractIA v9.6.0
+# ContractIA v9.7.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 3.1 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.7.0
+
+| Área | Cambio |
+|------|--------|
+| **Alineación vs16 — Prompts** | Los tres agentes usan `# SISTEMA / Motor automatizado...` y `# REGLAS DE PROCESAMIENTO`; Jurista: **LÓGICA NO LINEAL** (cláusulas paralelas/alternativas no son contradictorias); Auditor: **JERARQUÍA DOCUMENTAL** (Apéndices no exigidos en índice global) y **VALIDACIÓN TEMÁTICA** explícita; Cronista: **SUSPENSIÓN DE PLAZOS** (días de subsanación no se suman al plazo de evaluación) y **CONSTANTES DE TIEMPO** con ejemplo prohibido |
+| **Alineación vs16 — Segmentación exacta** | `construir_mapa_clausula_a_seccion` almacena el texto preciso de cada cláusula (desde su posición hasta la siguiente) en lugar del contenido completo de la sección; alineado con la "Segmentación por Diccionario Exacto" del notebook vs16 |
+| **Alineación vs16 — GraphRAG** | `obtener_contexto_grafo` recupera `mapa_textos[id_ref]["texto"]` directamente sin truncado ni búsqueda posicional; formato de salida con salto de línea; relación por defecto `CONECTA_CON` igual que vs16 |
+| **Scout — Claude omitido** | El Agente Scout se salta explícitamente para modelos Claude; cae a RAG estático sin depender de excepciones (cuota de Vertex AI insuficiente para LLM calls extra del Scout) |
+| **Throttle Claude Sonnet** | `claude-sonnet-4-6` confirmado con 429 en producción; mantenido en `_MODELOS_THROTTLE` (agentes en serie, 10s pausa) y `_GRAPH_MODELOS_THROTTLE` (8s sleep) |
+| **Cloud Run — BUCKET_NAME** | `BUCKET_NAME=contractia-contracts` agregado como variable de entorno persistente; corrige error de GCS en nuevas instancias con cold start |
+| **Cloud Run — Scout activo** | `AGENTIC_RAG_ENABLED=true` configurado como variable persistente en Cloud Run |
 
 ## Novedades v9.6.0
 
