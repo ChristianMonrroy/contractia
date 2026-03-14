@@ -145,8 +145,8 @@ def obtener_contexto_grafo(
     Recupera el contexto del grafo relevante para una sección.
 
     Para cada cláusula de la sección recorre sucesores y predecesores directos
-    (profundidad 1), igual que el notebook vs14. Si el destino es una cláusula
-    conocida, añade un extracto de su texto hasta el inicio de la siguiente cláusula.
+    (profundidad 1), igual que el notebook vs15. Si el destino es una cláusula
+    conocida, añade su texto completo desde mapa_textos.
 
     Returns:
         String con las relaciones encontradas, o mensaje indicando ausencia.
@@ -172,38 +172,21 @@ def obtener_contexto_grafo(
             # Sucesores directos
             for sucesor in G.successors(nodo):
                 datos = G.get_edge_data(nodo, sucesor)
-                rel = datos.get("relacion", "RELACIONADO_CON")
+                rel = datos.get("relacion", "CONECTA_CON")
                 ctx = datos.get("contexto", "")
                 contexto.append(f"- {nodo} --[{rel}]--> {sucesor} (Contexto: {ctx})")
 
-                # Si el destino es una cláusula conocida, añadir su texto
                 match = re.search(r"\b(\d+(?:\.\d+)+)\b", str(sucesor))
                 if match:
                     id_ref = match.group(1)
                     if id_ref in mapa_textos:
-                        texto_completo = mapa_textos[id_ref].get("texto", "")
-                        match_pos = re.search(rf"\b{re.escape(id_ref)}\b", texto_completo)
-                        if match_pos:
-                            inicio = match_pos.start()
-                            texto_restante = texto_completo[inicio + len(id_ref):]
-                            siguiente = re.search(
-                                r"\n\s*(?:CL[AÁ]USULA\s+|ART[IÍ]CULO\s+)?\d+\.\d+\b",
-                                texto_restante,
-                                re.IGNORECASE,
-                            )
-                            if siguiente:
-                                fin = inicio + len(id_ref) + siguiente.start()
-                                texto_ref = texto_completo[inicio:fin].strip()
-                            else:
-                                texto_ref = texto_completo[inicio:inicio + 4000].strip()
-                        else:
-                            texto_ref = texto_completo[:4000]
-                        contexto.append(f"  [TEXTO RECUPERADO DE {sucesor}]: ...{texto_ref}...")
+                        texto_ref = mapa_textos[id_ref]["texto"]
+                        contexto.append(f"  [TEXTO RECUPERADO DE {sucesor}]:\n{texto_ref}\n")
 
             # Predecesores directos
             for predecesor in G.predecessors(nodo):
                 datos = G.get_edge_data(predecesor, nodo)
-                rel = datos.get("relacion", "RELACIONADO_CON")
+                rel = datos.get("relacion", "CONECTA_CON")
                 ctx = datos.get("contexto", "")
                 contexto.append(f"- {predecesor} --[{rel}]--> {nodo} (Contexto: {ctx})")
 
