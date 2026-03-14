@@ -63,7 +63,7 @@ _PROMPT_EXTRACCION = PromptTemplate(
 )
 
 
-_GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-opus-4-6"}
+_GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
 def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None) -> nx.DiGraph:
