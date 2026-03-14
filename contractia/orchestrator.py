@@ -41,17 +41,18 @@ from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuper
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
 _MAX_REINTENTOS = 3
-_PAUSA_REINTENTO_S = 10
+_PAUSA_REINTENTO_S = 10        # Modelos estables (Gemini 2.5 Pro)
+_PAUSA_REINTENTO_THROTTLE_S = 30  # Modelos con cuota estricta (Claude 4.x, Gemini 3.1)
 
 # Modelos con cuota limitada: agentes en serie + pausa larga entre secciones.
 _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None) -> dict:
+def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None, pausa_s: int = _PAUSA_REINTENTO_S) -> dict:
     """Ejecuta un agente con hasta _MAX_REINTENTOS intentos.
 
     Si el LLM lanza un error (incluyendo timeout del cliente VertexAI),
-    espera _PAUSA_REINTENTO_S segundos y reintenta. Nunca omite silenciosamente:
+    espera pausa_s segundos y reintenta. Nunca omite silenciosamente:
     sólo devuelve {} si TODOS los intentos fallan (situación excepcional).
     """
     def _log(msg: str, nivel: str = "WARN") -> None:
@@ -72,9 +73,9 @@ def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None
             if intento < _MAX_REINTENTOS:
                 _log(
                     f"Agente falló (intento {intento}/{_MAX_REINTENTOS}): {type(e).__name__}: {str(e)[:200]}. "
-                    f"Reintentando en {_PAUSA_REINTENTO_S}s..."
+                    f"Reintentando en {pausa_s}s..."
                 )
-                time.sleep(_PAUSA_REINTENTO_S)
+                time.sleep(pausa_s)
             else:
                 _log(
                     f"Agente no respondió tras {_MAX_REINTENTOS} intentos: {type(ultimo_error).__name__}: {str(ultimo_error)[:200]}",
@@ -152,7 +153,9 @@ def auditar_consistencia(
 
     # ── Los 3 agentes son independientes → paralelo en modelos estables,
     #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
-    _workers = 1 if modelo in _MODELOS_THROTTLE else 3
+    _is_throttle = modelo in _MODELOS_THROTTLE
+    _workers = 1 if _is_throttle else 3
+    _pausa_retry = _PAUSA_REINTENTO_THROTTLE_S if _is_throttle else _PAUSA_REINTENTO_S
     with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
@@ -164,6 +167,7 @@ def auditar_consistencia(
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
+            _pausa_retry,
         )
         fut_auditor = pool.submit(
             _ejecutar_con_reintento,
@@ -176,6 +180,7 @@ def auditar_consistencia(
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
+            _pausa_retry,
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
@@ -187,6 +192,7 @@ def auditar_consistencia(
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
+            _pausa_retry,
         )
         res_jurista = fut_jurista.result()
         res_auditor = fut_auditor.result()
