@@ -227,8 +227,11 @@ async def query_contract(
         except Exception as e:
             print(f"[QUERY] Error GraphRAG: {e}")
 
-    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS
+    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS, MODELOS_SOLO_ADMIN
     modelo = body.modelo if body.modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
+    usuario_q = get_usuario(user["sub"])
+    if modelo in MODELOS_SOLO_ADMIN and (not usuario_q or usuario_q["rol"] != "admin"):
+        raise HTTPException(403, "Este modelo solo está disponible para administradores.")
     llm = await asyncio.get_event_loop().run_in_executor(None, lambda: build_llm(model_override=modelo))
     prompt = _PROMPT.format(contexto=contexto, seccion_grafo=seccion_grafo, pregunta=body.pregunta)
     start = time.time()
@@ -283,8 +286,10 @@ async def start_audit(
     tmp_file = tmp_dir / f"contrato{ext}"
     tmp_file.write_bytes(await file.read())
 
-    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS
+    from contractia.config import VERTEXAI_MODELOS_PERMITIDOS, MODELOS_SOLO_ADMIN
     modelo_validado = modelo if modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
+    if modelo_validado in MODELOS_SOLO_ADMIN and usuario["rol"] != "admin":
+        raise HTTPException(403, "Este modelo solo está disponible para administradores.")
     background_tasks.add_task(
         _run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"],
         graph_enabled, usuario["rol"] == "admin", modelo_validado,

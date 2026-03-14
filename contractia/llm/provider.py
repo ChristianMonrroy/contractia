@@ -44,6 +44,9 @@ def build_llm(model_override: str | None = None):
     if LLM_PROVIDER == "ollama":
         return _build_ollama()
     elif LLM_PROVIDER == "vertexai":
+        # Claude models go through a different builder (Vertex AI Model Garden)
+        if model_override and model_override.startswith("claude-"):
+            return _build_claude_vertexai(model_override)
         return _build_vertexai(model_override=model_override)
     else:
         raise ValueError(f"LLM_PROVIDER no reconocido: '{LLM_PROVIDER}'. Usa 'ollama' o 'vertexai'.")
@@ -72,6 +75,22 @@ def _build_ollama():
                 print(f"ℹ️  Intentando fallback '{OLLAMA_FALLBACK}'...")
 
     raise RuntimeError("No se pudo inicializar ningún modelo Ollama.")
+
+
+def _build_claude_vertexai(model_name: str):
+    """Construye un LLM Claude via Vertex AI Model Garden (us-east5)."""
+    from langchain_google_vertexai.model_garden import ChatAnthropicVertex
+
+    print(f"ℹ️  Inicializando Claude via Vertex AI: {model_name}")
+    llm = ChatAnthropicVertex(
+        model_name=model_name,
+        project=VERTEXAI_PROJECT,
+        location="us-east5",  # Claude en Vertex solo disponible en us-east5
+        temperature=VERTEXAI_TEMPERATURE,
+        max_tokens=VERTEXAI_MAX_TOKENS,
+    )
+    print(f"✅ LLM Claude '{model_name}' inicializado.")
+    return llm
 
 
 def _build_vertexai(model_override: str | None = None):

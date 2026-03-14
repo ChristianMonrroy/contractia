@@ -27,6 +27,14 @@ VERTEXAI_FALLBACK: str          = os.getenv("VERTEXAI_FALLBACK", "gemini-2.5-pro
 VERTEXAI_MODELOS_PERMITIDOS: list = [
     "gemini-2.5-pro",
     "gemini-3.1-pro-preview",
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
+]
+
+# Modelos que solo puede usar un usuario con rol "admin"
+MODELOS_SOLO_ADMIN: list = [
+    "claude-sonnet-4-6",
+    "claude-opus-4-6",
 ]
 VERTEXAI_TEMPERATURE: float     = float(os.getenv("VERTEXAI_TEMPERATURE", "0.0"))
 VERTEXAI_MAX_TOKENS: int        = int(os.getenv("VERTEXAI_MAX_OUTPUT_TOKENS", "8192"))

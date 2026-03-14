@@ -379,7 +379,7 @@ function AuditContent() {
         {(status === "idle" || status === "error") && (
           <div className="mb-6">
             <p className="text-sm font-medium text-slate-600 mb-3">Modelo de IA</p>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className={`grid gap-3 ${user?.rol === "admin" ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2"}`}>
               <button
                 onClick={() => setModeloSeleccionado("gemini-2.5-pro")}
                 className={`p-4 rounded-xl border-2 text-left transition-all ${
@@ -412,6 +412,44 @@ function AuditContent() {
                 </div>
                 <div className="text-xs text-slate-500">Modelo avanzado. Mayor razonamiento y precisión.</div>
               </button>
+              {user?.rol === "admin" && (
+                <>
+                  <button
+                    onClick={() => setModeloSeleccionado("claude-sonnet-4-6")}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      modeloSeleccionado === "claude-sonnet-4-6"
+                        ? "border-violet-500 bg-violet-50"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                    }`}
+                  >
+                    <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                      Claude Sonnet 4.6
+                      <span className="ml-1 text-xs text-violet-600 font-medium">Admin</span>
+                      {modeloSeleccionado === "claude-sonnet-4-6" && (
+                        <span className="ml-2 text-xs text-violet-600 font-medium">✓ Seleccionado</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500">Anthropic. Balance velocidad/calidad.</div>
+                  </button>
+                  <button
+                    onClick={() => setModeloSeleccionado("claude-opus-4-6")}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${
+                      modeloSeleccionado === "claude-opus-4-6"
+                        ? "border-orange-500 bg-orange-50"
+                        : "border-slate-200 hover:border-slate-300 bg-white"
+                    }`}
+                  >
+                    <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
+                      Claude Opus 4.6
+                      <span className="ml-1 text-xs text-orange-600 font-medium">Admin</span>
+                      {modeloSeleccionado === "claude-opus-4-6" && (
+                        <span className="ml-2 text-xs text-orange-600 font-medium">✓ Seleccionado</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500">Anthropic. Máxima capacidad de razonamiento.</div>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
@@ -578,11 +616,17 @@ function AuditContent() {
                     {/* Modelo en uso */}
                     <div className="flex justify-center mb-4">
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                        modeloSeleccionado === "gemini-3.1-pro-preview"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : "bg-blue-50 text-blue-700 border border-blue-200"
+                        modeloSeleccionado === "gemini-3.1-pro-preview" ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : modeloSeleccionado === "claude-sonnet-4-6" ? "bg-violet-50 text-violet-700 border border-violet-200"
+                        : modeloSeleccionado === "claude-opus-4-6" ? "bg-orange-50 text-orange-700 border border-orange-200"
+                        : "bg-blue-50 text-blue-700 border border-blue-200"
                       }`}>
-                        🤖 {modeloSeleccionado === "gemini-3.1-pro-preview" ? "Gemini 3.1 Pro Preview" : "Gemini 2.5 Pro"}
+                        🤖 {
+                          modeloSeleccionado === "gemini-3.1-pro-preview" ? "Gemini 3.1 Pro Preview"
+                          : modeloSeleccionado === "claude-sonnet-4-6" ? "Claude Sonnet 4.6"
+                          : modeloSeleccionado === "claude-opus-4-6" ? "Claude Opus 4.6"
+                          : "Gemini 2.5 Pro"
+                        }
                       </span>
                     </div>
 
