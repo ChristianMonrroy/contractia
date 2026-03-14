@@ -260,7 +260,7 @@ def ejecutar_auditoria_contrato(
     if graph_enabled:
         try:
             print("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
-            grafo = construir_grafo_conocimiento(secciones, llm)
+            grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo)
             print("✅ GraphRAG activo.\n")
         except Exception as e:
             print(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.\n")

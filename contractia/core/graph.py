@@ -63,7 +63,10 @@ _PROMPT_EXTRACCION = PromptTemplate(
 )
 
 
-def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
+_GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
+
+
+def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None) -> nx.DiGraph:
     """
     Construye un grafo de conocimiento a partir de las secciones del contrato.
 
@@ -77,6 +80,9 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
         nx.DiGraph con nodos de entidades y aristas de relaciones.
     """
     G = nx.DiGraph()
+    # Modelos con cuota estricta necesitan más pausa entre llamadas al grafo
+    _model_name = modelo or str(getattr(llm, "model_name", "") or "")
+    _sleep_s = 8 if _model_name in _GRAPH_MODELOS_THROTTLE else 1
     try:
         cadena = _PROMPT_EXTRACCION | llm | StrOutputParser()
     except Exception as e:
@@ -118,7 +124,7 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm) -> nx.DiGraph:
                         contexto="Estructura del documento",
                     )
 
-            time.sleep(1)  # Rate limit VertexAI
+            time.sleep(_sleep_s)  # Rate limit VertexAI (más largo para modelos throttled)
 
         except Exception as e:
             print(f"⚠️ Error extrayendo grafo en sección '{titulo}': {e}")
