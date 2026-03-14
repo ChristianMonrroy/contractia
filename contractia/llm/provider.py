@@ -78,14 +78,23 @@ def _build_ollama():
 
 
 def _build_claude_vertexai(model_name: str):
-    """Construye un LLM Claude via Vertex AI Model Garden (us-east5)."""
+    """Construye un LLM Claude via Vertex AI Model Garden.
+
+    Claude 4.x (claude-sonnet-4-6, claude-opus-4-6) usa location="global".
+    Claude 3.x usa location="us-east5" (única región soportada para esa generación).
+    """
     from langchain_google_vertexai.model_garden import ChatAnthropicVertex
 
-    print(f"ℹ️  Inicializando Claude via Vertex AI: {model_name}")
+    # Claude 4.x models require the global endpoint
+    _is_claude4 = any(f"-{v}-" in model_name or model_name.endswith(f"-{v}")
+                      for v in ("4-5", "4-6", "4-7"))
+    location = "global" if _is_claude4 else "us-east5"
+
+    print(f"ℹ️  Inicializando Claude via Vertex AI: {model_name} (location={location})")
     llm = ChatAnthropicVertex(
         model_name=model_name,
         project=VERTEXAI_PROJECT,
-        location="us-east5",  # Claude en Vertex solo disponible en us-east5
+        location=location,
         temperature=VERTEXAI_TEMPERATURE,
         max_tokens=VERTEXAI_MAX_TOKENS,
     )
