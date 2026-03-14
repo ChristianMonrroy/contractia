@@ -132,8 +132,9 @@ def auditar_consistencia(
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
     # ── Los 3 agentes son independientes → paralelo en modelos estables,
-    #    secuencial en preview (cuota limitada → evita 429 por ráfagas) ──────────
-    _workers = 1 if modelo == "gemini-3.1-pro-preview" else 3
+    #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
+    _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
+    _workers = 1 if modelo in _MODELOS_THROTTLE else 3
     with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
@@ -290,9 +291,9 @@ def ejecutar_auditoria_contrato(
                     "hallazgos": hallazgos,
                 })
 
-            # Preview models: longer pause to avoid 429 rate limit
-            # Stable models (gemini-3.1-pro, gemini-2.5-pro): 2s as before
-            _pausa = 10 if modelo == "gemini-3.1-pro-preview" else 2
+            # Throttle models: longer pause to avoid 429 rate limit
+            # Stable models (gemini-2.5-pro): 2s as before
+            _pausa = 10 if modelo in _MODELOS_THROTTLE else 2
             time.sleep(_pausa)
 
         except Exception as e:
