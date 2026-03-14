@@ -47,13 +47,22 @@ _PAUSA_REINTENTO_S = 10
 _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def _ejecutar_con_reintento(agente, inputs: dict) -> dict:
+def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None) -> dict:
     """Ejecuta un agente con hasta _MAX_REINTENTOS intentos.
 
     Si el LLM lanza un error (incluyendo timeout del cliente VertexAI),
     espera _PAUSA_REINTENTO_S segundos y reintenta. Nunca omite silenciosamente:
     sólo devuelve {} si TODOS los intentos fallan (situación excepcional).
     """
+    def _log(msg: str, nivel: str = "WARN") -> None:
+        print(f"⚠️  {msg}")
+        if audit_id:
+            try:
+                from contractia.telegram.db.database import agregar_log_auditoria
+                agregar_log_auditoria(audit_id, msg, nivel=nivel)
+            except Exception:
+                pass
+
     ultimo_error = None
     for intento in range(1, _MAX_REINTENTOS + 1):
         try:
@@ -61,13 +70,16 @@ def _ejecutar_con_reintento(agente, inputs: dict) -> dict:
         except Exception as e:
             ultimo_error = e
             if intento < _MAX_REINTENTOS:
-                print(
-                    f"⚠️  Agente falló (intento {intento}/{_MAX_REINTENTOS}): {e}. "
+                _log(
+                    f"Agente falló (intento {intento}/{_MAX_REINTENTOS}): {type(e).__name__}: {str(e)[:200]}. "
                     f"Reintentando en {_PAUSA_REINTENTO_S}s..."
                 )
                 time.sleep(_PAUSA_REINTENTO_S)
             else:
-                print(f"⚠️  Agente no respondió tras {_MAX_REINTENTOS} intentos: {ultimo_error}")
+                _log(
+                    f"Agente no respondió tras {_MAX_REINTENTOS} intentos: {type(ultimo_error).__name__}: {str(ultimo_error)[:200]}",
+                    nivel="ERROR",
+                )
     return {}
 
 
@@ -95,6 +107,7 @@ def auditar_consistencia(
     contexto_grafo: str = "",
     modelo: Optional[str] = None,
     nombres_anexos: Optional[List[str]] = None,
+    audit_id: Optional[str] = None,
 ) -> List[Dict]:
     """Audita una sección individual con los tres agentes en paralelo.
 
@@ -150,6 +163,7 @@ def auditar_consistencia(
                 "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
+            audit_id,
         )
         fut_auditor = pool.submit(
             _ejecutar_con_reintento,
@@ -161,6 +175,7 @@ def auditar_consistencia(
                 "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
+            audit_id,
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
@@ -171,6 +186,7 @@ def auditar_consistencia(
                 "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
+            audit_id,
         )
         res_jurista = fut_jurista.result()
         res_auditor = fut_auditor.result()
@@ -204,6 +220,7 @@ def ejecutar_auditoria_contrato(
     graph_enabled: bool = GRAPH_ENABLED,
     progress_callback: Optional[Callable[[int, str], bool]] = None,
     modelo: Optional[str] = None,
+    audit_id: Optional[str] = None,
 ) -> Dict:
     """
     Pipeline completo de auditoría:
@@ -289,6 +306,7 @@ def ejecutar_auditoria_contrato(
                 contexto_grafo=contexto_grafo,
                 modelo=modelo,
                 nombres_anexos=nombres_anexos,
+                audit_id=audit_id,
             )
 
             if hallazgos:

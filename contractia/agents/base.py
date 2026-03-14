@@ -82,15 +82,11 @@ class AgenteEspecialista:
             self.chain = self.prompt | self.llm | StrOutputParser()
 
     def ejecutar(self, inputs: dict) -> Any:
-        try:
-            result = self.chain.invoke(inputs)
-            if isinstance(result, str):
-                # Respuesta de texto (Claude o cadena sin structured_output)
-                return parse_json_seguro(result)
-            if self.output_schema is not None:
-                # Objeto Pydantic de with_structured_output → dict
-                return result.model_dump() if hasattr(result, "model_dump") else result
-            return parse_json_seguro(str(result))
-        except Exception as e:
-            print(f"⚠️ Error en ejecución de Agente: {e}")
-            return {}
+        result = self.chain.invoke(inputs)
+        if isinstance(result, str):
+            # Respuesta de texto (Claude o cadena sin structured_output)
+            return parse_json_seguro(result)
+        if self.output_schema is not None:
+            # Objeto Pydantic de with_structured_output → dict
+            return result.model_dump() if hasattr(result, "model_dump") else result
+        return parse_json_seguro(str(result))

@@ -641,6 +641,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 None, lambda: ejecutar_auditoria_contrato(
                     texto, llm, graph_enabled=graph_enabled,
                     progress_callback=progress_cb, modelo=modelo,
+                    audit_id=audit_id,
                 )
             )
             duracion = round(time.time() - start, 1)
