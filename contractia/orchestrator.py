@@ -44,7 +44,7 @@ _MAX_REINTENTOS = 3
 _PAUSA_REINTENTO_S = 10
 
 # Modelos con cuota limitada: agentes en serie + pausa larga entre secciones.
-_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-opus-4-6"}
+_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
 def _ejecutar_con_reintento(agente, inputs: dict) -> dict:

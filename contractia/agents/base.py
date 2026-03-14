@@ -68,7 +68,14 @@ class AgenteEspecialista:
         self.prompt = role_prompt
         self.output_schema = output_schema
 
-        if output_schema is not None:
+        # Claude via Vertex AI (ChatAnthropicVertex) no es totalmente compatible
+        # con with_structured_output en todas las versiones de langchain_google_vertexai.
+        # Para Claude se usa el pipeline de texto plano + parse_json_seguro;
+        # los prompts ya incluyen instrucciones JSON explícitas.
+        _model_name = str(getattr(llm, "model_name", "") or "")
+        _is_claude = _model_name.startswith("claude-")
+
+        if output_schema is not None and not _is_claude:
             llm_structured = llm.with_structured_output(output_schema)
             self.chain = self.prompt | llm_structured
         else:
@@ -77,10 +84,13 @@ class AgenteEspecialista:
     def ejecutar(self, inputs: dict) -> Any:
         try:
             result = self.chain.invoke(inputs)
+            if isinstance(result, str):
+                # Respuesta de texto (Claude o cadena sin structured_output)
+                return parse_json_seguro(result)
             if self.output_schema is not None:
-                # Devuelve el objeto Pydantic como dict
+                # Objeto Pydantic de with_structured_output → dict
                 return result.model_dump() if hasattr(result, "model_dump") else result
-            return parse_json_seguro(result)
+            return parse_json_seguro(str(result))
         except Exception as e:
             print(f"⚠️ Error en ejecución de Agente: {e}")
             return {}
