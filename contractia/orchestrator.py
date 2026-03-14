@@ -90,6 +90,7 @@ def auditar_consistencia(
     retriever=None,
     vector_store=None,
     contexto_grafo: str = "",
+    modelo: Optional[str] = None,
 ) -> List[Dict]:
     """Audita una sección individual con los tres agentes en paralelo.
 
@@ -130,9 +131,10 @@ def auditar_consistencia(
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
-    # ── Los 3 agentes son independientes → se ejecutan en paralelo ──────────────
-    # texto_seccion y contexto_rag se pasan separados para evitar contaminación
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    # ── Los 3 agentes son independientes → paralelo en modelos estables,
+    #    secuencial en preview (cuota limitada → evita 429 por ráfagas) ──────────
+    _workers = 1 if modelo == "gemini-3.1-pro-preview" else 3
+    with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
             jurista,
@@ -278,6 +280,7 @@ def ejecutar_auditoria_contrato(
                 retriever=retriever,
                 vector_store=vector_store,
                 contexto_grafo=contexto_grafo,
+                modelo=modelo,
             )
 
             if hallazgos:
@@ -287,7 +290,10 @@ def ejecutar_auditoria_contrato(
                     "hallazgos": hallazgos,
                 })
 
-            time.sleep(2)  # Pausa entre secciones (alineado con notebook vs14)
+            # Preview models: longer pause to avoid 429 rate limit
+            # Stable models (gemini-3.1-pro, gemini-2.5-pro): 2s as before
+            _pausa = 10 if modelo == "gemini-3.1-pro-preview" else 2
+            time.sleep(_pausa)
 
         except Exception as e:
             print(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
