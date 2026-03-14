@@ -125,8 +125,7 @@ def auditar_consistencia(
     # ── RAG: contexto adicional (estático o agéntico según config) ──────────────
     contexto_rag = ""
     if retriever is not None:
-        _es_claude = modelo is not None and modelo.startswith("claude-")
-        if AGENTIC_RAG_ENABLED and vector_store is not None and not _es_claude:
+        if AGENTIC_RAG_ENABLED and vector_store is not None:
             try:
                 scout = crear_scout(llm, retriever, vector_store)
                 ctx_scout = scout.ejecutar(texto_seccion)
