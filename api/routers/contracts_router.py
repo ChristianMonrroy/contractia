@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -253,7 +253,6 @@ async def start_audit(
     file: UploadFile = File(...),
     graph_enabled: bool = Form(False),
     modelo: str = Form("gemini-2.5-pro"),
-    background_tasks: BackgroundTasks = BackgroundTasks(),
     user: dict = Depends(get_current_user),
 ):
     """Lanza una auditoría completa en background. Devuelve audit_id."""
@@ -290,9 +289,14 @@ async def start_audit(
     modelo_validado = modelo if modelo in VERTEXAI_MODELOS_PERMITIDOS else "gemini-2.5-pro"
     if modelo_validado in MODELOS_SOLO_ADMIN and usuario["rol"] != "admin":
         raise HTTPException(403, "Este modelo solo está disponible para administradores.")
-    background_tasks.add_task(
-        _run_audit, audit_id, user_id, tmp_dir, filename, usuario["email"],
-        graph_enabled, usuario["rol"] == "admin", modelo_validado,
+    # asyncio.create_task crea una Task independiente del scope ASGI de la request.
+    # Con BackgroundTasks, si el browser cierra la conexión antes de que inicie
+    # run_in_executor, uvicorn cancela el scope y _run_audit recibe CancelledError.
+    asyncio.create_task(
+        _run_audit(
+            audit_id, user_id, tmp_dir, filename, usuario["email"],
+            graph_enabled, usuario["rol"] == "admin", modelo_validado,
+        )
     )
     return {"audit_id": audit_id, "status": "processing"}
 
