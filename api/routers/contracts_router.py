@@ -312,6 +312,7 @@ async def start_audit(
         status="queued",
         queue_position=queue_position,
         gcs_uri=gcs_uri,
+        modelo_usado=modelo_validado,
     )
 
     job = AuditJob(

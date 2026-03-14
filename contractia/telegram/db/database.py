@@ -169,14 +169,15 @@ def crear_auditoria(
     status: str = "queued",
     queue_position: Optional[int] = None,
     gcs_uri: Optional[str] = None,
+    modelo_usado: str = "gemini-2.5-pro",
 ) -> None:
     """Registra una nueva auditoría en la cola."""
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO auditorias "
-            "(audit_id, user_id, status, filename, progress_msg, progress_pct, graph_enabled, queue_position, gcs_uri) "
-            "VALUES (%s, %s, %s, %s, 'En cola...', 0, %s, %s, %s)",
-            (audit_id, user_id, status, filename, graph_enabled, queue_position, gcs_uri),
+            "(audit_id, user_id, status, filename, progress_msg, progress_pct, graph_enabled, queue_position, gcs_uri, modelo_usado) "
+            "VALUES (%s, %s, %s, %s, 'En cola...', 0, %s, %s, %s, %s)",
+            (audit_id, user_id, status, filename, graph_enabled, queue_position, gcs_uri, modelo_usado),
         )
 
 
