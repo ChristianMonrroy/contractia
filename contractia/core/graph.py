@@ -141,16 +141,6 @@ def obtener_contexto_grafo(
     G: nx.DiGraph,
     mapa_textos: Dict[str, Dict],
 ) -> str:
-    """
-    Recupera el contexto del grafo relevante para una sección.
-
-    Para cada cláusula de la sección recorre sucesores y predecesores directos
-    (profundidad 1), igual que el notebook vs15. Si el destino es una cláusula
-    conocida, añade su texto completo desde mapa_textos.
-
-    Returns:
-        String con las relaciones encontradas, o mensaje indicando ausencia.
-    """
     if G is None or G.number_of_nodes() == 0:
         return "No hay relaciones en el grafo para esta sección."
 
