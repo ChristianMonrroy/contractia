@@ -10,6 +10,7 @@ from contractia.telegram.db.database import (
     get_actividad,
     get_resumen_actividad,
     get_auditoria_en_progreso,
+    get_todas_auditorias,
     actualizar_auditoria,
 )
 from contractia.telegram.db.usuarios import (
@@ -75,6 +76,12 @@ def cancel_auditoria_admin(audit_id: str, admin: dict = Depends(require_admin)):
         progress_msg="Cancelada por admin",
     )
     return {"ok": True, "audit_id": audit_id}
+
+
+@router.get("/auditorias")
+def list_todas_auditorias(admin: dict = Depends(require_admin)):
+    """Lista todas las auditorías de todos los usuarios (admin only)."""
+    return get_todas_auditorias()
 
 
 @router.get("/actividad/resumen")

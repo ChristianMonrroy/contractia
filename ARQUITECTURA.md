@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.4.0 | **Fecha:** Marzo 2026
+**Versión:** 9.6.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -128,7 +128,7 @@ api/
 └── routers/
     ├── auth_router.py          # /auth/* (register, verify, login, reset-password)
     ├── contracts_router.py     # /contracts/* (upload, query, audit, polling, pdf)
-    └── admin_router.py         # /admin/* (usuarios, roles, actividad)
+    └── admin_router.py         # /admin/* (usuarios, roles, actividad, todas las auditorías)
 
 frontend/
 └── src/
@@ -141,10 +141,12 @@ frontend/
     │   ├── audit/              # /audit (auditoría + consulta RAG)
     │   └── admin/
     │       ├── page.tsx        # /admin (panel de usuarios)
-    │       └── actividad/      # /admin/actividad (reportes de uso)
+    │       ├── actividad/      # /admin/actividad (reportes de uso)
+    │       └── auditorias/     # /admin/auditorias (todas las auditorías, tiempo real)
     ├── components/Navbar.tsx
     ├── context/AuthContext.tsx  # JWT + roles (isAdmin, isAuthenticated)
-    └── lib/api.ts               # Axios client (authAPI, contractsAPI, adminAPI)
+    └── lib/api.ts               # Axios client (authAPI, contractsAPI, adminAPI);
+                                 # interfaces AuditRow, AdminAuditRow, ActividadRow
 ```
 
 ---

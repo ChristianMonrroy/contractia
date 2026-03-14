@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ChevronDown,
   BarChart2,
+  FileSearch,
 } from "lucide-react";
 
 interface UserRow {
@@ -107,6 +108,13 @@ export default function AdminPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href="/admin/auditorias"
+              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all font-medium"
+            >
+              <FileSearch className="w-4 h-4" />
+              Todas las auditorías
+            </Link>
             <Link
               href="/admin/actividad"
               className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-800 bg-purple-50 border border-purple-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all font-medium"

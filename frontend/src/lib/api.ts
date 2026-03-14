@@ -125,6 +125,12 @@ export const adminAPI = {
 
   getResumenActividad: () =>
     api.get<ResumenActividad>("/admin/actividad/resumen"),
+
+  getTodasAuditorias: () =>
+    api.get<AdminAuditRow[]>("/admin/auditorias"),
+
+  cancelAuditAdmin: (audit_id: string) =>
+    api.patch(`/admin/auditorias/${audit_id}/cancelar`),
 };
 
 export interface ActividadRow {
@@ -138,6 +144,7 @@ export interface ActividadRow {
   duracion_segundos: number | null;
   n_hallazgos: number | null;
   tipo_rag: string | null;
+  modelo_usado: string | null;
   timestamp: string;
 }
 
@@ -152,8 +159,26 @@ export interface AuditRow {
   error_detail: string | null;
   graph_enabled: boolean | null;
   metadata_tecnica: string | null;
+  modelo_usado: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AdminAuditRow {
+  audit_id: string;
+  status: string;
+  filename: string | null;
+  n_hallazgos: number | null;
+  n_secciones: number | null;
+  progress_msg: string | null;
+  progress_pct: number | null;
+  error_detail: string | null;
+  graph_enabled: boolean | null;
+  modelo_usado: string | null;
+  created_at: string;
+  updated_at: string;
+  email: string | null;
+  rol: string | null;
 }
 
 export interface ResumenActividad {

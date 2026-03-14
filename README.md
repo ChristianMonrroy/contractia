@@ -1,10 +1,32 @@
-# ContractIA v9.4.0
+# ContractIA v9.6.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 3.1 Pro), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.6.0
+
+| Área | Cambio |
+|------|--------|
+| **Admin — Todas las auditorías** | Nueva página `/admin/auditorias` con tabla de todas las auditorías de todos los usuarios; auto-refresh cada 10s si hay auditorías en proceso; barra de progreso en tiempo real; botón cancelar desde el panel admin |
+| **`admin_router.py`** | Nuevo endpoint `GET /admin/auditorias` (requiere rol admin); lista auditorías de todos los usuarios con JOIN a `usuarios` |
+| **`database.py`** | Nueva función `get_todas_auditorias()`; migraciones `modelo_usado TEXT` en `auditorias` y `logs` |
+| **Modelo IA en todas las salidas** | Badge de modelo (Gemini 2.5/3.1, Claude Sonnet/Opus) visible en dashboard, registro de actividad admin, PDF estándar (encabezado), PDF técnico (encabezado) y email de notificación |
+| **Índice global del Auditor** | `auditar_consistencia()` ahora pasa al Auditor `CLÁUSULAS: ... \| ANEXOS: Anexo I, Anexo II...` (antes solo números de cláusulas); el Auditor puede verificar referencias a anexos contra el índice real del contrato |
+| **`orchestrator.py`** | `_MODELOS_THROTTLE` movido a constante de módulo (corrige `NameError` que saltaba el sleep entre secciones); `nombres_anexos` extraído y propagado a `auditar_consistencia()` |
+| **PDF técnico — relaciones completas** | Eliminado el límite de 100 relaciones; el PDF muestra todas las aristas del grafo con contexto de hasta 80 chars |
+| **`requirements.txt`** | `matplotlib>=3.7.0` añadido (corrige `No module named 'matplotlib'` en generación de imagen del grafo en Cloud Run) |
+| **`api.ts`** | Nueva interfaz `AdminAuditRow`; métodos `adminAPI.getTodasAuditorias()` y `adminAPI.cancelAuditAdmin()` |
+| **Frontend — admin** | Botón "Todas las auditorías" (azul) en header del panel admin junto al existente "Reporte de actividad" |
+
+## Novedades v9.5.0
+
+| Área | Cambio |
+|------|--------|
+| **Modelos Claude (admin)** | Claude Sonnet 4.6 y Claude Opus 4.6 disponibles como modelos LLM para auditoría, restringidos a usuarios `admin`; selector de modelo en el frontend de auditoría |
+| **Throttle Claude** | `claude-opus-4-6` añadido a `_MODELOS_THROTTLE`; agentes en serie + 10s entre secciones para evitar rate-limit |
 
 ## Novedades v9.4.0
 

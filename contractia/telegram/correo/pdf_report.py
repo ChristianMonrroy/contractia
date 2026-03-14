@@ -14,6 +14,13 @@ _NAVY = (30, 58, 95)      # --primary ContractIA
 _GRAY = (71, 85, 105)     # texto secundario
 _LIGHT = (203, 213, 225)  # líneas sutiles
 
+_NOMBRES_MODELO = {
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+}
+
 
 def _safe(text: str) -> str:
     """Convierte a Latin-1 (todas las letras del español están incluidas)."""
@@ -33,7 +40,7 @@ def _write_line(pdf: FPDF, text: str, font: str, size: int, x: float = None) -> 
     pdf.ln()
 
 
-def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
+def generar_pdf_auditoria(md_content: str, filename: str, modelo: str = "gemini-2.5-pro") -> bytes:
     """
     Genera el informe de auditoría en PDF a partir del contenido Markdown.
 
@@ -41,6 +48,7 @@ def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
         Bytes del PDF listo para adjuntar a un email.
     """
     FONT = "Helvetica"
+    nombre_modelo = _NOMBRES_MODELO.get(modelo, modelo)
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=22)
@@ -57,6 +65,9 @@ def generar_pdf_auditoria(md_content: str, filename: str) -> bytes:
     pdf.set_font(FONT, "", 9)
     pdf.set_xy(20, 18)
     pdf.cell(0, 5, _safe(filename), align="L")
+    pdf.set_font(FONT, "", 8)
+    pdf.set_xy(110, 18)
+    pdf.cell(0, 5, _safe(f"Modelo IA: {nombre_modelo}"), align="R")
     pdf.ln(18)
 
     # ── Cuerpo del informe ───────────────────────────────────────────────────

@@ -112,6 +112,8 @@ def init_db() -> None:
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS technical_report_url TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS metadata_tecnica TEXT")
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS graph_data TEXT")
+        conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS modelo_usado TEXT DEFAULT 'gemini-2.5-pro'")
+        conn.execute("ALTER TABLE logs ADD COLUMN IF NOT EXISTS modelo_usado TEXT")
 
 
 def get_texto_auditoria(audit_id: str) -> Optional[str]:
@@ -168,7 +170,7 @@ def get_auditoria(audit_id: str) -> Optional[dict]:
         row = conn.execute(
             "SELECT status, informe, n_hallazgos, n_secciones, "
             "error_detail, progress_msg, progress_pct, filename, graph_enabled, "
-            "technical_report_url "
+            "technical_report_url, metadata_tecnica, graph_data, modelo_usado "
             "FROM auditorias WHERE audit_id = %s",
             (audit_id,),
         ).fetchone()
@@ -181,7 +183,7 @@ def get_auditorias_usuario(user_id: int, limit: int = 20) -> list:
         rows = conn.execute(
             "SELECT audit_id, status, filename, n_hallazgos, n_secciones, "
             "progress_msg, progress_pct, error_detail, graph_enabled, "
-            "technical_report_url, created_at, updated_at "
+            "technical_report_url, metadata_tecnica, modelo_usado, created_at, updated_at "
             "FROM auditorias WHERE user_id = %s "
             "ORDER BY created_at DESC LIMIT %s",
             (user_id, limit),
@@ -200,6 +202,22 @@ def actualizar_auditoria(audit_id: str, **kwargs) -> None:
             f"UPDATE auditorias SET {set_clause}, updated_at = NOW() WHERE audit_id = %s",
             values,
         )
+
+
+def get_todas_auditorias(limit: int = 100) -> list:
+    """Devuelve todas las auditorías de todos los usuarios, más recientes primero."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT a.audit_id, a.status, a.filename, a.n_hallazgos, a.n_secciones, "
+            "a.progress_msg, a.progress_pct, a.error_detail, a.graph_enabled, "
+            "a.modelo_usado, a.created_at, a.updated_at, "
+            "u.email, u.rol "
+            "FROM auditorias a "
+            "LEFT JOIN usuarios u ON u.telegram_id = a.user_id "
+            "ORDER BY a.created_at DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def get_actividad(
@@ -250,6 +268,7 @@ def get_actividad(
             l.duracion_segundos,
             l.n_hallazgos,
             l.tipo_rag,
+            l.modelo_usado,
             l.timestamp
         FROM logs l
         LEFT JOIN usuarios u ON l.telegram_id = u.telegram_id

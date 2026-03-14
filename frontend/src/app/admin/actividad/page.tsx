@@ -253,6 +253,15 @@ export default function ActividadPage() {
                             {row.tipo_rag}
                           </span>
                         )}
+                        {row.modelo_usado && (
+                          <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
+                            {row.modelo_usado === "gemini-2.5-pro" ? "Gemini 2.5" :
+                             row.modelo_usado === "gemini-3.1-pro-preview" ? "Gemini 3.1" :
+                             row.modelo_usado === "claude-sonnet-4-6" ? "Claude Sonnet" :
+                             row.modelo_usado === "claude-opus-4-6" ? "Claude Opus" :
+                             row.modelo_usado}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${

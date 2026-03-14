@@ -23,6 +23,13 @@ _RED    = (220, 38, 38)
 _ORANGE = (234, 88, 12)
 FONT    = "Helvetica"
 
+_NOMBRES_MODELO = {
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+}
+
 
 def _safe(text: str) -> str:
     return text.encode("latin-1", errors="replace").decode("latin-1")
@@ -71,6 +78,7 @@ def generar_pdf_tecnico(
     grafo: Optional[nx.DiGraph],
     imagen_grafo_png: Optional[bytes],
     filename_contrato: str,
+    modelo: str = "gemini-2.5-pro",
 ) -> bytes:
     """
     Genera el informe técnico en PDF para usuarios admin.
@@ -85,6 +93,8 @@ def generar_pdf_tecnico(
     Returns:
         bytes del PDF.
     """
+    nombre_modelo = _NOMBRES_MODELO.get(modelo, modelo)
+
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=22)
     pdf.set_margins(20, 20, 20)
@@ -101,6 +111,8 @@ def generar_pdf_tecnico(
     pdf.set_xy(20, 17)
     pdf.cell(0, 5, _safe(filename_contrato), align="L")
     pdf.set_font(FONT, "", 8)
+    pdf.set_xy(110, 12)
+    pdf.cell(0, 5, _safe(f"Modelo IA: {nombre_modelo}"), align="R")
     pdf.set_xy(110, 17)
     pdf.cell(0, 5, _safe(f"Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}"), align="R")
     pdf.ln(20)
@@ -196,20 +208,16 @@ def generar_pdf_tecnico(
             for nodo, deg in top10:
                 _bullet(pdf, f"[grado {deg}]  {nodo}")
 
-        # Aristas completas (hasta 100 para no saturar el PDF)
+        # Aristas completas
         aristas_data = list(grafo.edges(data=True))
-        _h2(pdf, f"Listado de relaciones ({min(len(aristas_data), 100)} de {len(aristas_data)})")
-        for u, v, d in aristas_data[:100]:
+        _h2(pdf, f"Listado de relaciones ({len(aristas_data)})")
+        for u, v, d in aristas_data:
             rel = d.get("relacion", "")
             ctx = d.get("contexto", "")
             linea = f"{u} --[{rel}]--> {v}"
             if ctx:
-                linea += f"  ({ctx[:60]}{'...' if len(ctx) > 60 else ''})"
+                linea += f"  ({ctx[:80]}{'...' if len(ctx) > 80 else ''})"
             _bullet(pdf, linea)
-
-        if len(aristas_data) > 100:
-            pdf.ln(1)
-            _body(pdf, f"... y {len(aristas_data) - 100} relaciones adicionales.", size=8)
 
         # Imagen del grafo
         if imagen_grafo_png:

@@ -323,8 +323,9 @@ def download_audit_pdf(audit_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(400, "El informe aún no está disponible.")
 
     filename = result.get("filename") or "contrato"
+    modelo_pdf = result.get("modelo_usado") or "gemini-2.5-pro"
     try:
-        pdf_bytes = generar_pdf_auditoria(result["informe"], filename)
+        pdf_bytes = generar_pdf_auditoria(result["informe"], filename, modelo=modelo_pdf)
     except Exception as e:
         import traceback
         print(f"[PDF] Error generando PDF para {audit_id}: {traceback.format_exc()}")
@@ -374,12 +375,14 @@ def download_technical_pdf(audit_id: str, user: dict = Depends(get_current_user)
             print(f"[PDF-TECNICO] Error reconstruyendo grafo: {ge}")
 
     filename = result.get("filename") or "contrato"
+    modelo_tec = metadata_tecnica.get("modelo_usado", "gemini-2.5-pro")
     try:
         pdf_bytes = generar_pdf_tecnico(
             metadata_tecnica=metadata_tecnica,
             grafo=grafo,
             imagen_grafo_png=imagen_grafo_png,
             filename_contrato=filename,
+            modelo=modelo_tec,
         )
     except Exception as e:
         raise HTTPException(500, f"Error al generar PDF técnico: {type(e).__name__}: {str(e)[:300]}")
@@ -486,20 +489,24 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             duracion = round(time.time() - start, 1)
 
             actualizar_auditoria(audit_id, progress_msg="Generando informe final...", progress_pct=90)
-            md = render_auditoria_markdown(resultado)
+            modelo_usado = resultado.get("modelo_usado", modelo)
+            md = render_auditoria_markdown(resultado, modelo=modelo_usado)
             n_hallazgos = sum(
                 len(r.get("hallazgos", [])) for r in resultado.get("resultados_auditoria", [])
             )
             n_secciones = len(resultado.get("resultados_auditoria", []))
             registrar_auditoria(user_id)
             tipo_rag = "GraphRAG" if graph_enabled else "RAG"
-            _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos, tipo_rag=tipo_rag)
+            _log_web(user_id, "auditoria", filename, duracion=duracion, n_hallazgos=n_hallazgos, tipo_rag=tipo_rag, modelo_usado=modelo_usado)
             # Serializar datos técnicos (solo admins)
             import json
             import networkx as nx
             metadata_tecnica = resultado.get("metadata_tecnica")
             grafo = resultado.get("grafo")
             imagen_grafo_png = resultado.get("imagen_grafo_png")
+            # Inyectar modelo_usado en metadata_tecnica para que esté disponible en descarga de PDF
+            if metadata_tecnica is not None:
+                metadata_tecnica["modelo_usado"] = modelo_usado
 
             if is_admin and metadata_tecnica:
                 try:
@@ -525,15 +532,16 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 n_secciones=n_secciones,
                 progress_msg="Completado",
                 progress_pct=100,
+                modelo_usado=modelo_usado,
             )
             # Notificar por email (PDF adjunto si se puede generar)
             try:
-                asunto, html, texto_plain = email_auditoria_lista(filename, n_hallazgos, n_secciones)
+                asunto, html, texto_plain = email_auditoria_lista(filename, n_hallazgos, n_secciones, modelo=modelo_usado)
                 pdf_bytes = None
                 adjunto_nombre = "informe_auditoria.pdf"
                 try:
                     adjunto_nombre = filename.rsplit(".", 1)[0] + "_informe.pdf"
-                    pdf_bytes = generar_pdf_auditoria(md, filename)
+                    pdf_bytes = generar_pdf_auditoria(md, filename, modelo=modelo_usado)
                 except Exception as pdf_err:
                     print(f"[PDF] No se pudo generar PDF adjunto: {pdf_err}")
 
@@ -547,6 +555,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                             grafo=grafo,
                             imagen_grafo_png=imagen_grafo_png,
                             filename_contrato=filename,
+                            modelo=modelo_usado,
                         )
                     except Exception as pt_err:
                         print(f"[PDF-TECNICO] No se pudo generar: {pt_err}")
@@ -578,14 +587,16 @@ def _log_web(
     duracion: float = None,
     n_hallazgos: int = None,
     tipo_rag: str = None,
+    modelo_usado: str = None,
 ) -> None:
     try:
         with get_conn() as conn:
             conn.execute(
                 "INSERT INTO logs (telegram_id, accion, detalle, timestamp, "
-                "duracion_segundos, canal, n_hallazgos, tipo_rag) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                "duracion_segundos, canal, n_hallazgos, tipo_rag, modelo_usado) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                 (telegram_id, accion, detalle, datetime.now().isoformat(),
-                 duracion, "web", n_hallazgos, tipo_rag),
+                 duracion, "web", n_hallazgos, tipo_rag, modelo_usado),
             )
     except Exception:
         pass  # No interrumpir el flujo principal si el log falla

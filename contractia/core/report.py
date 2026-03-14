@@ -8,7 +8,15 @@ from typing import Dict, List
 from contractia.core.segmenter import _key_sort_clauses
 
 
-def render_auditoria_markdown(resultado: Dict) -> str:
+_NOMBRES_MODELO = {
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+}
+
+
+def render_auditoria_markdown(resultado: Dict, modelo: str = "gemini-2.5-pro") -> str:
     """Convierte el resultado de la auditoría en un informe Markdown."""
     secciones_idx = resultado.get("indice_secciones", [])
     claus_idx = resultado.get("indice_global_clausulas", [])
@@ -22,6 +30,7 @@ def render_auditoria_markdown(resultado: Dict) -> str:
 
     total_errores = sum(len(r["hallazgos"]) for r in resultados)
     md.append(f"- **Total de Inconsistencias Detectadas**: {total_errores}")
+    md.append(f"- **Modelo IA utilizado**: {_NOMBRES_MODELO.get(modelo, modelo)}")
 
     md.append("\n## Índice Global de Cláusulas (Definiciones)")
     if claus_idx:

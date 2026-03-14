@@ -1,5 +1,12 @@
 """Templates HTML para los emails del bot."""
 
+_NOMBRES_MODELO = {
+    "gemini-2.5-pro": "Gemini 2.5 Pro",
+    "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-opus-4-6": "Claude Opus 4.6",
+}
+
 
 def email_verificacion(codigo: str) -> tuple:
     asunto = "ContractIA — Código de verificación"
@@ -18,9 +25,10 @@ def email_verificacion(codigo: str) -> tuple:
     return asunto, html, texto
 
 
-def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> tuple:
+def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int, modelo: str = "gemini-2.5-pro") -> tuple:
     asunto = f"ContractIA — Auditoría completada: {filename}"
     color_hallazgos = "#dc2626" if n_hallazgos > 0 else "#16a34a"
+    nombre_modelo = _NOMBRES_MODELO.get(modelo, modelo)
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:540px;margin:auto;padding:24px">
       <h2 style="color:#1e3a5f">ContractIA — Auditoría completada</h2>
@@ -38,6 +46,10 @@ def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> 
           <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Hallazgos detectados</strong></td>
           <td style="padding:10px 12px;border:1px solid #e2e8f0;color:{color_hallazgos};font-weight:bold">{n_hallazgos}</td>
         </tr>
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Modelo IA utilizado</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{nombre_modelo}</td>
+        </tr>
       </table>
       <p>El informe completo con todos los hallazgos detallados se encuentra
          <strong>adjunto a este correo en formato PDF</strong>.</p>
@@ -52,6 +64,7 @@ def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int) -> 
         f"Tu auditoría de '{filename}' ha finalizado.\n"
         f"Secciones analizadas: {n_secciones}\n"
         f"Hallazgos detectados: {n_hallazgos}\n"
+        f"Modelo IA utilizado: {nombre_modelo}\n"
         f"El informe completo está adjunto en PDF.\n"
         f"También disponible en: contractia.pe/dashboard"
     )

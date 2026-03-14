@@ -233,10 +233,21 @@ export default function DashboardPage() {
                             {formatDate(a.created_at)}
                           </td>
                           <td className="px-4 py-3">
-                            {a.graph_enabled
-                              ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
-                              : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">RAG</span>
-                            }
+                            <div className="flex flex-wrap gap-1">
+                              {a.graph_enabled
+                                ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
+                                : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">RAG</span>
+                              }
+                              {a.modelo_usado && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                                  {a.modelo_usado === "gemini-2.5-pro" ? "Gemini 2.5" :
+                                   a.modelo_usado === "gemini-3.1-pro-preview" ? "Gemini 3.1" :
+                                   a.modelo_usado === "claude-sonnet-4-6" ? "Claude Sonnet" :
+                                   a.modelo_usado === "claude-opus-4-6" ? "Claude Opus" :
+                                   a.modelo_usado}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <StatusBadge status={a.status} />

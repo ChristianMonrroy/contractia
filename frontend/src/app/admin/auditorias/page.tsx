@@ -1,0 +1,286 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { adminAPI, AdminAuditRow, extractError } from "@/lib/api";
+import {
+  ArrowLeft,
+  RefreshCw,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import Link from "next/link";
+
+const MODEL_LABEL: Record<string, string> = {
+  "gemini-2.5-pro": "Gemini 2.5",
+  "gemini-3.1-pro-preview": "Gemini 3.1",
+  "claude-sonnet-4-6": "Claude Sonnet",
+  "claude-opus-4-6": "Claude Opus",
+};
+
+function StatusBadge({ status }: { status: string }) {
+  if (status === "done")
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+        <CheckCircle2 className="w-3 h-3" />Completada
+      </span>
+    );
+  if (status === "error")
+    return (
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+        <XCircle className="w-3 h-3" />Error
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+      <Loader2 className="w-3 h-3 animate-spin" />En proceso
+    </span>
+  );
+}
+
+function formatDate(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-PE", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+export default function AdminAuditoriasPage() {
+  const { isAdmin, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  const [rows, setRows] = useState<AdminAuditRow[]>([]);
+  const [fetching, setFetching] = useState(false);
+  const [error, setError] = useState("");
+  const [cancelling, setCancelling] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated) { router.push("/login"); return; }
+    if (!isAdmin) { router.push("/dashboard"); return; }
+  }, [isAuthenticated, isAdmin, router]);
+
+  const cargar = useCallback(async () => {
+    setFetching(true);
+    setError("");
+    try {
+      const res = await adminAPI.getTodasAuditorias();
+      setRows(res.data);
+      setLastRefresh(new Date());
+    } catch (err) {
+      setError(extractError(err, "Error al cargar auditorías"));
+    } finally {
+      setFetching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) cargar();
+  }, [isAdmin, cargar]);
+
+  // Auto-refresh cada 10s si hay auditorías en proceso
+  useEffect(() => {
+    const hayEnProceso = rows.some((r) => r.status === "processing");
+    if (!hayEnProceso) return;
+    const id = setInterval(cargar, 10_000);
+    return () => clearInterval(id);
+  }, [rows, cargar]);
+
+  const handleCancel = async (audit_id: string) => {
+    if (!confirm("¿Cancelar esta auditoría? No se puede deshacer.")) return;
+    setCancelling(audit_id);
+    try {
+      await adminAPI.cancelAuditAdmin(audit_id);
+      setRows((prev) =>
+        prev.map((a) =>
+          a.audit_id === audit_id
+            ? { ...a, status: "error", error_detail: "Cancelada por el administrador.", progress_msg: "Cancelada por admin" }
+            : a
+        )
+      );
+    } catch {
+      alert("No se pudo cancelar la auditoría.");
+    } finally {
+      setCancelling(null);
+    }
+  };
+
+  if (!isAdmin) return null;
+
+  const enProceso = rows.filter((r) => r.status === "processing").length;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 py-8">
+
+        {/* Encabezado */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <Link href="/admin" className="text-gray-500 hover:text-gray-700">
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">Auditorías de todos los usuarios</h1>
+              {lastRefresh && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Actualizado: {lastRefresh.toLocaleTimeString("es-PE")}
+                  {enProceso > 0 && <span className="ml-2 text-blue-500">· auto-refresh activo ({enProceso} en curso)</span>}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={cargar}
+            disabled={fetching}
+            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 bg-white border border-slate-200 px-4 py-2 rounded-lg shadow-sm hover:shadow transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${fetching ? "animate-spin" : ""}`} />
+            Actualizar
+          </button>
+        </div>
+
+        {/* Stats rápidas */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
+            <p className="text-2xl font-bold text-gray-800">{rows.length}</p>
+            <p className="text-xs text-gray-500 mt-1">Total auditorías</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
+            <p className="text-2xl font-bold text-blue-600">{enProceso}</p>
+            <p className="text-xs text-gray-500 mt-1">En proceso</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100 text-center">
+            <p className="text-2xl font-bold text-green-600">{rows.filter((r) => r.status === "done").length}</p>
+            <p className="text-xs text-gray-500 mt-1">Completadas</p>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {/* Tabla */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-100">
+              <thead className="bg-gray-50">
+                <tr>
+                  {["Usuario", "Documento", "Modo", "Estado / Progreso", "Hallazgos", "Inicio", ""].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                      {fetching ? "Cargando..." : "No hay auditorías registradas."}
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row) => (
+                    <tr
+                      key={row.audit_id}
+                      className={`hover:bg-gray-50 transition-colors ${row.status === "processing" ? "bg-blue-50/30" : ""}`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-gray-800">{row.email || "—"}</div>
+                        <div className="text-xs text-gray-400">{row.rol || ""}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-sm text-gray-700 max-w-[180px] truncate block" title={row.filename || ""}>
+                          {row.filename || "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {row.graph_enabled
+                            ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
+                            : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">RAG</span>
+                          }
+                          {row.modelo_usado && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-50 text-amber-700">
+                              {MODEL_LABEL[row.modelo_usado] ?? row.modelo_usado}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={row.status} />
+                        {row.status === "processing" && row.progress_msg && (
+                          <p className="text-xs text-gray-400 mt-1">{row.progress_msg}</p>
+                        )}
+                        {row.status === "processing" && row.progress_pct != null && (
+                          <div className="w-24 bg-gray-200 rounded-full h-1 mt-1">
+                            <div
+                              className="bg-blue-500 h-1 rounded-full transition-all"
+                              style={{ width: `${row.progress_pct}%` }}
+                            />
+                          </div>
+                        )}
+                        {row.status === "error" && row.error_detail && (
+                          <p className="text-xs text-red-400 mt-1 max-w-[200px] truncate" title={row.error_detail}>
+                            {row.error_detail}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.status === "done" && row.n_hallazgos != null ? (
+                          <span className={`font-semibold ${row.n_hallazgos > 0 ? "text-amber-600" : "text-green-600"}`}>
+                            {row.n_hallazgos}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                        {formatDate(row.created_at)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-3">
+                          {row.status === "done" && (
+                            <Link
+                              href={`/audit?audit_id=${row.audit_id}`}
+                              className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                            >
+                              Ver informe →
+                            </Link>
+                          )}
+                          {row.status === "processing" && (
+                            <>
+                              <Link
+                                href={`/audit?audit_id=${row.audit_id}`}
+                                className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
+                              >
+                                Ver progreso →
+                              </Link>
+                              <button
+                                onClick={() => handleCancel(row.audit_id)}
+                                disabled={cancelling === row.audit_id}
+                                className="text-xs font-medium text-red-500 hover:text-red-700 hover:underline whitespace-nowrap disabled:opacity-50"
+                              >
+                                {cancelling === row.audit_id ? "Cancelando..." : "Cancelar"}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}

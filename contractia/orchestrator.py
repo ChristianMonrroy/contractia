@@ -43,6 +43,9 @@ from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuper
 _MAX_REINTENTOS = 3
 _PAUSA_REINTENTO_S = 10
 
+# Modelos con cuota limitada: agentes en serie + pausa larga entre secciones.
+_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-opus-4-6"}
+
 
 def _ejecutar_con_reintento(agente, inputs: dict) -> dict:
     """Ejecuta un agente con hasta _MAX_REINTENTOS intentos.
@@ -91,6 +94,7 @@ def auditar_consistencia(
     vector_store=None,
     contexto_grafo: str = "",
     modelo: Optional[str] = None,
+    nombres_anexos: Optional[List[str]] = None,
 ) -> List[Dict]:
     """Audita una sección individual con los tres agentes en paralelo.
 
@@ -126,14 +130,15 @@ def auditar_consistencia(
         else:
             contexto_rag = _rag_estatico(retriever, texto_seccion)
 
-    str_idx_glob = ", ".join(indice_global_clausulas)
+    clausulas_str = ", ".join(indice_global_clausulas) if indice_global_clausulas else "Ninguna"
+    anexos_str = ", ".join(nombres_anexos) if nombres_anexos else "Ninguno"
+    str_idx_glob = f"CLÁUSULAS: {clausulas_str} | ANEXOS: {anexos_str}"
 
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
     # ── Los 3 agentes son independientes → paralelo en modelos estables,
     #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
-    _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-opus-4-6"}
     _workers = 1 if modelo in _MODELOS_THROTTLE else 3
     with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
@@ -218,6 +223,7 @@ def ejecutar_auditoria_contrato(
     indice_secciones = crear_indice_capitulos_anexos(secciones)
     indice_global_clausulas = crear_indice_global_clausulas(secciones)
     mapa_clausula_a_seccion = construir_mapa_clausula_a_seccion(secciones)
+    nombres_anexos = [s["titulo"] for s in secciones if s.get("tipo") == "ANEXO"]
 
     # ── RAG: crear vector store ──
     retriever = None
@@ -282,6 +288,7 @@ def ejecutar_auditoria_contrato(
                 vector_store=vector_store,
                 contexto_grafo=contexto_grafo,
                 modelo=modelo,
+                nombres_anexos=nombres_anexos,
             )
 
             if hallazgos:
