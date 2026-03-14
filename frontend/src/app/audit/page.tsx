@@ -18,6 +18,7 @@ import {
   X,
   Download,
   History,
+  Clock,
 } from "lucide-react";
 
 type Mode = "audit" | "query";
