@@ -14,6 +14,7 @@ import {
   Clock,
   Terminal,
   X,
+  Eye,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -304,38 +305,44 @@ export default function AdminAuditoriasPage() {
                       <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                         {formatDate(row.created_at)}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-3">
+                      <td className="px-2 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
                           {row.status === "done" && (
                             <Link
                               href={`/audit?audit_id=${row.audit_id}`}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                              title="Ver informe"
+                              className="p-1 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
                             >
-                              Ver informe →
+                              <Eye className="w-4 h-4" />
                             </Link>
                           )}
                           {(row.status === "processing" || row.status === "queued") && (
                             <>
                               <Link
                                 href={`/audit?audit_id=${row.audit_id}`}
-                                className="text-xs font-medium text-slate-500 hover:text-slate-700 hover:underline whitespace-nowrap"
+                                title={row.status === "queued" ? "Ver estado" : "Ver progreso"}
+                                className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded transition-colors"
                               >
-                                {row.status === "queued" ? "Ver estado →" : "Ver progreso →"}
+                                <Eye className="w-4 h-4" />
                               </Link>
                               <button
                                 onClick={() => handleCancel(row.audit_id)}
                                 disabled={cancelling === row.audit_id}
-                                className="text-xs font-medium text-red-500 hover:text-red-700 hover:underline whitespace-nowrap disabled:opacity-50"
+                                title="Cancelar auditoría"
+                                className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
                               >
-                                {cancelling === row.audit_id ? "Cancelando..." : "Cancelar"}
+                                {cancelling === row.audit_id
+                                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                                  : <XCircle className="w-4 h-4" />}
                               </button>
                             </>
                           )}
                           <button
                             onClick={() => openDiag(row)}
-                            className="text-xs font-medium text-violet-500 hover:text-violet-700 hover:underline whitespace-nowrap flex items-center gap-1"
+                            title="Ver diagnóstico"
+                            className="p-1 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
                           >
-                            <Terminal className="w-3 h-3" />Diagnóstico
+                            <Terminal className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
