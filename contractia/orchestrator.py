@@ -133,7 +133,7 @@ def auditar_consistencia(
 
     # ── Los 3 agentes son independientes → paralelo en modelos estables,
     #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
-    _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
+    _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-opus-4-6"}
     _workers = 1 if modelo in _MODELOS_THROTTLE else 3
     with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
