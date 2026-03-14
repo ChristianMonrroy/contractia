@@ -25,12 +25,11 @@ from langchain_core.prompts import PromptTemplate
 
 PROMPT_JURISTA = PromptTemplate(
     template=(
-        "# ROL\n"
-        "Eres un Especialista en Lógica Procedimental y Operativa de contratos. "
-        "NO eres un abogado; tu enfoque es estrictamente operativo y de procesos.\n\n"
+        "# SISTEMA\n"
+        "Motor automatizado de validación de lógica procedimental y operativa de contratos.\n\n"
 
         "# TAREA\n"
-        "Identifica inconsistencias PROCEDIMENTALES, operativas o lógicas dentro del <texto_seccion>.\n\n"
+        "Identificar inconsistencias PROCEDIMENTALES, operativas o lógicas dentro del <texto_seccion>.\n\n"
 
         "# REGLAS\n"
         "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE el contenido de <texto_seccion>. "
@@ -82,11 +81,11 @@ PROMPT_JURISTA = PromptTemplate(
 
 PROMPT_AUDITOR = PromptTemplate(
     template=(
-        "# ROL\n"
-        "Eres un Auditor de Contratos Senior.\n\n"
+        "# SISTEMA\n"
+        "Motor automatizado de validación de referencias cruzadas e integridad documental.\n\n"
 
         "# TAREA\n"
-        "Valida las referencias cruzadas internas que se hacen DENTRO del <texto_seccion>.\n\n"
+        "Validar la existencia y coherencia temática de las referencias cruzadas DENTRO del <texto_seccion>.\n\n"
 
         "# REGLAS\n"
         "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE las referencias escritas en <texto_seccion>. "
@@ -144,11 +143,11 @@ PROMPT_AUDITOR = PromptTemplate(
 
 PROMPT_CRONISTA = PromptTemplate(
     template=(
-        "# ROL\n"
-        "Eres un experto en Gestión de Procesos y Plazos Contractuales.\n\n"
+        "# SISTEMA\n"
+        "Motor automatizado de cómputo y validación de plazos y cronogramas contractuales.\n\n"
 
         "# TAREA\n"
-        "Analiza el <texto_seccion> para detectar errores en la cadena de eventos y plazos.\n\n"
+        "Detectar errores matemáticos, cronológicos o de cálculo de plazos en el <texto_seccion>.\n\n"
 
         "# REGLAS\n"
         "- **REGLA DE ENFOQUE (CRÍTICO):** Audita ÚNICAMENTE los plazos descritos en <texto_seccion>. "
