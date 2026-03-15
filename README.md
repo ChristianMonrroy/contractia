@@ -1,10 +1,25 @@
-# ContractIA v9.7.0
+# ContractIA v9.8.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.8.0
+
+| Área | Cambio |
+|------|--------|
+| **Logs de diagnóstico en tiempo real** | El panel de auditoría muestra los avances del pipeline (FASE 0, 0.5, 1.5, sección por sección) en vivo durante la auditoría y en la pestaña "Diagnóstico técnico" al finalizar |
+| **`log_context.py`** | Nuevo módulo `contractia/core/log_context.py`: `ContextVar` que propaga el callback de logs a todos los threads del pipeline sin modificar firmas de funciones |
+| **`print()` → `log()`** | `segmenter.py`, `graph.py` y `orchestrator.py` reemplazaron `print()` por `log()` para que los mensajes lleguen al panel de diagnóstico |
+| **FASE 0 / 0.5 / 1.5** | `orchestrator.py` emite ahora headers de fase: FASE 0 (estructura: N capítulos, M anexos), FASE 0.5 (índice global de cláusulas y anexos), log por sección con conteo de hallazgos; `graph.py` emite FASE 1.5 al inicio de la construcción del grafo |
+| **Endpoint histórico de logs** | Nuevo `GET /contracts/audit/{id}/logs` devuelve todos los logs de diagnóstico de una auditoría completada |
+| **Frontend — pestaña Diagnóstico técnico** | Polling cada 5s a `/audit/{id}/logs` durante la auditoría (reemplaza SSE, incompatible con Cloud Run); tab "Diagnóstico técnico" con terminal monoespacio y color-coding al finalizar |
+| **`provider.py`** | `timeout=480s` para `gemini-3.1-pro-preview` (8 min vs 180s anterior); evita `ReadTimeout` en contratos de 300+ páginas |
+| **Reintentos throttle** | `_MAX_REINTENTOS_THROTTLE=5` para modelos lentos (Gemini 3.1, Claude 4.x); antes los tres modelos usaban el mismo límite de 3 |
+| **Bug fix — badge de modelo** | El badge de modelo en pantalla ahora muestra el modelo real de la auditoría (leído de `modelo_usado` vía polling); antes siempre mostraba "Gemini 2.5 Pro" |
+| **Bug fix — null safety logs** | `entry.msg?.startsWith()` protegido con `(entry.msg ?? "")` para evitar `TypeError` cuando la DB contiene entradas con `msg: null` |
 
 ## Novedades v9.7.0
 
@@ -293,6 +308,8 @@ ContractIA/
 | `GET`  | `/contracts/audit/{id}` | Polling de estado y resultado de auditoría |
 | `GET`  | `/contracts/audit/{id}/pdf` | Descarga el informe en PDF |
 | `GET`  | `/contracts/audit/{id}/pdf-tecnico` | Descarga el informe técnico en PDF (solo admin) |
+| `GET`  | `/contracts/audit/{id}/logs` | Historial de logs de diagnóstico de la auditoría |
+| `GET`  | `/contracts/audit/{id}/logs/stream` | Stream SSE de logs en tiempo real (mantenido para integración futura) |
 | `PATCH`| `/contracts/audit/{id}/cancelar` | Cancela una auditoría atascada |
 
 ### Admin (`/admin`)

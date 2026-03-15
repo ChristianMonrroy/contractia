@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.7.0 | **Fecha:** Marzo 2026
+**Versión:** 9.8.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -88,6 +88,7 @@ contractia/
 │
 ├── core/
 │   ├── loader.py               # Extracción de texto (PDF/DOCX)
+│   ├── log_context.py          # ContextVar para propagación de logs a threads (v9.8)
 │   ├── segmenter.py            # Motor regex de segmentación estructural
 │   ├── graph.py                # GraphRAG: extracción de tripletas + networkx DiGraph
 │   └── report.py               # Renderizado del informe Markdown
@@ -161,9 +162,10 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 ### `contractia/orchestrator.py`
 **Cerebro del pipeline de auditoría.** Coordina la ejecución completa:
 1. Recibe el texto extraído y lo segmenta en secciones.
-2. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
-3. Itera sobre cada sección llamando a `auditar_consistencia()`, que ejecuta los tres agentes y consolida sus hallazgos.
-4. Devuelve el diccionario de resultados completo que luego se convierte en informe.
+2. Emite logs de **FASE 0** (estructura: N capítulos / M anexos) y **FASE 0.5** (índice global de cláusulas y anexos).
+3. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
+4. Itera sobre cada sección llamando a `auditar_consistencia()`, emitiendo log por sección con conteo de hallazgos.
+5. Devuelve el diccionario de resultados completo que luego se convierte en informe.
 
 ---
 
@@ -172,8 +174,9 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 | Archivo | Responsabilidad |
 |---------|----------------|
 | `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
+| `log_context.py` | Módulo de logging agéntico (v9.8). Define un `ContextVar[Callable]` que propaga automáticamente el callback de logs a todos los threads lanzados por `ThreadPoolExecutor` sin modificar las firmas de las funciones del pipeline. `set_log_callback(cb)` activa la captura; `log(msg)` imprime y llama al callback si está registrado. |
 | `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia. `construir_mapa_clausula_a_seccion()` usa "Segmentación por Diccionario Exacto" (alineado con notebook vs16): localiza la posición exacta de cada cláusula y extrae solo su texto hasta la siguiente, no el capítulo completo. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 (para el informe técnico admin). |
-| `graph.py` | Construye el grafo de conocimiento GraphRAG. Para cada sección llama al LLM con un prompt que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. `obtener_contexto_grafo()` recupera el texto preciso de cada cláusula referenciada directamente desde `mapa_textos` (sin truncado ni búsqueda posicional, alineado con vs16); relación por defecto `CONECTA_CON`. |
+| `graph.py` | Construye el grafo de conocimiento GraphRAG. Emite log FASE 1.5 al inicio. Para cada sección llama al LLM con un prompt que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. `obtener_contexto_grafo()` recupera el texto preciso de cada cláusula referenciada directamente desde `mapa_textos` (sin truncado ni búsqueda posicional, alineado con vs16); relación por defecto `CONECTA_CON`. |
 | `report.py` | Transforma el diccionario de resultados del orquestador en un informe Markdown legible, agrupando hallazgos por sección y añadiendo resumen ejecutivo. |
 
 ---
@@ -228,7 +231,7 @@ Implementa el pipeline RAG completo:
 | `main.py` | Entry point de FastAPI. Registra los routers, configura CORS, monta el endpoint de webhook de Telegram y arranca la inicialización de la DB al levantar. |
 | `auth.py` | Generación y verificación de tokens JWT (HS256, 8h). Dependencia `get_current_user()` usada en todas las rutas protegidas. |
 | `routers/auth_router.py` | Endpoints `/auth/*`: registro con OTP por email, verificación, login, reset de contraseña. |
-| `routers/contracts_router.py` | Endpoints `/contracts/*`: subir contrato, abrir sesión RAG, consulta interactiva, lanzar auditoría (como `BackgroundTask`), polling de progreso, descarga PDF. Nuevo endpoint `GET /audit/{id}/pdf-tecnico` (requiere rol admin): reconstruye grafo desde JSON, genera imagen PNG y PDF técnico on-the-fly. |
+| `routers/contracts_router.py` | Endpoints `/contracts/*`: subir contrato, abrir sesión RAG, consulta interactiva, lanzar auditoría (como `BackgroundTask`), polling de progreso, descarga PDF. `GET /audit/{id}/pdf-tecnico` (solo admin): reconstruye grafo, genera PNG y PDF técnico on-the-fly. `GET /audit/{id}/logs`: historial de logs de diagnóstico (JSON). `GET /audit/{id}/logs/stream`: stream SSE de logs en tiempo real. En `_run_audit` activa `set_log_callback()` para capturar todos los `log()` del pipeline y persistirlos en la columna `audit_logs` de la DB. |
 | `routers/admin_router.py` | Endpoints `/admin/*`: listar usuarios, cambiar roles, ver logs de actividad y resumen de uso. Solo accesible con rol `admin`. |
 
 ---
@@ -240,7 +243,7 @@ Implementa el pipeline RAG completo:
 | `app/page.tsx` | Landing pública con descripción del producto. |
 | `app/login/` · `app/register/` · `app/forgot-password/` | Flujos de autenticación: formularios que llaman a `authAPI`. |
 | `app/dashboard/` | Vista principal post-login: acceso rápido a auditoría y consulta. |
-| `app/audit/` | Página central: subida de archivo, selector de modo (RAG/GraphRAG), polling de progreso en tiempo real, visualización del informe en Markdown y descarga PDF. |
+| `app/audit/` | Página central: subida de archivo, selector de modelo (Gemini 2.5/3.1, Claude Sonnet/Opus), selector de modo (RAG/GraphRAG), polling de progreso en tiempo real, panel "DIAGNÓSTICO EN VIVO" (polling cada 5s a `/audit/{id}/logs`), tab "Diagnóstico técnico" con terminal monoespacio y color-coding al finalizar, visualización del informe en Markdown y descarga PDF. |
 | `app/admin/` | Panel de administración: gestión de usuarios y roles; `/admin/actividad` con métricas de uso. |
 | `context/AuthContext.tsx` | Context global de React que almacena el JWT, el rol y expone `isAdmin`, `isAuthenticated`. Intercepta respuestas 401 para redirigir a login. |
 | `lib/api.ts` | Cliente Axios con base URL configurada. Expone `authAPI`, `contractsAPI` y `adminAPI` como objetos con métodos tipados. |
@@ -319,8 +322,10 @@ PDF/DOCX
     Bot Telegram → archivo .md adjunto al chat
     Web → polling GET /contracts/audit/{id} → informe renderizado en Markdown
         → GET /contracts/audit/{id}/pdf → PDF generado con fpdf2 (descarga directa)
+        → GET /contracts/audit/{id}/logs → historial de logs de diagnóstico (JSON)
     Email → notificación automática con PDF adjunto al terminar
-    DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones, progress_msg, progress_pct)
+    DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones, progress_msg,
+                            progress_pct, audit_logs JSONB, modelo_usado)
 ```
 
 ### Pausa técnica entre secciones
@@ -447,6 +452,8 @@ auditorias        (audit_id PK, user_id, status, informe, n_hallazgos,
                    filename, graph_enabled, texto_contrato,
                    metadata_tecnica TEXT,   -- JSON Fase 0/0.5 (solo admins)
                    graph_data TEXT,         -- JSON nx.node_link_data (solo admins)
+                   audit_logs JSONB,        -- [{ts, nivel, msg}] logs de diagnóstico (v9.8)
+                   modelo_usado TEXT,       -- modelo LLM seleccionado
                    created_at, updated_at)
 ```
 
