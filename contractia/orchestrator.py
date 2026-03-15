@@ -254,6 +254,17 @@ def ejecutar_auditoria_contrato(
     mapa_clausula_a_seccion = construir_mapa_clausula_a_seccion(secciones)
     nombres_anexos = [s["titulo"] for s in secciones if s.get("tipo") == "ANEXO"]
 
+    # ── FASE 0: Estructura del documento ──
+    _caps = [s for s in secciones if s.get("tipo") == "CAPITULO"]
+    _anxs = [s for s in secciones if s.get("tipo") == "ANEXO"]
+    log(f"\n--- FASE 0: Análisis Estructural ---")
+    log(f"Detectados {len(_caps)} capítulos y {len(_anxs)} anexos (total {len(secciones)} secciones).")
+
+    # ── FASE 0.5: Índice global ──
+    log(f"\n--- FASE 0.5: Índice Global de Cláusulas ---")
+    log(f"Cláusulas: {', '.join(indice_global_clausulas) if indice_global_clausulas else 'Ninguna detectada.'}")
+    log(f"Anexos: {', '.join(nombres_anexos) if nombres_anexos else 'Ninguno detectado.'}")
+
     # ── RAG: crear vector store ──
     retriever = None
     vector_store = None  # Declarar en scope amplio para pasarlo al Scout
@@ -308,6 +319,8 @@ def ejecutar_auditoria_contrato(
             except Exception as e:
                 log(f"⚠️ GraphRAG context error: {e}")
 
+        titulo_sec = sec.get("titulo", f"Sección {i + 1}")
+        log(f"\n--- Auditando: {titulo_sec} ({i + 1}/{n_secciones}) ---")
         try:
             hallazgos = auditar_consistencia(
                 texto_seccion=sec.get("contenido", ""),
@@ -321,12 +334,16 @@ def ejecutar_auditoria_contrato(
                 audit_id=audit_id,
             )
 
+            n_h = len(hallazgos) if hallazgos else 0
             if hallazgos:
                 resultados_auditoria.append({
                     "seccion": sec.get("titulo", "Sección"),
                     "tipo": sec.get("tipo", "?"),
                     "hallazgos": hallazgos,
                 })
+                log(f"  {n_h} hallazgo(s) encontrado(s).")
+            else:
+                log(f"  Sin hallazgos.")
 
             # Throttle models: longer pause to avoid 429 rate limit
             # Stable models (gemini-2.5-pro): 2s as before

@@ -80,6 +80,7 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
     Returns:
         nx.DiGraph con nodos de entidades y aristas de relaciones.
     """
+    log(f"\n--- FASE 1.5: Construyendo Grafo de Conocimiento (GraphRAG) ---")
     G = nx.DiGraph()
     # Modelos con cuota estricta necesitan más pausa entre llamadas al grafo
     _model_name = modelo or str(getattr(llm, "model_name", "") or "")
