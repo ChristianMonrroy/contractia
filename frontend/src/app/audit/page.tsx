@@ -750,7 +750,7 @@ function AuditContent() {
                               className="bg-slate-900 rounded-xl p-4 h-48 overflow-y-auto font-mono text-xs leading-relaxed"
                             >
                               {diagLogs.map((entry, i) => (
-                                <div key={i} className={`mb-0.5 ${entry.nivel === "ERROR" ? "text-red-400" : entry.msg.startsWith("✅") ? "text-emerald-400" : entry.msg.startsWith("⚠️") ? "text-amber-400" : "text-slate-300"}`}>
+                                <div key={i} className={`mb-0.5 ${entry.nivel === "ERROR" ? "text-red-400" : (entry.msg ?? "").startsWith("✅") ? "text-emerald-400" : (entry.msg ?? "").startsWith("⚠️") ? "text-amber-400" : "text-slate-300"}`}>
                                   <span className="text-slate-600 mr-2 select-none">{new Date(entry.ts).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                                   {entry.msg}
                                 </div>
@@ -863,11 +863,11 @@ function AuditContent() {
                                 className={`mb-0.5 ${
                                   entry.nivel === "ERROR"
                                     ? "text-red-400"
-                                    : entry.msg.startsWith("✅") || entry.msg.startsWith("OK") || entry.msg.includes("completad") || entry.msg.includes("Completad")
+                                    : (entry.msg ?? "").startsWith("✅") || (entry.msg ?? "").startsWith("OK") || (entry.msg ?? "").includes("completad") || (entry.msg ?? "").includes("Completad")
                                       ? "text-emerald-400"
-                                      : entry.msg.startsWith("⚠️")
+                                      : (entry.msg ?? "").startsWith("⚠️")
                                         ? "text-amber-400"
-                                        : entry.msg.startsWith("---") || entry.msg.startsWith("===")
+                                        : (entry.msg ?? "").startsWith("---") || (entry.msg ?? "").startsWith("===")
                                           ? "text-sky-300 font-semibold"
                                           : "text-slate-300"
                                 }`}
