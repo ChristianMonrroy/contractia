@@ -67,7 +67,7 @@ _PROMPT_EXTRACCION = PromptTemplate(
 _GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None) -> nx.DiGraph:
+def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None, audit_id: Optional[str] = None) -> nx.DiGraph:
     """
     Construye un grafo de conocimiento a partir de las secciones del contrato.
 
@@ -80,7 +80,13 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
     Returns:
         nx.DiGraph con nodos de entidades y aristas de relaciones.
     """
-    log(f"\n--- FASE 1.5: Construyendo Grafo de Conocimiento (GraphRAG) ---")
+    log("--- FASE 1.5: Construyendo Grafo de Conocimiento (GraphRAG) ---")
+    if audit_id:
+        try:
+            from contractia.telegram.db.database import agregar_log_auditoria
+            agregar_log_auditoria(audit_id, "--- FASE 1.5: Construyendo Grafo de Conocimiento (GraphRAG) ---")
+        except Exception:
+            pass
     G = nx.DiGraph()
     # Modelos con cuota estricta necesitan más pausa entre llamadas al grafo
     _model_name = modelo or str(getattr(llm, "model_name", "") or "")

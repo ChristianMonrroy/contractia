@@ -50,6 +50,22 @@ _PAUSA_REINTENTO_THROTTLE_S = 30  # Modelos con cuota estricta (Claude 4.x, Gemi
 _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
+def _log_directo(msg: str, audit_id: Optional[str] = None) -> None:
+    """Log que llega a stdout (notebook/tqdm) Y directamente a la DB.
+
+    Necesario para mensajes de FASE: el ContextVar de log_context no se propaga
+    al hilo de run_in_executor en Cloud Run. Este patrón replica lo que ya
+    hace _ejecutar_con_reintento para sus logs de error.
+    """
+    log(msg)
+    if audit_id:
+        try:
+            from contractia.telegram.db.database import agregar_log_auditoria
+            agregar_log_auditoria(audit_id, msg)
+        except Exception:
+            pass
+
+
 def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None, pausa_s: int = _PAUSA_REINTENTO_S, max_reintentos: int = _MAX_REINTENTOS) -> dict:
     """Ejecuta un agente con hasta max_reintentos intentos.
 
@@ -257,13 +273,13 @@ def ejecutar_auditoria_contrato(
     # ── FASE 0: Estructura del documento ──
     _caps = [s for s in secciones if s.get("tipo") == "CAPITULO"]
     _anxs = [s for s in secciones if s.get("tipo") == "ANEXO"]
-    log(f"\n--- FASE 0: Análisis Estructural ---")
-    log(f"Detectados {len(_caps)} capítulos y {len(_anxs)} anexos (total {len(secciones)} secciones).")
+    _log_directo("--- FASE 0: Análisis Estructural ---", audit_id)
+    _log_directo(f"Detectados {len(_caps)} capítulos y {len(_anxs)} anexos (total {len(secciones)} secciones).", audit_id)
 
     # ── FASE 0.5: Índice global ──
-    log(f"\n--- FASE 0.5: Índice Global de Cláusulas ---")
-    log(f"Cláusulas: {', '.join(indice_global_clausulas) if indice_global_clausulas else 'Ninguna detectada.'}")
-    log(f"Anexos: {', '.join(nombres_anexos) if nombres_anexos else 'Ninguno detectado.'}")
+    _log_directo("--- FASE 0.5: Índice Global de Cláusulas ---", audit_id)
+    _log_directo(f"Cláusulas: {', '.join(indice_global_clausulas) if indice_global_clausulas else 'Ninguna detectada.'}", audit_id)
+    _log_directo(f"Anexos: {', '.join(nombres_anexos) if nombres_anexos else 'Ninguno detectado.'}", audit_id)
 
     # ── RAG: crear vector store ──
     retriever = None
@@ -283,7 +299,7 @@ def ejecutar_auditoria_contrato(
     if graph_enabled:
         try:
             log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
-            grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo)
+            grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
             log("✅ GraphRAG activo.")
         except Exception as e:
             log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
@@ -320,7 +336,7 @@ def ejecutar_auditoria_contrato(
                 log(f"⚠️ GraphRAG context error: {e}")
 
         titulo_sec = sec.get("titulo", f"Sección {i + 1}")
-        log(f"\n--- Auditando: {titulo_sec} ({i + 1}/{n_secciones}) ---")
+        _log_directo(f"--- Auditando: {titulo_sec} ({i + 1}/{n_secciones}) ---", audit_id)
         try:
             hallazgos = auditar_consistencia(
                 texto_seccion=sec.get("contenido", ""),
@@ -341,9 +357,9 @@ def ejecutar_auditoria_contrato(
                     "tipo": sec.get("tipo", "?"),
                     "hallazgos": hallazgos,
                 })
-                log(f"  {n_h} hallazgo(s) encontrado(s).")
+                _log_directo(f"  {n_h} hallazgo(s) encontrado(s).", audit_id)
             else:
-                log(f"  Sin hallazgos.")
+                _log_directo(f"  Sin hallazgos.", audit_id)
 
             # Throttle models: longer pause to avoid 429 rate limit
             # Stable models (gemini-2.5-pro): 2s as before
