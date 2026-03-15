@@ -85,7 +85,7 @@ export const contractsAPI = {
   },
 
   getAudit: (audit_id: string) =>
-    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; progress_pct?: number; filename?: string; queue_position?: number | null; audit_logs?: Array<{ ts: string; nivel: string; msg: string }> }>(
+    api.get<{ status: string; informe?: string; n_hallazgos?: number; n_secciones?: number; error_detail?: string; progress_msg?: string; progress_pct?: number; filename?: string; queue_position?: number | null; modelo_usado?: string; audit_logs?: Array<{ ts: string; nivel: string; msg: string }> }>(
       `/contracts/audit/${audit_id}`
     ),
 

@@ -147,6 +147,7 @@ function AuditContent() {
         if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
         if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
         if (check.data.filename) setFilename(check.data.filename);
+        if (check.data.modelo_usado) setModeloSeleccionado(check.data.modelo_usado);
         if (check.data.status === "queued") {
           setIsQueued(true);
           setQueuePosition(check.data.queue_position ?? null);
@@ -223,6 +224,7 @@ function AuditContent() {
           const check = await contractsAPI.getAudit(auditId);
           if (check.data.progress_msg) setProgressMsg(check.data.progress_msg);
           if (check.data.progress_pct != null) setProgressPct(check.data.progress_pct);
+          if (check.data.modelo_usado) setModeloSeleccionado(check.data.modelo_usado);
           if (check.data.status === "queued") {
             setIsQueued(true);
             setQueuePosition(check.data.queue_position ?? null);
