@@ -106,6 +106,11 @@ export const contractsAPI = {
       "/contracts/session/from-audit",
       { audit_id }
     ),
+
+  getAuditLogs: (audit_id: string) =>
+    api.get<{ audit_id: string; logs: Array<{ ts: string; nivel: string; msg: string }> }>(
+      `/contracts/audit/${audit_id}/logs`
+    ),
 };
 
 // --- Admin ---

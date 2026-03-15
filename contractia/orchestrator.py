@@ -27,6 +27,7 @@ from tqdm.auto import tqdm
 from contractia.agents.factory import crear_agentes, crear_scout
 from contractia.config import AGENTIC_RAG_ENABLED, ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
+from contractia.core.log_context import log
 from contractia.core.segmenter import (
     _get_all_section_numbers_as_str,
     construir_mapa_clausula_a_seccion,
@@ -41,6 +42,7 @@ from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuper
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
 _MAX_REINTENTOS = 3
+_MAX_REINTENTOS_THROTTLE = 5   # Modelos lentos (Gemini 3.1, Claude 4.x)
 _PAUSA_REINTENTO_S = 10        # Modelos estables (Gemini 2.5 Pro)
 _PAUSA_REINTENTO_THROTTLE_S = 30  # Modelos con cuota estricta (Claude 4.x, Gemini 3.1)
 
@@ -48,8 +50,8 @@ _PAUSA_REINTENTO_THROTTLE_S = 30  # Modelos con cuota estricta (Claude 4.x, Gemi
 _MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None, pausa_s: int = _PAUSA_REINTENTO_S) -> dict:
-    """Ejecuta un agente con hasta _MAX_REINTENTOS intentos.
+def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None, pausa_s: int = _PAUSA_REINTENTO_S, max_reintentos: int = _MAX_REINTENTOS) -> dict:
+    """Ejecuta un agente con hasta max_reintentos intentos.
 
     Si el LLM lanza un error (incluyendo timeout del cliente VertexAI),
     espera pausa_s segundos y reintenta. Nunca omite silenciosamente:
@@ -65,20 +67,20 @@ def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None
                 pass
 
     ultimo_error = None
-    for intento in range(1, _MAX_REINTENTOS + 1):
+    for intento in range(1, max_reintentos + 1):
         try:
             return agente.ejecutar(inputs)
         except Exception as e:
             ultimo_error = e
-            if intento < _MAX_REINTENTOS:
+            if intento < max_reintentos:
                 _log(
-                    f"Agente falló (intento {intento}/{_MAX_REINTENTOS}): {type(e).__name__}: {str(e)[:200]}. "
+                    f"Agente falló (intento {intento}/{max_reintentos}): {type(e).__name__}: {str(e)[:200]}. "
                     f"Reintentando en {pausa_s}s..."
                 )
                 time.sleep(pausa_s)
             else:
                 _log(
-                    f"Agente no respondió tras {_MAX_REINTENTOS} intentos: {type(ultimo_error).__name__}: {str(ultimo_error)[:200]}",
+                    f"Agente no respondió tras {max_reintentos} intentos: {type(ultimo_error).__name__}: {str(ultimo_error)[:200]}",
                     nivel="ERROR",
                 )
     return {}
@@ -135,11 +137,11 @@ def auditar_consistencia(
                         + ctx_scout
                         + "\n--- FIN CONTEXTO SCOUT ---\n"
                     )
-                    print(f"   🔍 Scout: {len(ctx_scout)} chars de contexto enriquecido")
+                    log(f"   Scout: {len(ctx_scout)} chars de contexto enriquecido")
                 else:
                     contexto_rag = _rag_estatico(retriever, texto_seccion)
             except Exception as e:
-                print(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
+                log(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
                 contexto_rag = _rag_estatico(retriever, texto_seccion)
         else:
             contexto_rag = _rag_estatico(retriever, texto_seccion)
@@ -156,6 +158,7 @@ def auditar_consistencia(
     _is_throttle = modelo in _MODELOS_THROTTLE
     _workers = 1 if _is_throttle else 3
     _pausa_retry = _PAUSA_REINTENTO_THROTTLE_S if _is_throttle else _PAUSA_REINTENTO_S
+    _reintentos = _MAX_REINTENTOS_THROTTLE if _is_throttle else _MAX_REINTENTOS
     with ThreadPoolExecutor(max_workers=_workers) as pool:
         fut_jurista = pool.submit(
             _ejecutar_con_reintento,
@@ -168,6 +171,7 @@ def auditar_consistencia(
             },
             audit_id,
             _pausa_retry,
+            _reintentos,
         )
         fut_auditor = pool.submit(
             _ejecutar_con_reintento,
@@ -181,6 +185,7 @@ def auditar_consistencia(
             },
             audit_id,
             _pausa_retry,
+            _reintentos,
         )
         fut_cronista = pool.submit(
             _ejecutar_con_reintento,
@@ -193,6 +198,7 @@ def auditar_consistencia(
             },
             audit_id,
             _pausa_retry,
+            _reintentos,
         )
         res_jurista = fut_jurista.result()
         res_auditor = fut_auditor.result()
@@ -253,23 +259,23 @@ def ejecutar_auditoria_contrato(
     vector_store = None  # Declarar en scope amplio para pasarlo al Scout
     if RAG_ENABLED:
         try:
-            print("\n📚 Construyendo base de conocimiento RAG...")
+            log("\n📚 Construyendo base de conocimiento RAG...")
             vector_store = crear_vector_store(texto_contrato, secciones)
             retriever = crear_retriever(vector_store)
             modo_rag = "Hybrid RAG + Reranker + Scout" if AGENTIC_RAG_ENABLED else "Hybrid RAG + Reranker"
-            print(f"✅ RAG activo ({modo_rag}).\n")
+            log(f"✅ RAG activo ({modo_rag}).")
         except Exception as e:
-            print(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.\n")
+            log(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.")
 
     # ── GraphRAG: construir grafo de conocimiento ──
     grafo = None
     if graph_enabled:
         try:
-            print("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
+            log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
             grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo)
-            print("✅ GraphRAG activo.\n")
+            log("✅ GraphRAG activo.")
         except Exception as e:
-            print(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.\n")
+            log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
 
     # ── Auditoría multi-agente ──
     resultados_auditoria = []
@@ -280,7 +286,7 @@ def ejecutar_auditoria_contrato(
         labels.append("GraphRAG")
     label_str = " + ".join(labels) + " " if labels else ""
     n_secciones = len(secciones)
-    print(f"\n🚀 Iniciando auditoría {label_str}en {n_secciones} secciones...")
+    log(f"\n🚀 Iniciando auditoría {label_str}en {n_secciones} secciones...")
 
     for i, sec in enumerate(tqdm(secciones, desc="Auditando Secciones")):
         # Actualizar progreso y verificar cancelación (55% → 88%)
@@ -288,7 +294,7 @@ def ejecutar_auditoria_contrato(
             pct = 55 + int((i / n_secciones) * 33)
             stop_requested = progress_callback(pct, f"Auditando sección {i + 1}/{n_secciones}…")
             if stop_requested:
-                print(f"[AUDIT] Auditoría detenida en sección {i + 1} por cancelación externa.")
+                log(f"[AUDIT] Auditoría detenida en sección {i + 1} por cancelación externa.")
                 break
 
         idx_local = crear_indice_de_clausulas_por_seccion(sec.get("contenido", ""))
@@ -300,7 +306,7 @@ def ejecutar_auditoria_contrato(
                     idx_local, grafo, mapa_clausula_a_seccion
                 )
             except Exception as e:
-                print(f"⚠️ GraphRAG context error: {e}")
+                log(f"⚠️ GraphRAG context error: {e}")
 
         try:
             hallazgos = auditar_consistencia(
@@ -328,7 +334,7 @@ def ejecutar_auditoria_contrato(
             time.sleep(_pausa)
 
         except Exception as e:
-            print(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
+            log(f"⚠️ Error en sección '{sec.get('titulo')}': {e}")
 
     # Generar imagen del grafo (None si GraphRAG no estaba activo)
     imagen_grafo_png: Optional[bytes] = generar_imagen_grafo(grafo) if grafo is not None else None

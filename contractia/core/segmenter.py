@@ -8,6 +8,8 @@ expresiones regulares, y construye índices de cláusulas.
 import re
 from typing import Dict, List, Set, Tuple
 
+from contractia.core.log_context import log
+
 # ═══════════════════════════════════════════════════════════════
 # Funciones de normalización de texto
 # ═══════════════════════════════════════════════════════════════
@@ -456,9 +458,9 @@ def separar_en_secciones(texto_contrato: str) -> List[Dict]:
     caps = [s["titulo"] for s in secciones if s["tipo"] == "CAPITULO"]
     anxs = [s["titulo"] for s in secciones if s["tipo"] == "ANEXO"]
 
-    print("\n--- FASE 0: Análisis Estructural (Separando en Capítulos/Anexos) ---")
-    print(f"Detectados {len(caps)} capítulos y {len(anxs)} anexos (total {len(secciones)} secciones).")
-    print("\n--- FASE 0.5: Auditoría de Secuencia de Cláusulas ---")
+    log("\n--- FASE 0: Análisis Estructural (Separando en Capítulos/Anexos) ---")
+    log(f"Detectados {len(caps)} capítulos y {len(anxs)} anexos (total {len(secciones)} secciones).")
+    log("\n--- FASE 0.5: Auditoría de Secuencia de Cláusulas ---")
 
     for s in secciones:
         if s.get("tipo") != "CAPITULO":
@@ -483,9 +485,9 @@ def separar_en_secciones(texto_contrato: str) -> List[Dict]:
 
         valido, faltantes, n = _validar_secuencia_clausulas(clausulas, prefijo)
         if valido:
-            print(f"  ✓ {titulo} ({n} cláusulas, secuencia válida)")
+            log(f"  ✓ {titulo} ({n} cláusulas, secuencia válida)")
         else:
-            print(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
+            log(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
 
     return secciones
 
@@ -509,9 +511,9 @@ def separar_en_secciones_con_metadata(
     caps = [s["titulo"] for s in secciones if s["tipo"] == "CAPITULO"]
     anxs = [s["titulo"] for s in secciones if s["tipo"] == "ANEXO"]
 
-    print("\n--- FASE 0: Análisis Estructural (Separando en Capítulos/Anexos) ---")
-    print(f"Detectados {len(caps)} capítulos y {len(anxs)} anexos (total {len(secciones)} secciones).")
-    print("\n--- FASE 0.5: Auditoría de Secuencia de Cláusulas ---")
+    log("\n--- FASE 0: Análisis Estructural (Separando en Capítulos/Anexos) ---")
+    log(f"Detectados {len(caps)} capítulos y {len(anxs)} anexos (total {len(secciones)} secciones).")
+    log("\n--- FASE 0.5: Auditoría de Secuencia de Cláusulas ---")
 
     for s in secciones:
         if s.get("tipo") != "CAPITULO":
@@ -536,9 +538,9 @@ def separar_en_secciones_con_metadata(
 
         valido, faltantes, n = _validar_secuencia_clausulas(clausulas, prefijo)
         if valido:
-            print(f"  ✓ {titulo} ({n} cláusulas, secuencia válida)")
+            log(f"  ✓ {titulo} ({n} cláusulas, secuencia válida)")
         else:
-            print(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
+            log(f"  ✗ {titulo} ({n} cláusulas). Faltan: {faltantes}")
 
     metadata = _computar_metadata_tecnica(secciones)
     return secciones, metadata

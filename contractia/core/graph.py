@@ -26,6 +26,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
 
 from contractia.agents.base import parse_json_seguro
+from contractia.core.log_context import log
 
 _PROMPT_EXTRACCION = PromptTemplate(
     template=(
@@ -86,7 +87,7 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
     try:
         cadena = _PROMPT_EXTRACCION | llm | StrOutputParser()
     except Exception as e:
-        print(f"⚠️ No se pudo construir la cadena GraphRAG: {e}")
+        log(f"⚠️ No se pudo construir la cadena GraphRAG: {e}")
         return G  # Grafo vacío; la auditoría continuará sin GraphRAG
 
     for sec in secciones:
@@ -127,9 +128,9 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
             time.sleep(_sleep_s)  # Rate limit VertexAI (más largo para modelos throttled)
 
         except Exception as e:
-            print(f"⚠️ Error extrayendo grafo en sección '{titulo}': {e}")
+            log(f"⚠️ Error extrayendo grafo en sección '{titulo}': {e}")
 
-    print(
+    log(
         f"✅ Grafo construido: {G.number_of_nodes()} nodos, "
         f"{G.number_of_edges()} relaciones."
     )

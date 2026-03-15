@@ -2,10 +2,11 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { contractsAPI, extractError, AuditRow } from "@/lib/api";
+import { contractsAPI, extractError, AuditRow, API_BASE } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import Cookies from "js-cookie";
 import {
   Upload,
   FileText,
@@ -19,7 +20,10 @@ import {
   Download,
   History,
   Clock,
+  Terminal,
 } from "lucide-react";
+
+type LogEntry = { ts: string; nivel: string; msg: string };
 
 type Mode = "audit" | "query";
 type AuditStatus = "idle" | "uploading" | "ready" | "running" | "done" | "error";
@@ -51,8 +55,12 @@ function AuditContent() {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [auditHistory, setAuditHistory] = useState<AuditRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<"informe" | "diagnostico">("informe");
+  const [diagLogs, setDiagLogs] = useState<LogEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sseAbortRef = useRef<AbortController | null>(null);
+  const logsPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isAuthenticated) router.push("/login");
@@ -72,6 +80,60 @@ function AuditContent() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-scroll del panel de logs de diagnóstico
+  useEffect(() => {
+    if (logsPanelRef.current) {
+      logsPanelRef.current.scrollTop = logsPanelRef.current.scrollHeight;
+    }
+  }, [diagLogs]);
+
+  // SSE: conectar cuando la auditoría está en curso
+  useEffect(() => {
+    if (!currentAuditId || status !== "running") return;
+    const controller = new AbortController();
+    sseAbortRef.current = controller;
+    const token = Cookies.get("token");
+    let buffer = "";
+
+    fetch(`${API_BASE}/contracts/audit/${currentAuditId}/logs/stream`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    }).then(async (res) => {
+      if (!res.ok || !res.body) return;
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const entry: LogEntry = JSON.parse(line.slice(6));
+                setDiagLogs((prev) => [...prev, entry]);
+              } catch { /* skip malformed */ }
+            }
+          }
+        }
+      } catch (e) {
+        if ((e as Error).name !== "AbortError") console.error("SSE error", e);
+      }
+    }).catch(() => {});
+
+    return () => controller.abort();
+  }, [currentAuditId, status]);
+
+  // Logs históricos: cargar cuando la auditoría ya está completada
+  useEffect(() => {
+    if (status !== "done" || !currentAuditId || diagLogs.length > 0) return;
+    contractsAPI.getAuditLogs(currentAuditId)
+      .then((res) => setDiagLogs(res.data.logs ?? []))
+      .catch(() => {});
+  }, [status, currentAuditId]);
 
   // Si llega con ?audit_id=xxx (desde historial), carga el resultado directamente
   useEffect(() => {
@@ -260,6 +322,7 @@ function AuditContent() {
 
   const reset = () => {
     if (pollRef.current) clearInterval(pollRef.current);
+    if (sseAbortRef.current) sseAbortRef.current.abort();
     setStatus("idle");
     setSessionId("");
     setUploadedFile(null);
@@ -270,6 +333,8 @@ function AuditContent() {
     setProgressMsg("");
     setProgressPct(0);
     setCurrentAuditId("");
+    setDiagLogs([]);
+    setActiveTab("informe");
   };
 
   return (
@@ -668,6 +733,31 @@ function AuditContent() {
                         </div>
                         <p className="text-slate-400 text-sm text-center">Puedes cerrar esta página y volver más tarde</p>
                         <p className="text-slate-300 text-xs text-center mt-1">Recibirás un email al terminar</p>
+
+                        {/* Panel diagnóstico en tiempo real */}
+                        {diagLogs.length > 0 && (
+                          <div className="mt-6">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Terminal className="w-3.5 h-3.5 text-slate-400" />
+                              <span className="text-xs font-medium text-slate-400 uppercase tracking-wide">Diagnóstico en vivo</span>
+                              <span className="ml-auto text-xs text-emerald-500 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
+                                transmitiendo
+                              </span>
+                            </div>
+                            <div
+                              ref={logsPanelRef}
+                              className="bg-slate-900 rounded-xl p-4 h-48 overflow-y-auto font-mono text-xs leading-relaxed"
+                            >
+                              {diagLogs.map((entry, i) => (
+                                <div key={i} className={`mb-0.5 ${entry.nivel === "ERROR" ? "text-red-400" : entry.msg.startsWith("✅") ? "text-emerald-400" : entry.msg.startsWith("⚠️") ? "text-amber-400" : "text-slate-300"}`}>
+                                  <span className="text-slate-600 mr-2 select-none">{new Date(entry.ts).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                                  {entry.msg}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -675,7 +765,7 @@ function AuditContent() {
 
                 {status === "done" && auditResult && (
                   <div className="bg-white rounded-2xl border border-slate-100 shadow-card overflow-hidden">
-                    {/* Header con botón PDF */}
+                    {/* Header con estado + botón PDF */}
                     <div className="bg-green-50 border-b border-green-100 px-6 py-4 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -695,33 +785,110 @@ function AuditContent() {
                       </button>
                     </div>
 
-                    {/* Informe renderizado en markdown */}
-                    <div className="p-6 sm:p-8" id="audit-report-print">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          h1: ({ children }) => <h1 className="text-2xl font-bold text-[#1e3a5f] mt-6 mb-3 pb-2 border-b border-slate-200">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-xl font-semibold text-[#1e3a5f] mt-5 mb-2">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-base font-semibold text-slate-700 mt-4 mb-1">{children}</h3>,
-                          p:  ({ children }) => <p className="text-slate-700 text-sm leading-relaxed mb-3">{children}</p>,
-                          ul: ({ children }) => <ul className="list-disc list-outside ml-5 mb-3 space-y-1">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal list-outside ml-5 mb-3 space-y-1">{children}</ol>,
-                          li: ({ children }) => <li className="text-slate-700 text-sm leading-relaxed">{children}</li>,
-                          strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
-                          hr: () => <hr className="border-slate-200 my-5" />,
-                          blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-300 pl-4 italic text-slate-500 my-3">{children}</blockquote>,
-                          code: ({ children }) => <code className="bg-slate-100 text-slate-700 text-xs px-1.5 py-0.5 rounded font-mono">{children}</code>,
-                        }}
+                    {/* Pestañas */}
+                    <div className="flex border-b border-slate-100">
+                      <button
+                        onClick={() => setActiveTab("informe")}
+                        className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                          activeTab === "informe"
+                            ? "border-blue-500 text-blue-700 bg-blue-50/50"
+                            : "border-transparent text-slate-500 hover:text-slate-700"
+                        }`}
                       >
-                        {auditResult}
-                      </ReactMarkdown>
+                        <FileText className="w-4 h-4" />
+                        Informe
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("diagnostico")}
+                        className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+                          activeTab === "diagnostico"
+                            ? "border-slate-600 text-slate-800 bg-slate-50"
+                            : "border-transparent text-slate-500 hover:text-slate-700"
+                        }`}
+                      >
+                        <Terminal className="w-4 h-4" />
+                        Diagnóstico técnico
+                        {diagLogs.length > 0 && (
+                          <span className="ml-1 bg-slate-200 text-slate-600 text-xs px-1.5 py-0.5 rounded-full">
+                            {diagLogs.length}
+                          </span>
+                        )}
+                      </button>
                     </div>
 
+                    {/* Contenido de pestaña Informe */}
+                    {activeTab === "informe" && (
+                      <div className="p-6 sm:p-8" id="audit-report-print">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            h1: ({ children }) => <h1 className="text-2xl font-bold text-[#1e3a5f] mt-6 mb-3 pb-2 border-b border-slate-200">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-xl font-semibold text-[#1e3a5f] mt-5 mb-2">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-base font-semibold text-slate-700 mt-4 mb-1">{children}</h3>,
+                            p:  ({ children }) => <p className="text-slate-700 text-sm leading-relaxed mb-3">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc list-outside ml-5 mb-3 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-outside ml-5 mb-3 space-y-1">{children}</ol>,
+                            li: ({ children }) => <li className="text-slate-700 text-sm leading-relaxed">{children}</li>,
+                            strong: ({ children }) => <strong className="font-semibold text-slate-800">{children}</strong>,
+                            hr: () => <hr className="border-slate-200 my-5" />,
+                            blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-300 pl-4 italic text-slate-500 my-3">{children}</blockquote>,
+                            code: ({ children }) => <code className="bg-slate-100 text-slate-700 text-xs px-1.5 py-0.5 rounded font-mono">{children}</code>,
+                          }}
+                        >
+                          {auditResult}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+
+                    {/* Contenido de pestaña Diagnóstico técnico */}
+                    {activeTab === "diagnostico" && (
+                      <div className="p-6">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Terminal className="w-4 h-4 text-slate-500" />
+                          <span className="text-sm font-medium text-slate-600">Log de ejecución</span>
+                          <span className="ml-auto text-xs text-slate-400">{diagLogs.length} entradas</span>
+                        </div>
+                        {diagLogs.length === 0 ? (
+                          <div className="bg-slate-900 rounded-xl p-6 text-center">
+                            <p className="text-slate-500 text-sm font-mono">Sin logs disponibles para esta auditoría.</p>
+                          </div>
+                        ) : (
+                          <div
+                            ref={logsPanelRef}
+                            className="bg-slate-900 rounded-xl p-4 h-[480px] overflow-y-auto font-mono text-xs leading-relaxed"
+                          >
+                            {diagLogs.map((entry, i) => (
+                              <div
+                                key={i}
+                                className={`mb-0.5 ${
+                                  entry.nivel === "ERROR"
+                                    ? "text-red-400"
+                                    : entry.msg.startsWith("✅") || entry.msg.startsWith("OK") || entry.msg.includes("completad") || entry.msg.includes("Completad")
+                                      ? "text-emerald-400"
+                                      : entry.msg.startsWith("⚠️")
+                                        ? "text-amber-400"
+                                        : entry.msg.startsWith("---") || entry.msg.startsWith("===")
+                                          ? "text-sky-300 font-semibold"
+                                          : "text-slate-300"
+                                }`}
+                              >
+                                <span className="text-slate-600 mr-2 select-none">
+                                  {new Date(entry.ts).toLocaleTimeString("es-PE", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                    second: "2-digit",
+                                  })}
+                                </span>
+                                {entry.msg}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="px-6 sm:px-8 pb-6 border-t border-slate-50 pt-4">
-                      <button
-                        onClick={reset}
-                        className="text-sm text-blue-600 hover:underline"
-                      >
+                      <button onClick={reset} className="text-sm text-blue-600 hover:underline">
                         Auditar otro contrato
                       </button>
                     </div>

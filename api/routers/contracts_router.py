@@ -1,20 +1,22 @@
 """Endpoints de contratos: subida, auditoría y consultas RAG."""
 
 import asyncio
+import json
 import re
 import tempfile
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.loader import procesar_documentos_carpeta
+from contractia.core.log_context import set_log_callback
 from contractia.core.report import render_auditoria_markdown
 from contractia.core.segmenter import construir_mapa_clausula_a_seccion, separar_en_secciones
 from contractia.llm.provider import build_llm
@@ -44,6 +46,10 @@ from contractia.telegram.flows.audit_flow import _auditoria_lock
 _retrievers: dict = {}
 _graphs: dict = {}
 _mapa_textos: dict = {}
+
+# Colas SSE por audit_id — cada conexión /audit/{id}/logs/stream crea una queue aquí.
+# El log_callback de _run_audit empuja mensajes a esta queue en tiempo real.
+_sse_log_queues: dict = {}
 
 
 class QueryRequest(BaseModel):
@@ -598,6 +604,16 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
     import shutil
     _stop_keepalive = asyncio.Event()
     _keepalive_task = asyncio.create_task(_keepalive(_stop_keepalive))
+
+    # Registrar log_callback: persiste en DB y empuja a la cola SSE si hay cliente conectado.
+    _loop = asyncio.get_event_loop()
+    def _log_cb(msg: str) -> None:
+        agregar_log_auditoria(audit_id, msg)
+        q = _sse_log_queues.get(audit_id)
+        if q is not None:
+            _loop.call_soon_threadsafe(q.put_nowait, msg)
+    set_log_callback(_log_cb)
+
     async with _auditoria_lock:
         try:
             agregar_log_auditoria(audit_id, f"=== Auditoría iniciada === archivo: {filename} | modelo: {modelo} | GraphRAG: {graph_enabled}")
@@ -740,6 +756,101 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
             shutil.rmtree(tmp_dir, ignore_errors=True)
     _stop_keepalive.set()
     _keepalive_task.cancel()
+    # Señalar fin del stream SSE
+    set_log_callback(None)
+    q = _sse_log_queues.get(audit_id)
+    if q is not None:
+        q.put_nowait("__DONE__")
+
+
+@router.get("/audit/{audit_id}/logs/stream")
+async def stream_audit_logs(audit_id: str, user: dict = Depends(get_current_user)):
+    """Stream SSE de logs de diagnóstico en tiempo real para una auditoría en curso.
+
+    El cliente conecta con EventSource. Recibe cada línea de diagnóstico
+    (segmentación, GraphRAG, agentes) mientras la auditoría avanza.
+    Cuando termina, recibe el evento 'done' y puede cerrar la conexión.
+    Los logs históricos (auditorías ya completadas) también se sirven desde aquí
+    al inicio del stream.
+    """
+    result = get_auditoria(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    user_id = int(user["sub"])
+    if result.get("user_id") != user_id and user.get("rol") != "admin":
+        # Verificar propiedad via DB
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM auditorias WHERE audit_id = %s", (audit_id,)
+            ).fetchone()
+        if not row or dict(row)["user_id"] != user_id and user.get("rol") != "admin":
+            raise HTTPException(403, "No tienes acceso a esta auditoría.")
+
+    # Crear cola SSE para este audit_id (máx. 2000 mensajes en buffer)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=2000)
+    _sse_log_queues[audit_id] = queue
+
+    # Si la auditoría ya está completada/error, no hay stream activo: enviar logs históricos y cerrar.
+    already_done = result.get("status") in ("done", "error")
+
+    async def generate():
+        try:
+            # 1. Reenviar logs históricos ya guardados en DB
+            existing_logs = result.get("audit_logs") or []
+            if isinstance(existing_logs, str):
+                try:
+                    existing_logs = json.loads(existing_logs)
+                except Exception:
+                    existing_logs = []
+            for entry in existing_logs:
+                yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
+
+            if already_done:
+                yield "event: done\ndata: {}\n\n"
+                return
+
+            # 2. Stream de mensajes en tiempo real
+            while True:
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    if msg == "__DONE__":
+                        yield "event: done\ndata: {}\n\n"
+                        break
+                    entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "nivel": "INFO",
+                        "msg": msg,
+                    }
+                    yield f"data: {json.dumps(entry, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        finally:
+            _sse_log_queues.pop(audit_id, None)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@router.get("/audit/{audit_id}/logs")
+def get_audit_logs(audit_id: str, user: dict = Depends(get_current_user)):
+    """Devuelve el log de diagnóstico completo de una auditoría (histórico desde DB)."""
+    result = get_auditoria(audit_id)
+    if not result:
+        raise HTTPException(404, "Auditoría no encontrada.")
+    logs = result.get("audit_logs") or []
+    if isinstance(logs, str):
+        try:
+            logs = json.loads(logs)
+        except Exception:
+            logs = []
+    return {"audit_id": audit_id, "logs": logs}
 
 
 def _log_web(

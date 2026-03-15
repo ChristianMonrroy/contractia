@@ -140,11 +140,12 @@ def _build_vertexai(model_override: str | None = None):
         try:
             print(f"ℹ️  Inicializando Vertex AI: {model_name}")
             # Preview models have low quota → more retries with longer backoff
-            _max_retries = 6 if model_name == "gemini-3.1-pro-preview" else 3
+            _is_slow = model_name == "gemini-3.1-pro-preview"
+            _max_retries = 6 if _is_slow else 3
             llm = ChatVertexAI(
                 model_name=model_name,
                 temperature=VERTEXAI_TEMPERATURE,
-                timeout=180,  # 3 min por llamada; el orquestador reintenta si expira
+                timeout=480 if _is_slow else 180,  # 8 min para modelos lentos, 3 min para el resto
                 max_output_tokens=VERTEXAI_MAX_TOKENS,
                 max_retries=_max_retries,
             )
