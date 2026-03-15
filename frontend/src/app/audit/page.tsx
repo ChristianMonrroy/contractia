@@ -2,11 +2,10 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { contractsAPI, extractError, AuditRow, API_BASE } from "@/lib/api";
+import { contractsAPI, extractError, AuditRow } from "@/lib/api";
 import Navbar from "@/components/Navbar";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import Cookies from "js-cookie";
 import {
   Upload,
   FileText,
@@ -59,7 +58,7 @@ function AuditContent() {
   const [diagLogs, setDiagLogs] = useState<LogEntry[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const sseAbortRef = useRef<AbortController | null>(null);
+  const logsPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const logsPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -88,43 +87,16 @@ function AuditContent() {
     }
   }, [diagLogs]);
 
-  // SSE: conectar cuando la auditoría está en curso
+  // Polling de logs: actualiza cada 5s mientras la auditoría está en curso
   useEffect(() => {
     if (!currentAuditId || status !== "running") return;
-    const controller = new AbortController();
-    sseAbortRef.current = controller;
-    const token = Cookies.get("token");
-    let buffer = "";
-
-    fetch(`${API_BASE}/contracts/audit/${currentAuditId}/logs/stream`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    }).then(async (res) => {
-      if (!res.ok || !res.body) return;
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() ?? "";
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const entry: LogEntry = JSON.parse(line.slice(6));
-                setDiagLogs((prev) => [...prev, entry]);
-              } catch { /* skip malformed */ }
-            }
-          }
-        }
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") console.error("SSE error", e);
-      }
-    }).catch(() => {});
-
-    return () => controller.abort();
+    const poll = setInterval(() => {
+      contractsAPI.getAuditLogs(currentAuditId)
+        .then((res) => setDiagLogs(res.data.logs ?? []))
+        .catch(() => {});
+    }, 5000);
+    logsPollRef.current = poll;
+    return () => clearInterval(poll);
   }, [currentAuditId, status]);
 
   // Logs históricos: cargar cuando la auditoría ya está completada
@@ -324,7 +296,7 @@ function AuditContent() {
 
   const reset = () => {
     if (pollRef.current) clearInterval(pollRef.current);
-    if (sseAbortRef.current) sseAbortRef.current.abort();
+    if (logsPollRef.current) clearInterval(logsPollRef.current);
     setStatus("idle");
     setSessionId("");
     setUploadedFile(null);
