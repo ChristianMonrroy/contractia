@@ -78,10 +78,12 @@ def email_alerta_injection(
     alertas_heuristicas: str,
     confianza: float,
     audit_id: str,
+    user_email: str = None,
 ) -> tuple:
     asunto = f"ContractIA — ALERTA: Prompt Injection detectado en {filename}"
     confianza_pct = f"{confianza * 100:.0f}%"
     color_confianza = "#dc2626" if confianza < 0.5 else "#f59e0b"
+    usuario_display = f"{user_email} ({user_id})" if user_email else str(user_id)
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
       <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px;margin-bottom:20px">
@@ -95,8 +97,8 @@ def email_alerta_injection(
           <td style="padding:10px 12px;border:1px solid #e2e8f0">{filename}</td>
         </tr>
         <tr>
-          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Usuario (ID)</strong></td>
-          <td style="padding:10px 12px;border:1px solid #e2e8f0">{user_id}</td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Usuario</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{usuario_display}</td>
         </tr>
         <tr style="background:#f8fafc">
           <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Confianza de seguridad</strong></td>
@@ -126,7 +128,7 @@ def email_alerta_injection(
     """
     texto = (
         f"ALERTA: Prompt Injection detectado en '{filename}'\n"
-        f"Usuario ID: {user_id}\n"
+        f"Usuario: {usuario_display}\n"
         f"Confianza de seguridad: {confianza_pct}\n"
         f"Audit ID: {audit_id}\n\n"
         f"Evidencia del LLM:\n{evidencia}\n\n"

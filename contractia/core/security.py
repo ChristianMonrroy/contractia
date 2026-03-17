@@ -172,10 +172,20 @@ def registrar_y_alertar(
     except Exception as e:
         logger.error("Error registrando prompt injection en DB: %s", e)
 
+    # ── Obtener email del usuario ──
+    user_email = None
+    try:
+        from contractia.telegram.db.usuarios import get_usuario
+        usuario = get_usuario(user_id)
+        if usuario:
+            user_email = usuario.get("email") or usuario.get("Email")
+    except Exception:
+        pass
+
     # ── Alerta por correo (en thread separado) ──
     thread = threading.Thread(
         target=_enviar_alerta_email,
-        args=(resultado, audit_id, user_id, filename),
+        args=(resultado, audit_id, user_id, filename, user_email),
         daemon=True,
     )
     thread.start()
@@ -186,6 +196,7 @@ def _enviar_alerta_email(
     audit_id: str,
     user_id: int,
     filename: str,
+    user_email: Optional[str] = None,
 ) -> None:
     """Envía email de alerta al admin. Ejecuta en thread separado."""
     try:
@@ -208,6 +219,7 @@ def _enviar_alerta_email(
             alertas_heuristicas=alertas_texto,
             confianza=resultado.confianza,
             audit_id=audit_id,
+            user_email=user_email,
         )
         enviar_email(destinatario=ADMIN_EMAIL, asunto=asunto, cuerpo_html=html, cuerpo_texto=texto)
         logger.info("Alerta de prompt injection enviada a %s", ADMIN_EMAIL)
