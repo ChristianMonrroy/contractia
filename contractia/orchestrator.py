@@ -112,7 +112,7 @@ def _ejecutar_con_reintento(agente, inputs: dict, audit_id: Optional[str] = None
 def _rag_estatico(retriever, texto_truncado: str) -> str:
     """Wrapper del RAG estático original para reutilización interna."""
     try:
-        ctx = recuperar_contexto(retriever, texto_truncado[:500], max_tokens=2000)
+        ctx = recuperar_contexto(retriever, texto_truncado[:500], max_tokens=1000)
         if ctx:
             return (
                 "\n\n--- CONTEXTO ADICIONAL (de otras secciones, vía RAG) ---\n"
