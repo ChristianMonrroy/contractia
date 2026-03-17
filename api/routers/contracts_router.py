@@ -20,7 +20,7 @@ from contractia.core.log_context import set_log_callback
 from contractia.core.report import render_auditoria_markdown
 from contractia.core.segmenter import construir_mapa_clausula_a_seccion, separar_en_secciones
 from contractia.llm.provider import build_llm
-from contractia.orchestrator import ejecutar_auditoria_contrato
+from contractia.orchestrator import PromptInjectionDetectedError, ejecutar_auditoria_contrato
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
 from contractia.telegram.correo.pdf_report import generar_pdf_auditoria
 from contractia.telegram.correo.pdf_report_tecnico import generar_pdf_tecnico
@@ -658,6 +658,7 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                     texto, llm, graph_enabled=graph_enabled,
                     progress_callback=progress_cb, modelo=modelo,
                     audit_id=audit_id,
+                    user_id=user_id, filename=filename,
                 )
             )
             duracion = round(time.time() - start, 1)
@@ -745,6 +746,14 @@ async def _run_audit(audit_id: str, user_id: int, tmp_dir: Path, filename: str, 
                 )
             except Exception as mail_err:
                 print(f"[EMAIL] No se pudo enviar notificación a {email}: {mail_err}")
+        except PromptInjectionDetectedError as pi_err:
+            print(f"[SECURITY] Prompt injection detectado en {audit_id}: {pi_err}")
+            agregar_log_auditoria(audit_id, f"SEGURIDAD: Prompt injection detectado — {str(pi_err)[:300]}", nivel="ERROR")
+            actualizar_auditoria(
+                audit_id, status="error",
+                error_detail=f"Prompt injection detectado: {str(pi_err)[:400]}",
+                progress_msg="Bloqueado por seguridad",
+            )
         except Exception as e:
             import traceback
             detail = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-500:]}"

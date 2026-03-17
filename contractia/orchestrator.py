@@ -26,6 +26,8 @@ from tqdm.auto import tqdm
 
 from contractia.agents.factory import crear_agentes, crear_scout
 from contractia.config import AGENTIC_RAG_ENABLED, ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
+from contractia.core.sanitizer import sanitizar_texto
+from contractia.core.security import registrar_y_alertar, verificar_seguridad_documento
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.log_context import log
 from contractia.core.segmenter import (
@@ -39,6 +41,11 @@ from contractia.core.segmenter import (
 )
 from contractia.core.graph import generar_imagen_grafo
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
+
+class PromptInjectionDetectedError(Exception):
+    """Se lanza cuando el escaneo de seguridad detecta prompt injection en el documento."""
+    pass
+
 
 # Intentos máximos por agente si falla o el LLM devuelve error/timeout.
 _MAX_REINTENTOS = 3
@@ -249,9 +256,12 @@ def ejecutar_auditoria_contrato(
     progress_callback: Optional[Callable[[int, str], bool]] = None,
     modelo: Optional[str] = None,
     audit_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    filename: Optional[str] = None,
 ) -> Dict:
     """
     Pipeline completo de auditoría:
+      0. Sanitización + escaneo de seguridad (prompt injection)
       1. Segmentación regex
       2. Construcción de índices
       3. Creación de vector store RAG (si está habilitado)
@@ -263,7 +273,45 @@ def ejecutar_auditoria_contrato(
                            Si devuelve True, el loop se detiene (cancelación externa).
         modelo: ID de modelo VertexAI a usar (ej. 'gemini-3.1-pro-preview').
                 Si None, usa el default de config (VERTEXAI_MODEL).
+        user_id: ID del usuario que solicitó la auditoría (para registro de injection).
+        filename: Nombre del archivo subido (para registro de injection).
     """
+    # ── CAPA 1: Sanitización programática ──
+    _log_directo("--- Escudo de seguridad: Sanitización (Capa 1) ---", audit_id)
+    resultado_sanitizacion = sanitizar_texto(texto_contrato)
+    texto_contrato = resultado_sanitizacion.texto_limpio
+    if resultado_sanitizacion.chars_eliminados > 0:
+        _log_directo(f"Sanitización: {resultado_sanitizacion.chars_eliminados} caracteres invisibles eliminados.", audit_id)
+    if resultado_sanitizacion.tiene_alertas:
+        _log_directo(f"Sanitización: {len(resultado_sanitizacion.alertas)} patrón(es) sospechoso(s) detectado(s).", audit_id)
+
+    # ── CAPA 2: Escaneo LLM pre-auditoría ──
+    if ENABLE_LLM and llm is not None:
+        _log_directo("--- Escudo de seguridad: Escaneo LLM (Capa 2) ---", audit_id)
+        if progress_callback:
+            progress_callback(10, "Escaneando seguridad del documento...")
+        resultado_seguridad = verificar_seguridad_documento(
+            texto=texto_contrato,
+            alertas=resultado_sanitizacion.alertas,
+            llm=llm,
+            audit_id=audit_id,
+        )
+        if not resultado_seguridad.es_seguro:
+            _log_directo(
+                f"ALERTA: Prompt injection detectado — {resultado_seguridad.evidencia}",
+                audit_id,
+            )
+            # Registrar en DB y alertar al admin por correo
+            if audit_id and user_id is not None:
+                registrar_y_alertar(
+                    resultado=resultado_seguridad,
+                    audit_id=audit_id,
+                    user_id=user_id,
+                    filename=filename or "desconocido",
+                )
+            raise PromptInjectionDetectedError(resultado_seguridad.evidencia)
+        _log_directo("Documento seguro — continuando auditoría.", audit_id)
+
     secciones, metadata_tecnica = separar_en_secciones_con_metadata(texto_contrato)
     indice_secciones = crear_indice_capitulos_anexos(secciones)
     indice_global_clausulas = crear_indice_global_clausulas(secciones)

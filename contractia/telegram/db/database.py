@@ -121,6 +121,20 @@ def init_db() -> None:
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS queue_position INTEGER")
         # v9.8.0: logs de diagnóstico por auditoría
         conn.execute("ALTER TABLE auditorias ADD COLUMN IF NOT EXISTS audit_logs JSONB DEFAULT '[]'")
+        # v9.9.0: registro de intentos de prompt injection
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS prompt_injection_logs (
+                id                    SERIAL PRIMARY KEY,
+                audit_id              TEXT NOT NULL,
+                user_id               BIGINT NOT NULL,
+                filename              TEXT NOT NULL,
+                detected_at           TIMESTAMPTZ DEFAULT NOW(),
+                evidencia_llm         TEXT,
+                alertas_heuristicas   TEXT,
+                texto_sospechoso      TEXT,
+                confianza             FLOAT
+            )
+        """)
 
 
 def get_texto_auditoria(audit_id: str) -> Optional[str]:
@@ -409,3 +423,30 @@ def get_resumen_actividad() -> dict:
             resumen["duracion_promedio_pregunta"] = float(r["duracion_promedio"] or 0)
 
     return resumen
+
+
+def registrar_prompt_injection(
+    audit_id: str,
+    user_id: int,
+    filename: str,
+    evidencia_llm: str = "",
+    alertas_heuristicas: str = "[]",
+    texto_sospechoso: str = "",
+    confianza: float = 0.0,
+) -> None:
+    """Registra un intento de prompt injection en la tabla dedicada.
+
+    Nunca lanza excepción — el registro no debe interrumpir el flujo principal.
+    """
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO prompt_injection_logs "
+                "(audit_id, user_id, filename, evidencia_llm, "
+                "alertas_heuristicas, texto_sospechoso, confianza) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (audit_id, user_id, filename, evidencia_llm,
+                 alertas_heuristicas, texto_sospechoso, confianza),
+            )
+    except Exception:
+        pass

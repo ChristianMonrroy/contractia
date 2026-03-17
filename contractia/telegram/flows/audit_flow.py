@@ -19,7 +19,7 @@ from telegram.ext import ContextTypes
 from contractia.core.loader import procesar_documentos_carpeta
 from contractia.core.report import render_auditoria_markdown
 from contractia.llm.provider import build_llm
-from contractia.orchestrator import ejecutar_auditoria_contrato
+from contractia.orchestrator import PromptInjectionDetectedError, ejecutar_auditoria_contrato
 from contractia.telegram.db.database import get_conn
 from contractia.telegram.db.uso import registrar_auditoria
 
@@ -74,7 +74,8 @@ async def ejecutar_auditoria(
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(
-                    texto, llm, graph_enabled=graph_enabled, modelo=modelo
+                    texto, llm, graph_enabled=graph_enabled, modelo=modelo,
+                    user_id=user_id, filename=Path(ruta_archivo).name,
                 )
             )
             duracion = round(time.time() - start, 1)
@@ -109,6 +110,15 @@ async def ejecutar_auditoria(
                     parse_mode="Markdown",
                 )
 
+        except PromptInjectionDetectedError:
+            await update.message.reply_text(
+                "🚨 *ALERTA DE SEGURIDAD*\n\n"
+                "Se ha detectado contenido sospechoso en el documento que podría "
+                "comprometer el análisis de IA\\. La auditoría ha sido cancelada "
+                "por seguridad\\.\n\n"
+                "El administrador ha sido notificado\\.",
+                parse_mode="MarkdownV2",
+            )
         except Exception as e:
             await update.message.reply_text(
                 f"❌ Error durante la auditoría:\n<code>{str(e)[:300]}</code>",

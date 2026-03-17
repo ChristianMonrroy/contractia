@@ -62,6 +62,7 @@ SESSION_TIMEOUT_HOURS: int  = int(os.getenv("SESSION_TIMEOUT_HOURS", "8"))
 # ── Email (Gmail SMTP) ────────────────────────────────────────────────────────
 EMAIL_SENDER: str           = os.getenv("EMAIL_SENDER", "")
 EMAIL_PASSWORD: str         = os.getenv("EMAIL_PASSWORD", "")
+ADMIN_EMAIL: str            = os.getenv("ADMIN_EMAIL", "admin@contractia.pe")
 
 # ── Reranker (Cohere) ─────────────────────────────────────────────────────────
 # Si está vacío, el pipeline usa EnsembleRetriever (BM25 + FAISS) sin reranking.

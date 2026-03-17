@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.8.0 | **Fecha:** Marzo 2026
+**Versión:** 9.9.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -69,7 +69,8 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
 │  ├── uso_diario (rate limiting)     │
 │  ├── logs (+ duracion, canal,       │
 │  │        n_hallazgos)              │
-│  └── auditorias (estado, informe)   │
+│  ├── auditorias (estado, informe)   │
+│  └── prompt_injection_logs (v9.9)   │
 │                                     │
 │  FAISS en memoria (por sesión RAG)  │
 │  GraphRAG: networkx DiGraph         │
@@ -87,6 +88,8 @@ contractia/
 ├── orchestrator.py             # Pipeline principal (RAG + GraphRAG + Agentes)
 │
 ├── core/
+│   ├── sanitizer.py            # Capa 1: sanitización Unicode + detección heurística (v9.9)
+│   ├── security.py             # Capa 2: escaneo LLM pre-auditoría + registro + alerta (v9.9)
 │   ├── loader.py               # Extracción de texto (PDF/DOCX)
 │   ├── log_context.py          # ContextVar para propagación de logs a threads (v9.8)
 │   ├── segmenter.py            # Motor regex de segmentación estructural
@@ -161,11 +164,12 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 
 ### `contractia/orchestrator.py`
 **Cerebro del pipeline de auditoría.** Coordina la ejecución completa:
-1. Recibe el texto extraído y lo segmenta en secciones.
-2. Emite logs de **FASE 0** (estructura: N capítulos / M anexos) y **FASE 0.5** (índice global de cláusulas y anexos).
-3. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
-4. Itera sobre cada sección llamando a `auditar_consistencia()`, emitiendo log por sección con conteo de hallazgos.
-5. Devuelve el diccionario de resultados completo que luego se convierte en informe.
+1. **Escudo de seguridad (v9.9):** Sanitiza el texto (Capa 1) y lo escanea con el LLM (Capa 2). Si detecta prompt injection, lanza `PromptInjectionDetectedError`, registra en DB y alerta al admin por email.
+2. Segmenta el texto en secciones.
+3. Emite logs de **FASE 0** (estructura: N capítulos / M anexos) y **FASE 0.5** (índice global de cláusulas y anexos).
+4. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
+5. Itera sobre cada sección llamando a `auditar_consistencia()`, emitiendo log por sección con conteo de hallazgos.
+6. Devuelve el diccionario de resultados completo que luego se convierte en informe.
 
 ---
 
@@ -173,6 +177,8 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 
 | Archivo | Responsabilidad |
 |---------|----------------|
+| `sanitizer.py` | **Capa 1 de seguridad (v9.9).** Filtros determinísticos sin LLM: elimina caracteres Unicode invisibles (zero-width spaces U+200B/200C/200D, BOM U+FEFF, soft hyphens U+00AD, directional marks, control chars), normaliza a NFC para prevenir homoglyphs, y detecta 7 patrones heurísticos de prompt injection bilingüe (ES/EN) por regex. Retorna `ResultadoSanitizacion(texto_limpio, alertas, chars_eliminados)`. Las alertas no bloquean — se pasan a Capa 2 como contexto para el LLM. |
+| `security.py` | **Capa 2 de seguridad (v9.9).** Escaneo LLM pre-auditoría con diseño **fail-closed** (excepción → documento inseguro). El texto se envuelve en etiquetas `<documento>` con instrucción explícita de no obedecer contenido interno. Recibe las alertas heurísticas de Capa 1 como pistas. Output estructurado con Pydantic (`es_seguro: bool, evidencia: str, confianza: float`). Distingue falsos positivos (cláusulas imperativas normales vs. comandos dirigidos a la IA). Si detecta injection: registra en tabla `prompt_injection_logs` via `registrar_prompt_injection()` y envía email de alerta al admin en thread separado (no bloqueante). |
 | `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
 | `log_context.py` | Módulo de logging agéntico (v9.8). Define un `ContextVar[Callable]` que propaga automáticamente el callback de logs a todos los threads lanzados por `ThreadPoolExecutor` sin modificar las firmas de las funciones del pipeline. `set_log_callback(cb)` activa la captura; `log(msg)` imprime y llama al callback si está registrado. |
 | `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia. `construir_mapa_clausula_a_seccion()` usa "Segmentación por Diccionario Exacto" (alineado con notebook vs16): localiza la posición exacta de cada cláusula y extrae solo su texto hasta la siguiente, no el capítulo completo. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 (para el informe técnico admin). |
@@ -214,9 +220,9 @@ Implementa el pipeline RAG completo:
 | `sessions.py` | Diccionario en memoria de sesiones activas por `user_id`. Almacena el texto del contrato, el vector store, el grafo y el tiempo de última actividad. Expira sesiones tras 8 horas. |
 | `auth/crypto.py` | Genera OTPs de 6 dígitos y contraseñas seguras aleatorias para el flujo de registro por email. |
 | `correo/sender.py` | Envía emails vía Gmail SMTP (soporte adjunto PDF). |
-| `correo/templates.py` | HTML templates de los correos (verificación OTP, bienvenida, notificación de auditoría). |
+| `correo/templates.py` | HTML templates de los correos (verificación OTP, bienvenida, notificación de auditoría, alerta de prompt injection). |
 | `correo/pdf_report.py` | Convierte el informe Markdown a PDF usando fpdf2 (Python puro, sin dependencias nativas). |
-| `db/database.py` | Wrapper de psycopg2 con `get_conn()` como context manager. Expone `init_db()` (crea tablas si no existen) y CRUD de auditorías. |
+| `db/database.py` | Wrapper de psycopg2 con `get_conn()` como context manager. Expone `init_db()` (crea tablas si no existen), CRUD de auditorías y `registrar_prompt_injection()` para la tabla dedicada de seguridad. |
 | `db/usuarios.py` | CRUD de la tabla `usuarios`: crear, buscar por email/telegram_id, actualizar rol, hashear/verificar contraseñas con bcrypt. |
 | `db/uso.py` | Rate limiting diario: registra y consulta el número de auditorías/preguntas por usuario por día según su rol. |
 | `flows/audit_flow.py` | Orquesta el flujo completo de auditoría en el bot: descarga el archivo, extrae texto, llama al orquestador, guarda y envía el informe `.md` como adjunto al chat. |
@@ -264,6 +270,26 @@ PDF/DOCX
 
    │
    ▼
+[1.5] ESCUDO DE SEGURIDAD (v9.9)
+    ├── CAPA 1: sanitizer.py
+    │   ├── Elimina chars Unicode invisibles (zero-width, BOM, directional)
+    │   ├── Normaliza a NFC (previene homoglyphs)
+    │   └── Detecta 7 patrones heurísticos de injection (regex bilingüe)
+    │       Resultado: (texto_limpio, alertas) — las alertas no bloquean
+    │
+    └── CAPA 2: security.py
+        ├── LLM analiza texto con aislamiento <documento>
+        ├── Recibe alertas de Capa 1 como contexto
+        ├── Output Pydantic: {es_seguro, evidencia, confianza}
+        ├── Diseño FAIL-CLOSED: excepción → documento inseguro
+        │
+        └── Si es_seguro=False:
+            ├── INSERT en prompt_injection_logs (DB)
+            ├── Email alerta al admin (thread separado)
+            └── Lanza PromptInjectionDetectedError → auditoría abortada
+
+   │
+   ▼
 [2] SEGMENTACIÓN ESTRUCTURAL (regex, sin LLM)
     segmenter.py
     ├── Detecta CAPÍTULOS y ANEXOS con patrones regex
@@ -297,19 +323,19 @@ PDF/DOCX
     orchestrator.py → auditar_consistencia()
     │
     ├── [PARALELO] AGENTE JURISTA  ──┐
-    │   Input:  texto + contexto grafo │ ThreadPoolExecutor(max_workers=2)
-    │   Output: lista de referencias   │ (independientes entre sí)
-    │                                   │
-    ├── [PARALELO] AGENTE CRONISTA ──┘
-    │   Input:  texto + contexto grafo
-    │   Output: {hay_errores_logicos, hallazgos_procesos[]}
-    │
-    └── [SECUENCIAL] AGENTE AUDITOR  ← espera resultado Jurista
-        Input:  texto + contexto RAG + índices + refs_externas del Jurista + grafo
-        Output: {hay_inconsistencias, hallazgos[]}
+    │   Input:  texto + contexto grafo + RAG │ ThreadPoolExecutor(max_workers=3)
+    │   Output: {hay_inconsistencias, hallazgos[]} │ (independientes entre sí)
+    │                                               │
+    ├── [PARALELO] AGENTE AUDITOR  ─────────────────┤
+    │   Input:  texto + contexto RAG + índices + grafo │
+    │   Output: {hay_inconsistencias, hallazgos[]}     │
+    │                                                   │
+    └── [PARALELO] AGENTE CRONISTA ─────────────────┘
+        Input:  texto + contexto grafo + RAG
+        Output: {hay_errores_logicos, hay_inconsistencia_plazos, hallazgos_procesos[]}
 
-    Cada agente: hasta 3 reintentos automáticos con 10 s de pausa si el LLM falla
-    Pausa entre secciones: 0.5 s (antes 2 s)
+    Modelos estables (Gemini 2.5 Pro): 3 workers, 3 reintentos, 10s pausa, 2s entre secciones
+    Modelos throttle (Gemini 3.1, Claude): 1 worker, 5 reintentos, 30s pausa, 10s entre secciones
 
    │
    ▼
@@ -329,7 +355,7 @@ PDF/DOCX
 ```
 
 ### Pausa técnica entre secciones
-El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quota de VertexAI (reducido desde 2 s en v8.3.0).
+El orquestador incluye `time.sleep(2)` entre secciones para modelos estables (Gemini 2.5 Pro) y `time.sleep(10)` para modelos con cuota limitada (Gemini 3.1, Claude).
 
 ---
 
@@ -367,13 +393,13 @@ El orquestador incluye `time.sleep(0.5)` entre secciones para no saturar la quot
 
 ## 6. Sistema Multi-Agente
 
-**Patrón:** Sequential Agents con contexto compartido (RAG + GraphRAG).
+**Patrón:** Parallel Agents con contexto compartido (RAG + GraphRAG). Los 3 agentes son independientes y se ejecutan en paralelo (serie para modelos con cuota limitada).
 
 | Agente | Rol | Input principal | Output |
 |---|---|---|---|
-| **Jurista** | Identifica normativa externa | Texto + contexto grafo | `SalidaJurista`: lista de leyes/normas citadas |
-| **Auditor** | Valida referencias internas | Texto + contexto RAG + índices + grafo | `SalidaAuditor`: hallazgos de referencias rotas |
-| **Cronista** | Analiza procesos y plazos | Texto + contexto grafo | `SalidaCronista`: hallazgos de errores lógicos y de plazos |
+| **Jurista** | Detecta inconsistencias procedimentales y operativas | Texto + contexto grafo + RAG | `SalidaJurista`: hallazgos de tipo `INCONSISTENCIA_PROCEDIMENTAL` |
+| **Auditor** | Valida referencias cruzadas internas | Texto + contexto RAG + índices + grafo | `SalidaAuditor`: hallazgos de tipo `REFERENCIA_INEXISTENTE` o `REFERENCIA_ROTA` |
+| **Cronista** | Analiza plazos y errores de cálculo temporal | Texto + contexto grafo + RAG | `SalidaCronista`: hallazgos de tipo `ERROR_PLAZOS` o `ERROR_LOGICO` |
 
 **Técnicas de Prompt Engineering aplicadas:**
 
@@ -414,6 +440,60 @@ Los agentes usan `LangChain PromptTemplate | LLM.with_structured_output(schema)`
 - JWT firmados con **PyJWT>=2.9.0** (reemplazó `python-jose` en v8.5.0 por CVE activo); algoritmo HS256; secreto en GCP Secret Manager
 - Tokens en cookies (js-cookie), interceptor axios para inyección automática
 - Redirect a `/login` en respuestas 401
+- **Defensa contra prompt injection** en 2 capas (v9.9): sanitización programática + escaneo LLM pre-auditoría con diseño fail-closed (ver sección 7.1)
+
+---
+
+## 7.1. Defensa contra Prompt Injection (v9.9)
+
+ContractIA procesa documentos subidos por usuarios que se inyectan directamente en prompts de LLM. Un documento malicioso podría contener instrucciones ocultas para manipular a los agentes. El sistema implementa defensa en 2 capas:
+
+### Capa 1 — Sanitización Programática (`core/sanitizer.py`)
+
+Filtros determinísticos que se ejecutan **sin LLM**, antes de cualquier llamada a IA:
+
+| Filtro | Descripción |
+|--------|-------------|
+| Chars invisibles | Elimina 15+ tipos de caracteres Unicode invisibles: zero-width spaces (U+200B/C/D), BOM (U+FEFF), soft hyphens (U+00AD), directional marks (U+200E/F, U+202A-E), word joiners (U+2060-64), y todos los caracteres de categoría Unicode "C" (control) excepto `\n`, `\r`, `\t` |
+| Normalización NFC | Convierte a forma canónica NFC para prevenir bypass por descomposición Unicode (homoglyphs) |
+| Detección heurística | 7 patrones regex bilingües (ES/EN): ignorar instrucciones, cambiar identidad/rol, referencia a system prompt, exfiltración de configuración, modo debug/bypass, omitir análisis, forzar resultado específico |
+
+**Output:** `ResultadoSanitizacion(texto_limpio, alertas, chars_eliminados)`. Las alertas **no bloquean** — se pasan a Capa 2 como contexto.
+
+### Capa 2 — Escaneo LLM Pre-Auditoría (`core/security.py`)
+
+El LLM analiza el texto completo del contrato como **datos**, no como instrucciones:
+
+| Aspecto | Implementación |
+|---------|---------------|
+| Aislamiento | Texto envuelto en `<documento>...</documento>` con instrucción explícita de no obedecer contenido interno |
+| Contexto | Las alertas heurísticas de Capa 1 se pasan al LLM como pistas ("El análisis previo detectó estos patrones sospechosos...") |
+| Falsos positivos | Cláusulas imperativas normales ("El Concesionario deberá...") NO son injection; solo se detectan comandos dirigidos a la IA |
+| Output | Pydantic: `SalidaSeguridad(es_seguro: bool, evidencia: str, confianza: float)` |
+| Diseño | **Fail-closed**: si hay excepción → `es_seguro=False` (a diferencia del notebook que era fail-open) |
+
+### Respuesta ante detección
+
+Cuando `es_seguro=False`:
+
+1. **Registro en DB:** INSERT en tabla dedicada `prompt_injection_logs` con `audit_id`, `user_id`, `filename`, `evidencia_llm`, `alertas_heuristicas` (JSON), `texto_sospechoso`, `confianza`, `detected_at`
+2. **Alerta por correo:** Email al `ADMIN_EMAIL` con template rojo/alerta (`email_alerta_injection`); enviado en `threading.Thread` separado (no bloquea el flujo)
+3. **Excepción:** `PromptInjectionDetectedError` propagada al caller
+4. **API:** Auditoría marcada como `status="error"`, `progress_msg="Bloqueado por seguridad"`
+5. **Bot Telegram:** Mensaje de alerta al usuario informando que el documento fue rechazado
+
+### Consulta de historial
+
+```sql
+-- Ver todos los intentos de injection
+SELECT * FROM prompt_injection_logs ORDER BY detected_at DESC;
+
+-- Filtrar por usuario
+SELECT * FROM prompt_injection_logs WHERE user_id = 123456;
+
+-- Contar intentos por archivo
+SELECT filename, COUNT(*) FROM prompt_injection_logs GROUP BY filename;
+```
 
 ---
 
@@ -455,6 +535,12 @@ auditorias        (audit_id PK, user_id, status, informe, n_hallazgos,
                    audit_logs JSONB,        -- [{ts, nivel, msg}] logs de diagnóstico (v9.8)
                    modelo_usado TEXT,       -- modelo LLM seleccionado
                    created_at, updated_at)
+prompt_injection_logs (id, audit_id, user_id, filename,   -- v9.9: registro de ataques
+                   detected_at TIMESTAMPTZ,
+                   evidencia_llm TEXT,          -- descripción del LLM
+                   alertas_heuristicas TEXT,    -- JSON array de patrones Capa 1
+                   texto_sospechoso TEXT,       -- fragmento detectado
+                   confianza FLOAT)             -- score 0.0-1.0
 ```
 
 ---

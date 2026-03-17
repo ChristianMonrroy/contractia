@@ -71,6 +71,70 @@ def email_auditoria_lista(filename: str, n_hallazgos: int, n_secciones: int, mod
     return asunto, html, texto
 
 
+def email_alerta_injection(
+    filename: str,
+    user_id: int,
+    evidencia: str,
+    alertas_heuristicas: str,
+    confianza: float,
+    audit_id: str,
+) -> tuple:
+    asunto = f"ContractIA — ALERTA: Prompt Injection detectado en {filename}"
+    confianza_pct = f"{confianza * 100:.0f}%"
+    color_confianza = "#dc2626" if confianza < 0.5 else "#f59e0b"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
+      <div style="background:#fef2f2;border-left:4px solid #dc2626;padding:16px;margin-bottom:20px">
+        <h2 style="color:#dc2626;margin:0 0 8px 0">ALERTA: Prompt Injection Detectado</h2>
+        <p style="margin:0;color:#991b1b">Se ha detectado un intento de prompt injection en un documento subido a ContractIA.
+           La auditoría ha sido abortada automáticamente.</p>
+      </div>
+      <table style="border-collapse:collapse;width:100%;margin:16px 0">
+        <tr style="background:#f8fafc">
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Documento</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{filename}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Usuario (ID)</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0">{user_id}</td>
+        </tr>
+        <tr style="background:#f8fafc">
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Confianza de seguridad</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0;color:{color_confianza};font-weight:bold">{confianza_pct}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0"><strong>Audit ID</strong></td>
+          <td style="padding:10px 12px;border:1px solid #e2e8f0;font-family:monospace;font-size:13px">{audit_id}</td>
+        </tr>
+      </table>
+      <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:14px;margin:16px 0">
+        <h3 style="color:#c2410c;margin:0 0 8px 0">Evidencia del LLM</h3>
+        <p style="margin:0;white-space:pre-wrap;font-size:14px">{evidencia}</p>
+      </div>
+      <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:14px;margin:16px 0">
+        <h3 style="color:#15803d;margin:0 0 8px 0">Alertas heurísticas (Capa 1)</h3>
+        <p style="margin:0;white-space:pre-wrap;font-size:14px">{alertas_heuristicas}</p>
+      </div>
+      <p style="color:#6b7280;font-size:13px;margin-top:20px">
+        Este registro queda almacenado en la tabla <code>prompt_injection_logs</code> de la base de datos.
+        Puedes consultarlo con: <code>SELECT * FROM prompt_injection_logs WHERE audit_id = '{audit_id}'</code>
+      </p>
+      <p style="color:#6b7280;font-size:13px">
+        Este mensaje fue generado automáticamente por ContractIA.
+      </p>
+    </div>
+    """
+    texto = (
+        f"ALERTA: Prompt Injection detectado en '{filename}'\n"
+        f"Usuario ID: {user_id}\n"
+        f"Confianza de seguridad: {confianza_pct}\n"
+        f"Audit ID: {audit_id}\n\n"
+        f"Evidencia del LLM:\n{evidencia}\n\n"
+        f"Alertas heurísticas:\n{alertas_heuristicas}\n"
+    )
+    return asunto, html, texto
+
+
 def email_bienvenida(email: str, password: str, rol: str) -> tuple:
     asunto = "ContractIA — Cuenta creada exitosamente"
     html = f"""

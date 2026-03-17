@@ -1,10 +1,23 @@
-# ContractIA v9.8.0
+# ContractIA v9.9.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG, defensa contra prompt injection en 2 capas, y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.9.0
+
+| Área | Cambio |
+|------|--------|
+| **Capa 1 — Sanitización programática** | Nuevo módulo `contractia/core/sanitizer.py`: elimina caracteres Unicode invisibles (zero-width spaces, BOM, soft hyphens, directional marks), normaliza a NFC, y detecta 7 patrones heurísticos de prompt injection bilingüe (ES/EN) por regex sin depender del LLM |
+| **Capa 2 — Escaneo LLM pre-auditoría** | Nuevo módulo `contractia/core/security.py`: analiza el texto completo con el LLM usando aislamiento por etiquetas `<documento>` antes de que los agentes lo procesen; diseño **fail-closed** (si falla → documento inseguro); output estructurado con Pydantic (`es_seguro`, `evidencia`, `confianza`) |
+| **Tabla `prompt_injection_logs`** | Nueva tabla dedicada en PostgreSQL para registrar cada intento de prompt injection con: `audit_id`, `user_id`, `filename`, `evidencia_llm`, `alertas_heuristicas`, `texto_sospechoso`, `confianza`, `detected_at` |
+| **Alerta por correo al admin** | Cuando se detecta prompt injection, se envía email automático al `ADMIN_EMAIL` con evidencia del LLM, alertas heurísticas y datos del incidente; envío en thread separado (no bloqueante) |
+| **Excepción `PromptInjectionDetectedError`** | Nueva excepción en `orchestrator.py` que aborta la auditoría de forma controlada; manejada en API (status "Bloqueado por seguridad") y bot Telegram (mensaje de alerta al usuario) |
+| **`config.py`** | Nueva variable `ADMIN_EMAIL` (default `admin@contractia.pe`) para alertas de seguridad |
+| **Template `email_alerta_injection`** | Nuevo template HTML en `templates.py` con estilo rojo/alerta, tabla de datos del incidente, evidencia del LLM y alertas heurísticas |
+| **Distinción de falsos positivos** | Cláusulas imperativas normales ("El Concesionario deberá...") NO se marcan como injection; solo se detectan comandos dirigidos a la IA |
 
 ## Novedades v9.8.0
 
@@ -204,6 +217,8 @@ contractia.pe (Next.js 14 · Vercel)
         ↕ HTTPS
 api.contractia.pe → Cloud Run (FastAPI · Python)
         ↕
+   Escudo de Seguridad (Capa 1: Sanitización + Capa 2: Escaneo LLM)
+        ↕
    Cloud SQL (PostgreSQL 15 · us-central1)
         ↕
    Cloud Storage / FAISS (vectores RAG)
@@ -245,10 +260,12 @@ ContractIA/
 │       ├── contracts_router.py ← /contracts/* (upload, query, audit)
 │       └── admin_router.py     ← /admin/* (usuarios, roles)
 ├── contractia/
-│   ├── config.py               ← Variables de entorno
-│   ├── orchestrator.py         ← Pipeline de auditoría (RAG + GraphRAG)
+│   ├── config.py               ← Variables de entorno (+ ADMIN_EMAIL)
+│   ├── orchestrator.py         ← Pipeline de auditoría (seguridad + RAG + GraphRAG)
 │   ├── agents/                 ← Jurista, Auditor, Cronista
 │   ├── core/
+│   │   ├── sanitizer.py        ← Capa 1: sanitización Unicode + detección heurística
+│   │   ├── security.py         ← Capa 2: escaneo LLM + registro + alerta email
 │   │   ├── graph.py            ← GraphRAG (networkx + extracción LLM)
 │   │   ├── loader.py           ← PDF/DOCX → texto
 │   │   ├── segmenter.py        ← Segmentación de cláusulas
@@ -340,11 +357,28 @@ ContractIA/
 
 | Agente | Rol |
 |--------|-----|
-| **Jurista** | Identifica normativa legal aplicable y cláusulas problemáticas |
-| **Auditor** | Detecta riesgos, penalidades y condiciones desfavorables |
-| **Cronista** | Sintetiza hallazgos y genera el informe final |
+| **Jurista** | Detecta inconsistencias procedimentales y operativas internas |
+| **Auditor** | Valida referencias cruzadas internas (cláusulas y anexos) |
+| **Cronista** | Analiza plazos, cronología y errores de cálculo temporal |
 
-**Ejecución:** Jurista y Cronista corren en **paralelo** (ThreadPoolExecutor). Auditor corre después del Jurista (necesita sus referencias externas). Limitado a 1 auditoría concurrente via check en DB (`hay_auditoria_en_progreso`). Cada agente reintenta hasta 3 veces si el LLM falla.
+**Ejecución:** Los 3 agentes corren en **paralelo** (ThreadPoolExecutor, max_workers=3) para modelos estables; en serie para modelos con cuota limitada (Claude, Gemini 3.1). Limitado a 1 auditoría concurrente via check en DB. Cada agente reintenta hasta 3-5 veces si el LLM falla.
+
+---
+
+## Seguridad — Defensa contra Prompt Injection
+
+Sistema de defensa en 2 capas que analiza los documentos **antes** de que lleguen a los agentes:
+
+| Capa | Tipo | Descripción |
+|------|------|-------------|
+| **Capa 1** | Programática (sin IA) | Sanitización Unicode (chars invisibles, BOM, homoglyphs) + 7 patrones regex de injection bilingüe (ES/EN) |
+| **Capa 2** | Escaneo LLM | Análisis con aislamiento `<documento>`, alertas heurísticas como contexto, output Pydantic, diseño **fail-closed** |
+
+**Si se detecta injection:**
+1. Auditoría abortada inmediatamente
+2. Registro en tabla `prompt_injection_logs` (PostgreSQL)
+3. Email de alerta al administrador (thread separado, no bloqueante)
+4. Usuario notificado (web: status "Bloqueado por seguridad" / Telegram: mensaje de alerta)
 
 ---
 
@@ -399,11 +433,12 @@ npm run dev            # http://localhost:3000
 | `TELEGRAM_TOKEN` | Token del bot de Telegram |
 | `TELEGRAM_ADMIN_ID` | Telegram ID del administrador |
 | `EMAIL_PASSWORD` | Password de Google Workspace (admin@contractia.pe) |
+| `ADMIN_EMAIL` | Email del administrador para alertas de seguridad (default: admin@contractia.pe) |
 | `JWT_SECRET` | Clave secreta para firmar JWT |
 
 ---
 
 ## Capstone Project II — UTEC
 
-Proyecto de Maestría en Ciencia de Datos e IA · 2025
+Proyecto de Maestría en Ciencia de Datos e IA · 2025-2026
 Dominio: [contractia.pe](https://contractia.pe)
