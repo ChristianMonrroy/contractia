@@ -70,9 +70,9 @@ PROMPT_JURISTA = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )
@@ -130,10 +130,10 @@ PROMPT_AUDITOR = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "idx_glob", "fecha_actual"],
 )
@@ -193,9 +193,9 @@ PROMPT_CRONISTA = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )
