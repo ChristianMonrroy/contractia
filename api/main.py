@@ -7,6 +7,7 @@ Expone:
   - Health check
 """
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -160,5 +161,5 @@ async def telegram_webhook(request: Request):
         return {"ok": False}
     data = await request.json()
     update = Update.de_json(data, _tg_app.bot)
-    await _tg_app.process_update(update)
+    asyncio.create_task(_tg_app.process_update(update))
     return {"ok": True}
