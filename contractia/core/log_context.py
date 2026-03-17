@@ -28,7 +28,7 @@ def log(msg: str) -> None:
     Siempre imprime en stdout (Cloud Run logs).
     Si hay un callback registrado, también lo invoca sin propagar excepciones.
     """
-    print(msg)
+    print(msg, flush=True)
     cb = _audit_log_cb.get()
     if cb is not None:
         try:

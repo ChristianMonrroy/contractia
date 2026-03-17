@@ -51,6 +51,27 @@ _PROMPT = (
 _llm_cache: dict = {}
 
 
+def _dividir_mensaje(texto: str, limite: int = 4096) -> list[str]:
+    """Divide un texto largo en partes respetando saltos de línea."""
+    if len(texto) <= limite:
+        return [texto]
+    partes = []
+    while texto:
+        if len(texto) <= limite:
+            partes.append(texto)
+            break
+        # Buscar el último salto de línea dentro del límite
+        corte = texto.rfind("\n", 0, limite)
+        if corte <= 0:
+            # Sin salto de línea; cortar por último espacio
+            corte = texto.rfind(" ", 0, limite)
+        if corte <= 0:
+            corte = limite
+        partes.append(texto[:corte])
+        texto = texto[corte:].lstrip("\n")
+    return partes
+
+
 def get_llm(modelo: str = "gemini-2.5-pro"):
     if modelo not in _llm_cache:
         _llm_cache[modelo] = build_llm(model_override=modelo)
@@ -191,14 +212,17 @@ async def responder_pregunta(
         else:
             texto = content
 
-        # Telegram tiene límite de 4096 caracteres por mensaje
-        if len(texto) > 4000:
-            texto = texto[:4000] + "\n\n_[...respuesta truncada por límite de Telegram]_"
-
         registrar_pregunta(user_id)
         _log(user_id, "pregunta", pregunta[:200], duracion=duracion, canal="bot")
 
-        await update.message.reply_text(f"💬 {texto}")
+        # Telegram limita a 4096 chars por mensaje; dividir si es necesario
+        texto_completo = f"💬 {texto}"
+        if len(texto_completo) <= 4096:
+            await update.message.reply_text(texto_completo)
+        else:
+            partes = _dividir_mensaje(texto_completo, 4096)
+            for parte in partes:
+                await update.message.reply_text(parte)
 
     except Exception as e:
         await update.message.reply_text(

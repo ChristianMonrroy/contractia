@@ -97,18 +97,22 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
         log(f"⚠️ No se pudo construir la cadena GraphRAG: {e}")
         return G  # Grafo vacío; la auditoría continuará sin GraphRAG
 
-    for sec in secciones:
+    total = len(secciones)
+    for i, sec in enumerate(secciones, 1):
         titulo = sec.get("titulo", "Sección Desconocida")
         contenido = sec.get("contenido", "")
         if not contenido.strip():
+            log(f"  Grafo [{i}/{total}] {titulo} — vacía, omitida")
             continue
 
         # Forzar la creación del nodo del Capítulo/Anexo
         G.add_node(titulo, tipo=sec.get("tipo", "DESCONOCIDO"))
 
+        t0 = time.time()
         try:
             raw = cadena.invoke({"texto": contenido})
             tripletas = parse_json_seguro(raw)
+            n_tripletas = 0
 
             if isinstance(tripletas, list):
                 for t in tripletas:
@@ -131,11 +135,15 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
                         relacion="CONTIENE",
                         contexto="Estructura del documento",
                     )
+                    n_tripletas += 1
 
+            elapsed = round(time.time() - t0, 1)
+            log(f"  Grafo [{i}/{total}] {titulo} — {n_tripletas} tripletas ({elapsed}s)")
             time.sleep(_sleep_s)  # Rate limit VertexAI (más largo para modelos throttled)
 
         except Exception as e:
-            log(f"⚠️ Error extrayendo grafo en sección '{titulo}': {e}")
+            elapsed = round(time.time() - t0, 1)
+            log(f"  ⚠️ Grafo [{i}/{total}] {titulo} — ERROR ({elapsed}s): {e}")
 
     log(
         f"✅ Grafo construido: {G.number_of_nodes()} nodos, "
