@@ -49,7 +49,7 @@ jobs:
             --service-account=contractia-sa@$PROJECT_ID.iam.gserviceaccount.com \
             --add-cloudsql-instances=$PROJECT_ID:$REGION:contractia-db \
             --set-secrets=DATABASE_URL=DATABASE_URL:latest,TELEGRAM_TOKEN=TELEGRAM_TOKEN:latest,EMAIL_PASSWORD=EMAIL_PASSWORD:latest,TELEGRAM_ADMIN_ID=TELEGRAM_ADMIN_ID:latest,JWT_SECRET=JWT_SECRET:latest \
-            --set-env-vars=LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=$PROJECT_ID,VERTEXAI_LOCATION=$REGION,VERTEXAI_MODEL=gemini-2.5-pro,RAG_ENABLED=true,ENABLE_LLM=true,WEBHOOK_URL=https://contractia-api-444429430547.us-central1.run.app,EMAIL_SENDER=admin@contractia.pe \
+            --set-env-vars=LLM_PROVIDER=vertexai,VERTEXAI_PROJECT=$PROJECT_ID,VERTEXAI_LOCATION=$REGION,VERTEXAI_MODEL=gemini-2.5-pro,RAG_ENABLED=true,ENABLE_LLM=true,WEBHOOK_URL=https://contractia-api-444429430547.us-central1.run.app,EMAIL_SENDER=admin@contractia.pe,AUDIT_QUEUE_BUCKET=contractia-contracts \
             --max-instances=1 \
             --memory=2Gi \
             --cpu=2 \
