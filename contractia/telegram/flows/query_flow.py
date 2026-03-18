@@ -148,8 +148,7 @@ async def indexar_contrato(
                 await update.message.reply_text(
                     f"🕸️ Construyendo grafo de relaciones entre cláusulas "
                     f"({n_secs} secciones)...\n"
-                    f"_(Esto puede tardar ~{n_secs} minutos\\. Usa /cancel para detener)_",
-                    parse_mode="MarkdownV2",
+                    f"Esto puede tardar ~{n_secs} minutos. Usa /cancel para detener.",
                 )
                 llm = get_llm(modelo)
                 loop = asyncio.get_event_loop()
