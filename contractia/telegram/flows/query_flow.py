@@ -18,7 +18,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from contractia.config import RAG_TOP_K
-from contractia.core.graph import GrafoCancelledError, construir_grafo_conocimiento, obtener_contexto_grafo
+from contractia.core.graph import GrafoCancelledError, construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
+from contractia.core.graph_cache import cache_key, cargar_grafo, guardar_grafo
 from contractia.core.loader import procesar_documentos_carpeta
 from contractia.core.segmenter import separar_en_secciones
 from contractia.llm.provider import build_llm
@@ -122,38 +123,60 @@ async def indexar_contrato(
         mapa_textos = None
 
         if graph_enabled:
-            n_secs = len(secciones)
-            await update.message.reply_text(
-                f"🕸️ Construyendo grafo de relaciones entre cláusulas "
-                f"({n_secs} secciones)...\n"
-                f"_(Esto puede tardar ~{n_secs} minutos\\. Usa /cancel para detener)_",
-                parse_mode="MarkdownV2",
-            )
-            llm = get_llm(modelo)
             mapa_textos = {
                 s.get("numero", ""): s
                 for s in secciones
                 if s.get("numero")
             }
-            loop = asyncio.get_event_loop()
-            chat_id = update.effective_chat.id
 
-            def _progress(i, total, titulo, n_trip):
-                if i % 5 == 0 or i == total:
-                    msg = f"🕸️ Grafo [{i}/{total}] {titulo} — {n_trip} relaciones"
-                    asyncio.run_coroutine_threadsafe(
-                        context.bot.send_message(chat_id=chat_id, text=msg),
-                        loop,
-                    )
-
-            def _check_cancel():
-                return is_cancelled(user_id)
-
-            grafo = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: construir_grafo_conocimiento(
-                    secciones, llm, on_progress=_progress, cancel_check=_check_cancel,
-                )
+            # Buscar grafo en cache (GCS)
+            _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+            cached = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: cargar_grafo(_cache_key)
             )
+
+            if cached:
+                grafo, cached_mapa = cached
+                if cached_mapa:
+                    mapa_textos = cached_mapa
+                await update.message.reply_text(
+                    "🕸️ Grafo de relaciones cargado desde cache.\n"
+                    f"_{grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones_",
+                    parse_mode="Markdown",
+                )
+            else:
+                n_secs = len(secciones)
+                await update.message.reply_text(
+                    f"🕸️ Construyendo grafo de relaciones entre cláusulas "
+                    f"({n_secs} secciones)...\n"
+                    f"_(Esto puede tardar ~{n_secs} minutos\\. Usa /cancel para detener)_",
+                    parse_mode="MarkdownV2",
+                )
+                llm = get_llm(modelo)
+                loop = asyncio.get_event_loop()
+                chat_id = update.effective_chat.id
+
+                def _progress(i, total, titulo, n_trip):
+                    if i % 5 == 0 or i == total:
+                        msg = f"🕸️ Grafo [{i}/{total}] {titulo} — {n_trip} relaciones"
+                        asyncio.run_coroutine_threadsafe(
+                            context.bot.send_message(chat_id=chat_id, text=msg),
+                            loop,
+                        )
+
+                def _check_cancel():
+                    return is_cancelled(user_id)
+
+                grafo = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: construir_grafo_conocimiento(
+                        secciones, llm, on_progress=_progress, cancel_check=_check_cancel,
+                    )
+                )
+
+                # Guardar en cache para futuros usos
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: guardar_grafo(_cache_key, grafo, mapa_textos)
+                )
 
         set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos)
 

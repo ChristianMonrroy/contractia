@@ -14,7 +14,8 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user
-from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
+from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
+from contractia.core.graph_cache import cache_key, cargar_grafo, guardar_grafo
 from contractia.core.loader import procesar_documentos_carpeta
 from contractia.core.log_context import set_log_callback
 from contractia.core.report import render_auditoria_markdown
@@ -108,13 +109,27 @@ async def upload_contract(
         # GraphRAG: construir grafo de conocimiento si el usuario lo solicitó
         if graph_enabled:
             try:
-                llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
-                grafo = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+                _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+                cached = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: cargar_grafo(_cache_key)
                 )
-                _graphs[session_id] = grafo
-                _mapa_textos[session_id] = construir_mapa_clausula_a_seccion(secciones)
-                print(f"[UPLOAD] GraphRAG listo para sesión {session_id[:8]}.")
+                if cached:
+                    grafo, cached_mapa = cached
+                    _graphs[session_id] = grafo
+                    _mapa_textos[session_id] = cached_mapa or construir_mapa_clausula_a_seccion(secciones)
+                    print(f"[UPLOAD] GraphRAG cargado desde cache para sesión {session_id[:8]}.")
+                else:
+                    llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+                    grafo = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+                    )
+                    _graphs[session_id] = grafo
+                    mapa = construir_mapa_clausula_a_seccion(secciones)
+                    _mapa_textos[session_id] = mapa
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: guardar_grafo(_cache_key, grafo, mapa)
+                    )
+                    print(f"[UPLOAD] GraphRAG construido y cacheado para sesión {session_id[:8]}.")
             except Exception as e:
                 print(f"[UPLOAD] GraphRAG no disponible: {e}")
 
@@ -172,13 +187,27 @@ async def session_from_audit(
     # Reconstruir GraphRAG si la auditoría original lo usó
     if graph_enabled:
         try:
-            llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
-            grafo = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+            _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+            cached = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: cargar_grafo(_cache_key)
             )
-            _graphs[session_id] = grafo
-            _mapa_textos[session_id] = construir_mapa_clausula_a_seccion(secciones)
-            print(f"[FROM-AUDIT] GraphRAG listo para sesión {session_id[:8]}.")
+            if cached:
+                grafo, cached_mapa = cached
+                _graphs[session_id] = grafo
+                _mapa_textos[session_id] = cached_mapa or construir_mapa_clausula_a_seccion(secciones)
+                print(f"[FROM-AUDIT] GraphRAG cargado desde cache para sesión {session_id[:8]}.")
+            else:
+                llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+                grafo = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: construir_grafo_conocimiento(secciones, llm_g)
+                )
+                _graphs[session_id] = grafo
+                mapa = construir_mapa_clausula_a_seccion(secciones)
+                _mapa_textos[session_id] = mapa
+                await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: guardar_grafo(_cache_key, grafo, mapa)
+                )
+                print(f"[FROM-AUDIT] GraphRAG construido y cacheado para sesión {session_id[:8]}.")
         except Exception as e:
             print(f"[FROM-AUDIT] GraphRAG no disponible: {e}")
 
