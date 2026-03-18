@@ -214,30 +214,21 @@ async def session_from_audit(
     session_id = str(uuid.uuid4())
     _retrievers[session_id] = retriever
 
-    # Reconstruir GraphRAG si la auditoría original lo usó
+    # Reconstruir GraphRAG siempre desde cero (Web - From-audit), luego guardar en cache
     if graph_enabled:
         try:
-            _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
-            cached = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: cargar_grafo(_cache_key)
+            llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+            grafo = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: construir_grafo_conocimiento(secciones, llm_g)
             )
-            if cached:
-                grafo, cached_mapa = cached
-                _graphs[session_id] = grafo
-                _mapa_textos[session_id] = cached_mapa or construir_mapa_clausula_a_seccion(secciones)
-                print(f"[FROM-AUDIT] GraphRAG cargado desde cache para sesión {session_id[:8]}.")
-            else:
-                llm_g = await asyncio.get_event_loop().run_in_executor(None, build_llm)
-                grafo = await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: construir_grafo_conocimiento(secciones, llm_g)
-                )
-                _graphs[session_id] = grafo
-                mapa = construir_mapa_clausula_a_seccion(secciones)
-                _mapa_textos[session_id] = mapa
-                await asyncio.get_event_loop().run_in_executor(
-                    None, lambda: guardar_grafo(_cache_key, grafo, mapa)
-                )
-                print(f"[FROM-AUDIT] GraphRAG construido y cacheado para sesión {session_id[:8]}.")
+            _graphs[session_id] = grafo
+            mapa = construir_mapa_clausula_a_seccion(secciones)
+            _mapa_textos[session_id] = mapa
+            _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+            await asyncio.get_event_loop().run_in_executor(
+                None, lambda: guardar_grafo(_cache_key, grafo, mapa)
+            )
+            print(f"[FROM-AUDIT] GraphRAG construido y cacheado para sesión {session_id[:8]}.")
         except Exception as e:
             print(f"[FROM-AUDIT] GraphRAG no disponible: {e}")
 

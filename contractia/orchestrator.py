@@ -29,7 +29,7 @@ from contractia.config import AGENTIC_RAG_ENABLED, ENABLE_LLM, GRAPH_ENABLED, RA
 from contractia.core.sanitizer import sanitizar_texto
 from contractia.core.security import registrar_y_alertar, verificar_seguridad_documento
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
-from contractia.core.graph_cache import cache_key, cargar_grafo, guardar_grafo
+from contractia.core.graph_cache import cache_key, guardar_grafo
 from contractia.core.log_context import log
 from contractia.core.segmenter import (
     _get_all_section_numbers_as_str,
@@ -343,22 +343,17 @@ def ejecutar_auditoria_contrato(
         except Exception as e:
             log(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.")
 
-    # ── GraphRAG: construir grafo de conocimiento (con cache) ──
+    # ── GraphRAG: siempre construir desde cero, luego guardar en cache ──
     grafo = None
     if graph_enabled:
-        _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
-        cached = cargar_grafo(_cache_key)
-        if cached:
-            grafo, _ = cached
-            log(f"🕸️ Grafo cargado desde cache: {grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones")
-        else:
-            try:
-                log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
-                grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
-                log("✅ GraphRAG activo.")
-                guardar_grafo(_cache_key, grafo)
-            except Exception as e:
-                log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
+        try:
+            log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
+            grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
+            log("✅ GraphRAG activo.")
+            _cache_key = cache_key(texto_contrato, _PROMPT_EXTRACCION.template)
+            guardar_grafo(_cache_key, grafo)
+        except Exception as e:
+            log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
 
     # ── Auditoría multi-agente ──
     resultados_auditoria = []
