@@ -11,10 +11,36 @@ from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
 
 
+def _reparar_json_truncado(texto: str) -> Any:
+    """
+    Repara un array JSON truncado por max_output_tokens.
+    Ejemplo: '[{"a":1}, {"b":2}, {"c":3' → [{"a":1}, {"b":2}]
+    Retorna la lista de objetos completos o None si no es reparable.
+    """
+    texto = texto.strip()
+    if not texto.startswith("["):
+        return None
+    # Buscar el último objeto completo (termina en })
+    ultimo_cierre = texto.rfind("}")
+    if ultimo_cierre < 0:
+        return None
+    # Cortar hasta el último } completo y cerrar el array
+    candidato = texto[:ultimo_cierre + 1].rstrip(",").rstrip() + "]"
+    # Limpiar comas finales antes de ]
+    candidato = re.sub(r",\s*]", "]", candidato)
+    try:
+        resultado = json.loads(candidato)
+        if isinstance(resultado, list):
+            return resultado
+    except json.JSONDecodeError:
+        pass
+    return None
+
+
 def parse_json_seguro(texto_llm: str) -> Any:
     """
     Parsea JSON incluso si tiene errores comunes de LLM
-    (comas extra, markdown, comentarios).
+    (comas extra, markdown, comentarios, JSON truncado).
     """
     if not texto_llm:
         return {}
@@ -24,11 +50,16 @@ def parse_json_seguro(texto_llm: str) -> Any:
     # Eliminar bloque de razonamiento <razonamiento>...</razonamiento>
     texto = re.sub(r"<razonamiento>.*?</razonamiento>", "", texto, flags=re.DOTALL).strip()
 
-    # Limpiar markdown
+    # Limpiar markdown (incluye caso sin cierre ``` por truncamiento)
     if "```" in texto:
         match = re.search(r"```(?:json)?(.*?)```", texto, re.DOTALL)
         if match:
             texto = match.group(1).strip()
+        else:
+            # JSON truncado: no hay ``` de cierre
+            match = re.search(r"```(?:json)?(.*)", texto, re.DOTALL)
+            if match:
+                texto = match.group(1).strip()
 
     # Filtros de falso positivo
     if "sin inconsistencias" in texto.lower() or "no se encontraron errores" in texto.lower():
@@ -41,12 +72,17 @@ def parse_json_seguro(texto_llm: str) -> Any:
     try:
         return json.loads(texto)
     except json.JSONDecodeError:
+        # Intentar extraer array o dict completo
         try:
             match = re.search(r"(\{.*\}|\[.*\])", texto, re.DOTALL)
             if match:
                 return json.loads(match.group(0))
         except Exception:
             pass
+        # Reparar JSON truncado: array cortado sin ] de cierre
+        resultado = _reparar_json_truncado(texto)
+        if resultado is not None:
+            return resultado
         return {}
 
 
