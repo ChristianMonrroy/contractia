@@ -66,6 +66,26 @@ def get_mapa_textos(user_id: int) -> Optional[Any]:
     return _sessions.get(user_id, {}).get("mapa_textos")
 
 
+# ── Cancelación de procesos ───────────────────────────────────────────────────
+
+_cancel_flags: dict[int, bool] = {}
+
+
+def request_cancel(user_id: int) -> None:
+    """Marca que el usuario quiere cancelar el proceso en curso."""
+    _cancel_flags[user_id] = True
+
+
+def is_cancelled(user_id: int) -> bool:
+    """Retorna True si el usuario solicitó cancelación."""
+    return _cancel_flags.get(user_id, False)
+
+
+def clear_cancel(user_id: int) -> None:
+    """Limpia el flag de cancelación."""
+    _cancel_flags.pop(user_id, None)
+
+
 def clear_contract(user_id: int) -> None:
     session = _sessions.get(user_id, {})
     for campo in ("vector_store", "retriever", "grafo", "mapa_textos"):

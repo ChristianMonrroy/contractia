@@ -55,6 +55,7 @@ from contractia.telegram.sessions import (
     is_authenticated,
     login_session,
     logout_session,
+    request_cancel,
 )
 
 # ── Constantes de estado ──────────────────────────────────────────────────────
@@ -165,9 +166,11 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    request_cancel(user_id)
     _set_estado(context, INICIO)
     context.user_data.pop("registro_email", None)
-    await update.message.reply_text("Operación cancelada. Usa /start para comenzar.")
+    await update.message.reply_text("⛔ Cancelando proceso... Usa /start para comenzar.")
 
 
 # ── HANDLER DE TEXTO ──────────────────────────────────────────────────────────

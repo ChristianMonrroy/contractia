@@ -18,7 +18,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from contractia.config import RAG_TOP_K
-from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo
+from contractia.core.graph import GrafoCancelledError, construir_grafo_conocimiento, obtener_contexto_grafo
 from contractia.core.loader import procesar_documentos_carpeta
 from contractia.core.segmenter import separar_en_secciones
 from contractia.llm.provider import build_llm
@@ -26,9 +26,11 @@ from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuper
 from contractia.telegram.db.database import get_conn
 from contractia.telegram.db.uso import registrar_pregunta
 from contractia.telegram.sessions import (
+    clear_cancel,
     get_grafo,
     get_mapa_textos,
     get_retriever,
+    is_cancelled,
     set_vector_store,
 )
 
@@ -92,6 +94,7 @@ async def indexar_contrato(
     """
     user_id = update.effective_user.id
     tmp_dir = Path(tempfile.mkdtemp(prefix=f"contractia_{user_id}_query_"))
+    clear_cancel(user_id)
 
     try:
         shutil.copy2(ruta_archivo, tmp_dir)
@@ -123,8 +126,8 @@ async def indexar_contrato(
             await update.message.reply_text(
                 f"🕸️ Construyendo grafo de relaciones entre cláusulas "
                 f"({n_secs} secciones)...\n"
-                f"_(Esto puede tardar ~{n_secs} minutos)_",
-                parse_mode="Markdown",
+                f"_(Esto puede tardar ~{n_secs} minutos\\. Usa /cancel para detener)_",
+                parse_mode="MarkdownV2",
             )
             llm = get_llm(modelo)
             mapa_textos = {
@@ -134,10 +137,8 @@ async def indexar_contrato(
             }
             loop = asyncio.get_event_loop()
             chat_id = update.effective_chat.id
-            _last_report = [0]  # mutable para acceder desde el callback
 
             def _progress(i, total, titulo, n_trip):
-                # Reportar cada 5 secciones para no saturar el chat
                 if i % 5 == 0 or i == total:
                     msg = f"🕸️ Grafo [{i}/{total}] {titulo} — {n_trip} relaciones"
                     asyncio.run_coroutine_threadsafe(
@@ -145,8 +146,13 @@ async def indexar_contrato(
                         loop,
                     )
 
+            def _check_cancel():
+                return is_cancelled(user_id)
+
             grafo = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: construir_grafo_conocimiento(secciones, llm, on_progress=_progress)
+                None, lambda: construir_grafo_conocimiento(
+                    secciones, llm, on_progress=_progress, cancel_check=_check_cancel,
+                )
             )
 
         set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos)
@@ -159,6 +165,9 @@ async def indexar_contrato(
         )
         return True
 
+    except GrafoCancelledError:
+        await update.message.reply_text("⛔ Construcción del grafo cancelada. Usa /menu para comenzar de nuevo.")
+        return False
     except Exception as e:
         await update.message.reply_text(
             f"❌ Error al indexar el contrato:\n<code>{str(e)[:300]}</code>",
@@ -166,6 +175,7 @@ async def indexar_contrato(
         )
         return False
     finally:
+        clear_cancel(user_id)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 

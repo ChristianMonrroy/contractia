@@ -67,7 +67,12 @@ _PROMPT_EXTRACCION = PromptTemplate(
 _GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None, audit_id: Optional[str] = None, on_progress=None) -> nx.DiGraph:
+class GrafoCancelledError(Exception):
+    """Señal de que el usuario canceló la construcción del grafo."""
+    pass
+
+
+def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None, audit_id: Optional[str] = None, on_progress=None, cancel_check=None) -> nx.DiGraph:
     """
     Construye un grafo de conocimiento a partir de las secciones del contrato.
 
@@ -99,6 +104,11 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
 
     total = len(secciones)
     for i, sec in enumerate(secciones, 1):
+        # Verificar cancelación antes de cada sección
+        if cancel_check and cancel_check():
+            log(f"  ⛔ Grafo cancelado por el usuario en sección [{i}/{total}]")
+            raise GrafoCancelledError("Cancelado por el usuario")
+
         titulo = sec.get("titulo", "Sección Desconocida")
         contenido = sec.get("contenido", "")
         if not contenido.strip():
