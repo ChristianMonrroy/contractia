@@ -52,10 +52,13 @@ from contractia.telegram.flows.query_flow import indexar_contrato, responder_pre
 from contractia.telegram.sessions import (
     clear_contract,
     get_retriever,
+    get_secciones,
+    get_texto,
     is_authenticated,
     login_session,
     logout_session,
     request_cancel,
+    set_vector_store,
 )
 
 # ── Constantes de estado ──────────────────────────────────────────────────────
@@ -171,6 +174,106 @@ async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     _set_estado(context, INICIO)
     context.user_data.pop("registro_email", None)
     await update.message.reply_text("⛔ Cancelando proceso... Usa /start para comenzar.")
+
+
+async def cmd_rebuild_graph(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Borra el grafo cacheado y lo reconstruye desde cero."""
+    import asyncio
+    from contractia.core.graph import construir_grafo_conocimiento, _PROMPT_EXTRACCION
+    from contractia.core.graph_cache import borrar_grafo, cache_key, guardar_grafo
+    from contractia.telegram.flows.query_flow import get_llm
+    from contractia.telegram.sessions import (
+        clear_cancel,
+        get_grafo,
+        get_mapa_textos,
+        is_cancelled,
+    )
+
+    user_id = update.effective_user.id
+    texto = get_texto(user_id)
+    secciones = get_secciones(user_id)
+
+    if not texto or not secciones:
+        await update.message.reply_text(
+            "❌ No hay contrato cargado. Sube un contrato primero con /menu."
+        )
+        return
+
+    _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+
+    await update.message.reply_text("🗑️ Eliminando grafo anterior del cache...")
+    await asyncio.get_event_loop().run_in_executor(
+        None, lambda: borrar_grafo(_cache_key)
+    )
+
+    n_secs = len(secciones)
+    await update.message.reply_text(
+        f"🕸️ Reconstruyendo grafo desde cero ({n_secs} secciones)...\n"
+        f"Esto puede tardar ~{n_secs} minutos. Usa /cancel para detener."
+    )
+
+    modelo = context.user_data.get("modelo", "gemini-2.5-pro")
+    llm = get_llm(modelo)
+    clear_cancel(user_id)
+    loop = asyncio.get_event_loop()
+    chat_id = update.effective_chat.id
+
+    def _progress(i, total, titulo, n_trip):
+        if i % 5 == 0 or i == total:
+            msg = f"🕸️ Grafo [{i}/{total}] {titulo} — {n_trip} relaciones"
+            asyncio.run_coroutine_threadsafe(
+                context.bot.send_message(chat_id=chat_id, text=msg),
+                loop,
+            )
+
+    def _check_cancel():
+        return is_cancelled(user_id)
+
+    try:
+        grafo = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: construir_grafo_conocimiento(
+                secciones, llm, on_progress=_progress, cancel_check=_check_cancel,
+            )
+        )
+
+        mapa_textos = {
+            s.get("numero", ""): s
+            for s in secciones
+            if s.get("numero")
+        }
+
+        # Guardar en cache
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: guardar_grafo(_cache_key, grafo, mapa_textos)
+        )
+
+        # Actualizar sesión (preservar vector_store y retriever)
+        from contractia.telegram.sessions import get_retriever as _get_ret
+        retriever = _get_ret(user_id)
+        from contractia.telegram.sessions import _sessions
+        vs = _sessions.get(user_id, {}).get("vector_store")
+        set_vector_store(
+            user_id, vs, retriever,
+            grafo=grafo, mapa_textos=mapa_textos,
+            texto=texto, secciones=secciones,
+        )
+
+        await update.message.reply_text(
+            f"✅ Grafo reconstruido y cacheado.\n"
+            f"{grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones.\n"
+            "Puedes seguir haciendo preguntas."
+        )
+    except Exception as e:
+        from contractia.core.graph import GrafoCancelledError
+        if isinstance(e, GrafoCancelledError):
+            await update.message.reply_text("⛔ Reconstrucción cancelada.")
+        else:
+            await update.message.reply_text(
+                f"❌ Error al reconstruir el grafo:\n<code>{str(e)[:300]}</code>",
+                parse_mode="HTML",
+            )
+    finally:
+        clear_cancel(user_id)
 
 
 # ── HANDLER DE TEXTO ──────────────────────────────────────────────────────────

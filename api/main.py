@@ -35,6 +35,7 @@ from contractia.telegram.handler import (
     cmd_login,
     cmd_logout,
     cmd_menu,
+    cmd_rebuild_graph,
     cmd_start,
     cmd_status,
     handle_callback,
@@ -100,6 +101,7 @@ async def lifespan(app: FastAPI):
     _tg_app.add_handler(CommandHandler("status", cmd_status))
     _tg_app.add_handler(CommandHandler("admin",  cmd_admin))
     _tg_app.add_handler(CommandHandler("cancel", cmd_cancel))
+    _tg_app.add_handler(CommandHandler("rebuild_graph", cmd_rebuild_graph))
     _tg_app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     _tg_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     _tg_app.add_handler(CallbackQueryHandler(handle_callback))

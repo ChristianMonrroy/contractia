@@ -69,6 +69,28 @@ def guardar_grafo(
         return False
 
 
+def borrar_grafo(key: str) -> bool:
+    """Elimina el grafo cacheado en GCS. Retorna True si se borró."""
+    if not AUDIT_QUEUE_BUCKET:
+        return False
+    try:
+        from google.cloud import storage
+
+        blob_name = f"{_CACHE_PREFIX}/{key}.pkl"
+        client = storage.Client()
+        bucket = client.bucket(AUDIT_QUEUE_BUCKET)
+        blob = bucket.blob(blob_name)
+
+        if blob.exists():
+            blob.delete()
+            print(f"[GraphCache] Grafo eliminado: gs://{AUDIT_QUEUE_BUCKET}/{blob_name}", flush=True)
+            return True
+        return False
+    except Exception as e:
+        print(f"[GraphCache] Error al borrar grafo: {e}", flush=True)
+        return False
+
+
 def cargar_grafo(key: str) -> Optional[Tuple[nx.DiGraph, Optional[Dict[str, Any]]]]:
     """
     Descarga y deserializa el grafo desde GCS.

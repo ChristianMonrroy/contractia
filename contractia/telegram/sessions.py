@@ -45,12 +45,16 @@ def set_vector_store(
     retriever: Any,
     grafo: Any = None,
     mapa_textos: Any = None,
+    texto: str = None,
+    secciones: Any = None,
 ) -> None:
     _upsert(user_id, {
         "vector_store": vector_store,
         "retriever": retriever,
         "grafo": grafo,
         "mapa_textos": mapa_textos,
+        "texto": texto,
+        "secciones": secciones,
     })
 
 
@@ -64,6 +68,14 @@ def get_grafo(user_id: int) -> Optional[Any]:
 
 def get_mapa_textos(user_id: int) -> Optional[Any]:
     return _sessions.get(user_id, {}).get("mapa_textos")
+
+
+def get_texto(user_id: int) -> Optional[str]:
+    return _sessions.get(user_id, {}).get("texto")
+
+
+def get_secciones(user_id: int) -> Optional[Any]:
+    return _sessions.get(user_id, {}).get("secciones")
 
 
 # ── Cancelación de procesos ───────────────────────────────────────────────────
@@ -88,7 +100,7 @@ def clear_cancel(user_id: int) -> None:
 
 def clear_contract(user_id: int) -> None:
     session = _sessions.get(user_id, {})
-    for campo in ("vector_store", "retriever", "grafo", "mapa_textos"):
+    for campo in ("vector_store", "retriever", "grafo", "mapa_textos", "texto", "secciones"):
         session.pop(campo, None)
 
 

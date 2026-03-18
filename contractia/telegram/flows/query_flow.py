@@ -176,7 +176,7 @@ async def indexar_contrato(
                     None, lambda: guardar_grafo(_cache_key, grafo, mapa_textos)
                 )
 
-        set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos)
+        set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos, texto=texto, secciones=secciones)
 
         modo = "RAG + GraphRAG" if graph_enabled else "RAG"
         await update.message.reply_text(
