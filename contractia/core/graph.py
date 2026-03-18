@@ -114,6 +114,10 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
             tripletas = parse_json_seguro(raw)
             n_tripletas = 0
 
+            if not isinstance(tripletas, list) or len(tripletas) == 0:
+                raw_preview = (raw[:200] if raw else "(vacío)").replace("\n", " ")
+                log(f"  [DEBUG] {titulo} → type={type(tripletas).__name__}, raw[:200]={raw_preview}")
+
             if isinstance(tripletas, list):
                 for t in tripletas:
                     if not isinstance(t, dict):
