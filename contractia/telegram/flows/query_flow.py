@@ -172,7 +172,8 @@ async def indexar_contrato(
                     mapa_textos = cached_mapa
                 await update.message.reply_text(
                     "🕸️ Grafo de relaciones cargado desde cache.\n"
-                    f"{grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones",
+                    f"{grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones\n"
+                    "Usa /rebuild_graph para reconstruir el grafo.",
                 )
             else:
                 n_secs = len(secciones)
