@@ -259,6 +259,7 @@ def ejecutar_auditoria_contrato(
     audit_id: Optional[str] = None,
     user_id: Optional[int] = None,
     filename: Optional[str] = None,
+    use_cached_graph: bool = False,
 ) -> Dict:
     """
     Pipeline completo de auditoría:
@@ -343,17 +344,24 @@ def ejecutar_auditoria_contrato(
         except Exception as e:
             log(f"⚠️ RAG no disponible ({e}). Continuando sin RAG.")
 
-    # ── GraphRAG: siempre construir desde cero, luego guardar en cache ──
+    # ── GraphRAG ──
     grafo = None
     if graph_enabled:
-        try:
-            log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
-            grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
-            log("✅ GraphRAG activo.")
-            _cache_key = cache_key(texto_contrato, _PROMPT_EXTRACCION.template)
-            guardar_grafo(_cache_key, grafo)
-        except Exception as e:
-            log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
+        _cache_key = cache_key(texto_contrato, _PROMPT_EXTRACCION.template)
+        if use_cached_graph:
+            from contractia.core.graph_cache import cargar_grafo
+            cached = cargar_grafo(_cache_key)
+            if cached:
+                grafo, _ = cached
+                log(f"🕸️ Grafo cargado desde cache: {grafo.number_of_nodes()} nodos, {grafo.number_of_edges()} relaciones")
+        if grafo is None:
+            try:
+                log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
+                grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
+                log("✅ GraphRAG activo.")
+                guardar_grafo(_cache_key, grafo)
+            except Exception as e:
+                log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
 
     # ── Auditoría multi-agente ──
     resultados_auditoria = []

@@ -119,11 +119,13 @@ async def ejecutar_auditoria(
             llm = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: build_llm(model_override=modelo)
             )
+            _use_cache = graph_enabled and not force_rebuild_graph
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(
                     texto, llm, graph_enabled=graph_enabled, modelo=modelo,
                     user_id=user_id, filename=Path(ruta_archivo).name,
+                    use_cached_graph=_use_cache,
                 )
             )
             duracion = round(time.time() - start, 1)
@@ -209,11 +211,13 @@ async def ejecutar_auditoria_desde_texto(
             llm = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: build_llm(model_override=modelo)
             )
+            _use_cache = graph_enabled and not force_rebuild_graph
             start = time.time()
             resultado = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: ejecutar_auditoria_contrato(
                     texto, llm, graph_enabled=graph_enabled, modelo=modelo,
                     user_id=user_id, filename=Path(ruta_archivo).name,
+                    use_cached_graph=_use_cache,
                 )
             )
             duracion = round(time.time() - start, 1)
