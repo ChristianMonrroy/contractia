@@ -119,9 +119,11 @@ async def indexar_contrato(
         mapa_textos = None
 
         if graph_enabled:
+            n_secs = len(secciones)
             await update.message.reply_text(
-                "🕸️ Construyendo grafo de relaciones entre cláusulas...\n"
-                "_(Esto agrega ~2-3 minutos adicionales)_",
+                f"🕸️ Construyendo grafo de relaciones entre cláusulas "
+                f"({n_secs} secciones)...\n"
+                f"_(Esto puede tardar ~{n_secs} minutos)_",
                 parse_mode="Markdown",
             )
             llm = get_llm(modelo)
@@ -130,8 +132,21 @@ async def indexar_contrato(
                 for s in secciones
                 if s.get("numero")
             }
+            loop = asyncio.get_event_loop()
+            chat_id = update.effective_chat.id
+            _last_report = [0]  # mutable para acceder desde el callback
+
+            def _progress(i, total, titulo, n_trip):
+                # Reportar cada 5 secciones para no saturar el chat
+                if i % 5 == 0 or i == total:
+                    msg = f"🕸️ Grafo [{i}/{total}] {titulo} — {n_trip} relaciones"
+                    asyncio.run_coroutine_threadsafe(
+                        context.bot.send_message(chat_id=chat_id, text=msg),
+                        loop,
+                    )
+
             grafo = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: construir_grafo_conocimiento(secciones, llm)
+                None, lambda: construir_grafo_conocimiento(secciones, llm, on_progress=_progress)
             )
 
         set_vector_store(user_id, vector_store, retriever, grafo=grafo, mapa_textos=mapa_textos)

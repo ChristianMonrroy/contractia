@@ -303,7 +303,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.message.reply_text(
             "🔧 *¿Activar análisis de relaciones entre cláusulas (GraphRAG)?*\n\n"
             "• *Con GraphRAG*: detecta dependencias entre cláusulas — más preciso, "
-            "tarda ~2-3 min adicionales al indexar.\n"
+            "tarda ~30-40 min adicionales según el tamaño del contrato.\n"
             "• *Solo RAG*: búsqueda semántica estándar — más rápido.",
             parse_mode="Markdown",
             reply_markup=keyboard,

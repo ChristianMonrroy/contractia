@@ -67,7 +67,7 @@ _PROMPT_EXTRACCION = PromptTemplate(
 _GRAPH_MODELOS_THROTTLE = {"gemini-3.1-pro-preview", "claude-sonnet-4-6", "claude-opus-4-6"}
 
 
-def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None, audit_id: Optional[str] = None) -> nx.DiGraph:
+def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[str] = None, audit_id: Optional[str] = None, on_progress=None) -> nx.DiGraph:
     """
     Construye un grafo de conocimiento a partir de las secciones del contrato.
 
@@ -143,11 +143,21 @@ def construir_grafo_conocimiento(secciones: List[Dict], llm, modelo: Optional[st
 
             elapsed = round(time.time() - t0, 1)
             log(f"  Grafo [{i}/{total}] {titulo} — {n_tripletas} tripletas ({elapsed}s)")
+            if on_progress:
+                try:
+                    on_progress(i, total, titulo, n_tripletas)
+                except Exception:
+                    pass
             time.sleep(_sleep_s)  # Rate limit VertexAI (más largo para modelos throttled)
 
         except Exception as e:
             elapsed = round(time.time() - t0, 1)
             log(f"  ⚠️ Grafo [{i}/{total}] {titulo} — ERROR ({elapsed}s): {e}")
+            if on_progress:
+                try:
+                    on_progress(i, total, titulo, 0)
+                except Exception:
+                    pass
 
     log(
         f"✅ Grafo construido: {G.number_of_nodes()} nodos, "
