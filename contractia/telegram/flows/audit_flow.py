@@ -64,11 +64,14 @@ async def ejecutar_auditoria(
             return
 
         # Verificar si hay grafo cacheado y preguntar al usuario
+        print(f"[AUDIT_FLOW] graph_enabled={graph_enabled}, force_rebuild={force_rebuild_graph}, texto_len={len(texto)}", flush=True)
         if graph_enabled and not force_rebuild_graph:
             _cache_key = cache_key(texto, _PROMPT_EXTRACCION.template)
+            print(f"[AUDIT_FLOW] cache_key={_cache_key}", flush=True)
             cached = await asyncio.get_event_loop().run_in_executor(
                 None, lambda: cargar_grafo(_cache_key)
             )
+            print(f"[AUDIT_FLOW] cached={cached is not None}", flush=True)
             if cached:
                 grafo_cached, _ = cached
                 # Guardar datos para reanudar después del callback
