@@ -17,6 +17,8 @@ from api.auth import get_current_user
 from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
 from contractia.core.graph_cache import cache_key, cargar_grafo, guardar_grafo
 from contractia.core.loader import procesar_documentos_carpeta
+from contractia.core.sanitizer import sanitizar_texto
+from contractia.core.security import registrar_y_alertar, verificar_seguridad_documento
 from contractia.core.log_context import set_log_callback
 from contractia.core.report import render_auditoria_markdown
 from contractia.core.segmenter import construir_mapa_clausula_a_seccion, separar_en_secciones
@@ -95,6 +97,34 @@ async def upload_contract(
         )
         if not texto:
             raise HTTPException(422, "No se pudo extraer texto del archivo.")
+
+        # ── CAPA 1: Sanitización programática ──
+        resultado_sanitizacion = sanitizar_texto(texto)
+        texto = resultado_sanitizacion.texto_limpio
+
+        # ── CAPA 2: Escaneo LLM si hay alertas heurísticas ──
+        if resultado_sanitizacion.tiene_alertas:
+            from contractia.config import ENABLE_LLM
+            if ENABLE_LLM:
+                llm_sec = await asyncio.get_event_loop().run_in_executor(None, build_llm)
+                resultado_seguridad = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: verificar_seguridad_documento(
+                        texto=texto,
+                        alertas=resultado_sanitizacion.alertas,
+                        llm=llm_sec,
+                    )
+                )
+                if not resultado_seguridad.es_seguro:
+                    registrar_y_alertar(
+                        resultado=resultado_seguridad,
+                        audit_id=f"web_query_{user_id}_{int(time.time())}",
+                        user_id=user_id,
+                        filename=file.filename or "contrato",
+                    )
+                    raise HTTPException(
+                        403,
+                        "Documento bloqueado por seguridad: se detectó contenido sospechoso.",
+                    )
 
         secciones = await asyncio.get_event_loop().run_in_executor(
             None, lambda: separar_en_secciones(texto)

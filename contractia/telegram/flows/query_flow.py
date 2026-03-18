@@ -17,10 +17,12 @@ from pathlib import Path
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from contractia.config import RAG_TOP_K
+from contractia.config import ENABLE_LLM, RAG_TOP_K
 from contractia.core.graph import GrafoCancelledError, construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
 from contractia.core.graph_cache import cache_key, cargar_grafo, guardar_grafo
 from contractia.core.loader import procesar_documentos_carpeta
+from contractia.core.sanitizer import sanitizar_texto
+from contractia.core.security import registrar_y_alertar, verificar_seguridad_documento
 from contractia.core.segmenter import separar_en_secciones
 from contractia.llm.provider import build_llm
 from contractia.rag.pipeline import crear_retriever, crear_vector_store, recuperar_contexto
@@ -108,6 +110,35 @@ async def indexar_contrato(
         if not texto:
             await update.message.reply_text("❌ No pude extraer texto del archivo.")
             return False
+
+        # ── CAPA 1: Sanitización programática ──
+        resultado_sanitizacion = sanitizar_texto(texto)
+        texto = resultado_sanitizacion.texto_limpio
+
+        # ── CAPA 2: Escaneo LLM pre-indexación ──
+        if ENABLE_LLM and resultado_sanitizacion.tiene_alertas:
+            await update.message.reply_text("🛡️ Escaneando seguridad del documento...")
+            llm_sec = get_llm(modelo)
+            resultado_seguridad = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: verificar_seguridad_documento(
+                    texto=texto,
+                    alertas=resultado_sanitizacion.alertas,
+                    llm=llm_sec,
+                )
+            )
+            if not resultado_seguridad.es_seguro:
+                registrar_y_alertar(
+                    resultado=resultado_seguridad,
+                    audit_id=f"bot_query_{user_id}_{int(time.time())}",
+                    user_id=user_id,
+                    filename=Path(ruta_archivo).name,
+                )
+                await update.message.reply_text(
+                    f"🚫 Documento bloqueado por seguridad.\n"
+                    f"Se detectó contenido sospechoso en el archivo.\n"
+                    f"Usa /menu para intentar con otro documento."
+                )
+                return False
 
         await update.message.reply_text("🔍 Generando embeddings... (puede tardar ~1 minuto)")
 
