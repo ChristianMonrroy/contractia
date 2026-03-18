@@ -96,17 +96,20 @@ def cargar_grafo(key: str) -> Optional[Tuple[nx.DiGraph, Optional[Dict[str, Any]
     Descarga y deserializa el grafo desde GCS.
     Retorna (grafo, mapa_textos) o None si no existe o falla.
     """
-    if not AUDIT_QUEUE_BUCKET:
+    _bucket = os.getenv("AUDIT_QUEUE_BUCKET", "")
+    if not _bucket:
+        print(f"[GraphCache] cargar_grafo: AUDIT_QUEUE_BUCKET vacío (module={AUDIT_QUEUE_BUCKET!r}, env={_bucket!r})", flush=True)
         return None
     try:
         from google.cloud import storage
 
         blob_name = f"{_CACHE_PREFIX}/{key}.pkl"
         client = storage.Client()
-        bucket = client.bucket(AUDIT_QUEUE_BUCKET)
+        bucket = client.bucket(_bucket)
         blob = bucket.blob(blob_name)
 
         if not blob.exists():
+            print(f"[GraphCache] Blob no existe: gs://{_bucket}/{blob_name}", flush=True)
             return None
 
         raw = blob.download_as_bytes()
