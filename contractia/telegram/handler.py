@@ -58,7 +58,6 @@ from contractia.telegram.sessions import (
     login_session,
     logout_session,
     request_cancel,
-    set_vector_store,
 )
 
 # ── Constantes de estado ──────────────────────────────────────────────────────
@@ -184,9 +183,8 @@ async def cmd_rebuild_graph(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     from contractia.telegram.flows.query_flow import get_llm
     from contractia.telegram.sessions import (
         clear_cancel,
-        get_grafo,
-        get_mapa_textos,
         is_cancelled,
+        set_vector_store,
     )
 
     user_id = update.effective_user.id
@@ -248,8 +246,7 @@ async def cmd_rebuild_graph(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
 
         # Actualizar sesión (preservar vector_store y retriever)
-        from contractia.telegram.sessions import get_retriever as _get_ret
-        retriever = _get_ret(user_id)
+        retriever = get_retriever(user_id)
         from contractia.telegram.sessions import _sessions
         vs = _sessions.get(user_id, {}).get("vector_store")
         set_vector_store(
@@ -296,6 +293,24 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             await update.message.reply_text("Usa /menu para ver las opciones disponibles.")
         else:
             await update.message.reply_text("Usa /start para comenzar.")
+
+
+# ── CONTINUACIÓN DE AUDITORÍA (tras decisión de cache) ────────────────────────
+
+async def _continuar_auditoria(message, context, pending: dict, force_rebuild_graph: bool) -> None:
+    """Reanuda la auditoría después de que el usuario decidió sobre el cache del grafo."""
+    from contractia.telegram.flows.audit_flow import _auditoria_lock, ejecutar_auditoria_desde_texto
+
+    await ejecutar_auditoria_desde_texto(
+        message=message,
+        context=context,
+        texto=pending["texto"],
+        ruta_archivo=pending["ruta_archivo"],
+        tmp_dir=pending["tmp_dir"],
+        graph_enabled=pending["graph_enabled"],
+        modelo=pending["modelo"],
+        force_rebuild_graph=force_rebuild_graph,
+    )
 
 
 # ── HANDLER DE DOCUMENTOS ─────────────────────────────────────────────────────
@@ -450,6 +465,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             f"• Auditorías: {uso['auditorias']}/{limite_aud}\n"
             f"• Preguntas:  {uso['preguntas']}/{limite_preg}",
             parse_mode="Markdown",
+        )
+
+    elif data in ("audit_cache_reuse", "audit_cache_rebuild"):
+        pending = context.user_data.pop("audit_pending", None)
+        if not pending:
+            await query.message.reply_text("❌ No hay auditoría pendiente. Usa /menu para comenzar.")
+            return
+
+        if data == "audit_cache_rebuild":
+            await query.message.reply_text("🔄 Se reconstruirá el grafo desde cero.")
+        else:
+            await query.message.reply_text("♻️ Reutilizando grafo existente.")
+
+        force_rebuild = (data == "audit_cache_rebuild")
+        await _continuar_auditoria(
+            message=query.message,
+            context=context,
+            pending=pending,
+            force_rebuild_graph=force_rebuild,
         )
 
     elif data == "admin_menu" and rol == "admin":
