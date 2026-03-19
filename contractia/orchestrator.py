@@ -28,7 +28,7 @@ from contractia.agents.factory import crear_agentes, crear_scout
 from contractia.config import AGENTIC_RAG_ENABLED, ENABLE_LLM, GRAPH_ENABLED, RAG_ENABLED
 from contractia.core.sanitizer import sanitizar_texto
 from contractia.core.security import registrar_y_alertar, verificar_seguridad_documento
-from contractia.core.graph import construir_grafo_conocimiento, obtener_contexto_grafo, _PROMPT_EXTRACCION
+from contractia.core.graph import construir_grafo_conocimiento, GrafoCancelledError, obtener_contexto_grafo, _PROMPT_EXTRACCION
 from contractia.core.graph_cache import cache_key, guardar_grafo
 from contractia.core.log_context import log
 from contractia.core.segmenter import (
@@ -366,12 +366,21 @@ def ejecutar_auditoria_contrato(
                     if progress_callback and total > 0:
                         pct = 20 + int((i / total) * 35)
                         progress_callback(pct, f"Grafo [{i}/{total}] {titulo} — {n_tripletas} tripletas")
+                # Wrapper para verificar cancelación durante construcción del grafo
+                def _graph_cancel_check():
+                    if progress_callback:
+                        return progress_callback(0, "Verificando cancelación…")
+                    return False
                 grafo = construir_grafo_conocimiento(
                     secciones, llm, modelo=modelo, audit_id=audit_id,
                     on_progress=_graph_progress,
+                    cancel_check=_graph_cancel_check,
                 )
                 log("✅ GraphRAG activo.")
                 guardar_grafo(_cache_key, grafo)
+            except GrafoCancelledError:
+                log("⛔ Construcción del grafo cancelada por el usuario.")
+                return {"resultados_auditoria": [], "cancelado": True}
             except Exception as e:
                 log(f"⚠️ GraphRAG no disponible ({e}). Continuando sin grafo.")
 
