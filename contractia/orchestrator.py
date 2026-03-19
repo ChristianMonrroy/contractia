@@ -366,10 +366,15 @@ def ejecutar_auditoria_contrato(
                     if progress_callback and total > 0:
                         pct = 20 + int((i / total) * 35)
                         progress_callback(pct, f"Grafo [{i}/{total}] {titulo} — {n_tripletas} tripletas")
-                # Wrapper para verificar cancelación durante construcción del grafo
+                # Verificar cancelación silenciosamente (sin escribir log)
                 def _graph_cancel_check():
-                    if progress_callback:
-                        return progress_callback(0, "Verificando cancelación…")
+                    if audit_id:
+                        try:
+                            from contractia.telegram.db.database import get_auditoria
+                            state = get_auditoria(audit_id)
+                            return bool(state and state.get("status") != "processing")
+                        except Exception:
+                            pass
                     return False
                 grafo = construir_grafo_conocimiento(
                     secciones, llm, modelo=modelo, audit_id=audit_id,
