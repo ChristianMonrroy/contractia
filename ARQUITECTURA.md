@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.9.0 | **Fecha:** Marzo 2026
+**Versión:** 9.10.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -69,8 +69,14 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
 │  ├── uso_diario (rate limiting)     │
 │  ├── logs (+ duracion, canal,       │
 │  │        n_hallazgos)              │
-│  ├── auditorias (estado, informe)   │
+│  ├── auditorias (web + bot          │
+│  │    unificado desde v9.10)        │
 │  └── prompt_injection_logs (v9.9)   │
+│                                     │
+│  Cloud Storage (GCS)                │
+│  ├── contractia-contracts/ (PDFs)   │
+│  └── graph-cache/ (grafos GraphRAG  │
+│       cacheados, SHA256 key, v9.10) │
 │                                     │
 │  FAISS en memoria (por sesión RAG)  │
 │  GraphRAG: networkx DiGraph         │
@@ -94,6 +100,7 @@ contractia/
 │   ├── log_context.py          # ContextVar para propagación de logs a threads (v9.8)
 │   ├── segmenter.py            # Motor regex de segmentación estructural
 │   ├── graph.py                # GraphRAG: extracción de tripletas + networkx DiGraph
+│   ├── graph_cache.py          # Cache de grafos en GCS (SHA256 key, pickle) (v9.10)
 │   └── report.py               # Renderizado del informe Markdown
 │
 ├── agents/
@@ -182,7 +189,8 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 | `loader.py` | Extrae texto plano de archivos PDF (pypdf, con OCR por página como fallback vía pytesseract) y DOCX (docx2txt). Aplica timeout por página para evitar bloqueos en PDFs grandes. |
 | `log_context.py` | Módulo de logging agéntico (v9.8). Define un `ContextVar[Callable]` que propaga automáticamente el callback de logs a todos los threads lanzados por `ThreadPoolExecutor` sin modificar las firmas de las funciones del pipeline. `set_log_callback(cb)` activa la captura; `log(msg)` imprime y llama al callback si está registrado. |
 | `segmenter.py` | Divide el texto en secciones estructurales usando regex (capítulos, cláusulas, anexos). Construye el índice global de cláusulas numeradas y detecta saltos en la secuencia. `construir_mapa_clausula_a_seccion()` usa "Segmentación por Diccionario Exacto" (alineado con notebook vs16): localiza la posición exacta de cada cláusula y extrae solo su texto hasta la siguiente, no el capítulo completo. Nueva función `separar_en_secciones_con_metadata()` retorna también los datos de Fase 0/0.5 (para el informe técnico admin). |
-| `graph.py` | Construye el grafo de conocimiento GraphRAG. Emite log FASE 1.5 al inicio. Para cada sección llama al LLM con un prompt que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. `obtener_contexto_grafo()` recupera el texto preciso de cada cláusula referenciada directamente desde `mapa_textos` (sin truncado ni búsqueda posicional, alineado con vs16); relación por defecto `CONECTA_CON`. |
+| `graph.py` | Construye el grafo de conocimiento GraphRAG. Emite log FASE 1.5 al inicio. Para cada sección llama al LLM con un prompt que extrae tripletas (origen, relación, destino). Las almacena en un `nx.DiGraph`. Acepta `on_progress` callback para reportar avance por sección al panel de diagnóstico web (v9.10). `obtener_contexto_grafo()` recupera el texto preciso de cada cláusula referenciada directamente desde `mapa_textos` (sin truncado ni búsqueda posicional, alineado con vs16); relación por defecto `CONECTA_CON`. |
+| `graph_cache.py` | **(v9.10)** Cache de grafos GraphRAG en GCS. `cache_key(texto, prompt)` genera SHA256 hash como identificador único. `guardar_grafo(key, grafo, mapa)` serializa con pickle y sube a GCS. `cargar_grafo(key)` recupera el grafo cacheado. `borrar_grafo(key)` elimina cache manualmente. Ahorra ~40 min de reconstrucción por auditoría. Bucket configurable vía `AUDIT_QUEUE_BUCKET`. |
 | `report.py` | Transforma el diccionario de resultados del orquestador en un informe Markdown legible, agrupando hallazgos por sección y añadiendo resumen ejecutivo. |
 
 ---
@@ -225,7 +233,7 @@ Implementa el pipeline RAG completo:
 | `db/database.py` | Wrapper de psycopg2 con `get_conn()` como context manager. Expone `init_db()` (crea tablas si no existen), CRUD de auditorías y `registrar_prompt_injection()` para la tabla dedicada de seguridad. |
 | `db/usuarios.py` | CRUD de la tabla `usuarios`: crear, buscar por email/telegram_id, actualizar rol, hashear/verificar contraseñas con bcrypt. |
 | `db/uso.py` | Rate limiting diario: registra y consulta el número de auditorías/preguntas por usuario por día según su rol. |
-| `flows/audit_flow.py` | Orquesta el flujo completo de auditoría en el bot: descarga el archivo, extrae texto, llama al orquestador, guarda y envía el informe `.md` como adjunto al chat. |
+| `flows/audit_flow.py` | Orquesta el flujo completo de auditoría en el bot: descarga el archivo, extrae texto, verifica cache de grafo (pregunta "Reutilizar/Reconstruir" si existe), llama al orquestador, registra en tabla `auditorias` (visible en panel admin, v9.10), envía el informe `.md` como adjunto al chat y envía email con PDF adjunto al usuario (v9.10). |
 | `flows/query_flow.py` | Maneja la consulta RAG interactiva en el bot: indexa el contrato en la sesión del usuario (si aún no está), recupera contexto, llama al LLM con el prompt de consulta y responde al usuario en el chat. |
 
 ---
@@ -309,12 +317,18 @@ PDF/DOCX
    │
    ▼
 [4] CONSTRUCCIÓN DEL GRAFO DE CONOCIMIENTO (GraphRAG)
-    graph.py
+    graph.py + graph_cache.py
+    ├── Verifica cache en GCS (SHA256 del texto + prompt)
+    │   Bot: pregunta "Reutilizar/Reconstruir" si hay cache
+    │   Web-auditoría: siempre reconstruye, actualiza cache
+    │   Web-consultas: lee cache si existe
     ├── Para cada sección, llama al LLM para extraer tripletas
     │   (origen, relación, destino, contexto)
+    ├── Reporta progreso por sección al panel diagnóstico web (v9.10)
     ├── Relaciones válidas: REFERENCIA_A, SE_RIGE_POR,
     │   ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE
     ├── Construye nx.DiGraph con nodos de entidades
+    ├── Guarda grafo en GCS para reutilización futura
     └── Permite navegar dependencias entre cláusulas
 
    │
@@ -345,13 +359,15 @@ PDF/DOCX
    │
    ▼
 [7] PERSISTENCIA Y ENTREGA
-    Bot Telegram → archivo .md adjunto al chat
+    Bot Telegram → archivo .md adjunto al chat + email con PDF adjunto (v9.10)
+                 → registra en tabla auditorias (visible en panel admin, v9.10)
     Web → polling GET /contracts/audit/{id} → informe renderizado en Markdown
         → GET /contracts/audit/{id}/pdf → PDF generado con fpdf2 (descarga directa)
         → GET /contracts/audit/{id}/logs → historial de logs de diagnóstico (JSON)
-    Email → notificación automática con PDF adjunto al terminar
+    Email → notificación automática con PDF adjunto al terminar (web + bot unificado)
     DB  → tabla auditorias (status, informe, n_hallazgos, n_secciones, progress_msg,
                             progress_pct, audit_logs JSONB, modelo_usado)
+    GCS → graph-cache/ (grafos GraphRAG cacheados para reutilización, v9.10)
 ```
 
 ### Pausa técnica entre secciones
@@ -387,7 +403,9 @@ El orquestador incluye `time.sleep(2)` entre secciones para modelos estables (Ge
 | Aristas CONTIENE | Excluidas del contexto enviado a los agentes (ruido estructural) |
 | Uso web | Los 3 agentes reciben `contexto_grafo`; consulta interactiva enriquece prompt si hay grafo en sesión |
 | Uso bot | Selector `[🕸️ Sí, con GraphRAG] [⚡ No, solo RAG]` antes de subir el archivo; soportado en auditoría y consulta |
-| Persistencia | En memoria por auditoría (web) o por sesión de usuario (bot) |
+| Cache GCS (v9.10) | Grafos se cachean en `gs://contractia-contracts/graph-cache/{sha256}.pkl`; key = SHA256(texto + prompt); Bot: pregunta "Reutilizar/Reconstruir" si detecta cache; Web-auditoría: siempre reconstruye y actualiza cache; Web-consultas: lee cache |
+| Comando `/rebuild_graph` | Permite al usuario del bot reconstruir manualmente el grafo cacheado del contrato activo |
+| Persistencia | Cache en GCS (entre sesiones); en memoria por auditoría (web) o por sesión de usuario (bot) |
 
 ---
 
@@ -513,7 +531,7 @@ SELECT filename, COUNT(*) FROM prompt_injection_logs GROUP BY filename;
 
 - **Bot:** single-process, asyncio, webhook mode
 - **Auditorías:** limitadas a 1 simultánea por `hay_auditoria_en_progreso()` — check en DB (auto-expira en 20 min), seguro para multi-instancia Cloud Run
-- **Estado de auditoría:** persistido en tabla `auditorias` (PostgreSQL), no en memoria
+- **Estado de auditoría:** persistido en tabla `auditorias` (PostgreSQL), no en memoria; unificado para web y bot desde v9.10
 - **Polling web:** frontend hace GET `/contracts/audit/{id}` cada 4s hasta `status=done|error`; `progress_msg` y `progress_pct` actualizados en DB en tiempo real
 - **Preguntas RAG:** concurrentes sin límite
 
@@ -564,6 +582,7 @@ git push frontend → Vercel (deploy automático)
 |---|---|
 | Compute | Cloud Run (contractia-api · us-central1 · `--no-cpu-throttling`) |
 | Base de datos | Cloud SQL PostgreSQL 15 (contractia-db) |
+| Almacenamiento | Cloud Storage (contractia-contracts · PDFs + graph-cache) |
 | Imágenes Docker | Artifact Registry (us-central1) |
 | Secretos | Secret Manager |
 | IAM | Service Account contractia-sa (Workload Identity Federation) |
