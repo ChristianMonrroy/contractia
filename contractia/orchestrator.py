@@ -357,7 +357,15 @@ def ejecutar_auditoria_contrato(
         if grafo is None:
             try:
                 log("\n🕸️  Construyendo grafo de conocimiento (GraphRAG)...")
-                grafo = construir_grafo_conocimiento(secciones, llm, modelo=modelo, audit_id=audit_id)
+                # Wrapper para reportar progreso del grafo (20% → 55%)
+                def _graph_progress(i, total, titulo, n_tripletas):
+                    if progress_callback and total > 0:
+                        pct = 20 + int((i / total) * 35)
+                        progress_callback(pct, f"Grafo [{i}/{total}] {titulo} — {n_tripletas} tripletas")
+                grafo = construir_grafo_conocimiento(
+                    secciones, llm, modelo=modelo, audit_id=audit_id,
+                    on_progress=_graph_progress,
+                )
                 log("✅ GraphRAG activo.")
                 guardar_grafo(_cache_key, grafo)
             except Exception as e:

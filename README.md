@@ -1,10 +1,22 @@
-# ContractIA v9.9.0
+# ContractIA v9.10.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG, defensa contra prompt injection en 2 capas, y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.10.0
+
+| Área | Cambio |
+|------|--------|
+| **Bot → tabla `auditorias`** | Las auditorías del bot Telegram ahora se registran en la misma tabla `auditorias` de PostgreSQL que las web; visibles en el panel admin "Auditorías de todos los usuarios" con estado, hallazgos y logs de diagnóstico |
+| **Bot → email con PDF** | Al completar una auditoría por Telegram, se envía email al usuario con el informe en PDF adjunto (mismo template y formato que el flujo web); requiere que el usuario tenga email registrado |
+| **Web → progreso del grafo en diagnóstico** | La FASE 1.5 (construcción GraphRAG) ahora reporta progreso por sección (`Grafo [i/N] Título — X tripletas`) al panel de diagnóstico web; antes solo mostraba el inicio de la fase sin detalle |
+| **Cache de grafos en GCS** | Grafos GraphRAG se cachean en GCS (SHA256 hash del texto + prompt); reutilización ahorra ~40 min por auditoría; bot pregunta "Reutilizar/Reconstruir" si detecta cache; web-auditoría siempre reconstruye y actualiza cache |
+| **`/rebuild_graph`** | Nuevo comando del bot para reconstruir manualmente el grafo cacheado del contrato activo |
+| **PI en consultas** | Defensa contra prompt injection (Capa 1 + Capa 2) extendida a flujos de consulta interactiva (bot + web), no solo auditorías |
+| **`deploy.yml`** | `AUDIT_QUEUE_BUCKET` agregado como variable persistente en el workflow de CI/CD para evitar pérdida en deploys |
 
 ## Novedades v9.9.0
 
@@ -213,19 +225,26 @@ Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gem
 ## Arquitectura general
 
 ```
-contractia.pe (Next.js 14 · Vercel)
-        ↕ HTTPS
-api.contractia.pe → Cloud Run (FastAPI · Python)
+contractia.pe (Next.js 14 · Vercel)        Telegram Bot (webhook)
+        ↕ HTTPS                                    ↕
+api.contractia.pe → Cloud Run (FastAPI · Python) ←─┘
         ↕
    Escudo de Seguridad (Capa 1: Sanitización + Capa 2: Escaneo LLM)
         ↕
    Cloud SQL (PostgreSQL 15 · us-central1)
+   └── auditorias (web + bot unificado), logs, prompt_injection_logs
         ↕
-   Cloud Storage / FAISS (vectores RAG)
+   Cloud Storage (GCS)
+   ├── contractia-contracts/ (PDFs originales)
+   └── graph-cache/ (grafos GraphRAG cacheados, SHA256 key)
+        ↕
+   FAISS (vectores RAG in-memory)
         ↕
    VertexAI (Gemini 2.5 Pro · text-embedding-004)
         ↕
    GraphRAG (networkx DiGraph · tripletas extraídas por LLM)
+        ↕
+   Email (Gmail SMTP · PDF adjunto)
 ```
 
 ---
@@ -267,6 +286,7 @@ ContractIA/
 │   │   ├── sanitizer.py        ← Capa 1: sanitización Unicode + detección heurística
 │   │   ├── security.py         ← Capa 2: escaneo LLM + registro + alerta email
 │   │   ├── graph.py            ← GraphRAG (networkx + extracción LLM)
+│   │   ├── graph_cache.py      ← Cache de grafos en GCS (SHA256 key, pickle)
 │   │   ├── loader.py           ← PDF/DOCX → texto
 │   │   ├── segmenter.py        ← Segmentación de cláusulas
 │   │   └── report.py           ← Generación de informe Markdown
