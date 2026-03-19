@@ -148,27 +148,11 @@ def auditar_consistencia(
 
     jurista, auditor, cronista = crear_agentes(llm)
 
-    # ── RAG: contexto adicional (estático o agéntico según config) ──────────────
+    # ── RAG deshabilitado en auditoría (v9.11) ──────────────────────────────────
+    # Los agentes de auditoría reciben solo texto_seccion + contexto_grafo,
+    # alineado con el notebook vs18. RAG + Scout siguen activos para consultas
+    # interactivas. El contexto_rag se pasa vacío para no modificar los templates.
     contexto_rag = ""
-    if retriever is not None:
-        if AGENTIC_RAG_ENABLED and vector_store is not None:
-            try:
-                scout = crear_scout(llm, retriever, vector_store)
-                ctx_scout = scout.ejecutar(texto_seccion)
-                if ctx_scout:
-                    contexto_rag = (
-                        "\n\n--- CONTEXTO AGÉNTICO (Scout v9.0) ---\n"
-                        + ctx_scout
-                        + "\n--- FIN CONTEXTO SCOUT ---\n"
-                    )
-                    log(f"   Scout: {len(ctx_scout)} chars de contexto enriquecido")
-                else:
-                    contexto_rag = _rag_estatico(retriever, texto_seccion)
-            except Exception as e:
-                log(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
-                contexto_rag = _rag_estatico(retriever, texto_seccion)
-        else:
-            contexto_rag = _rag_estatico(retriever, texto_seccion)
 
     clausulas_str = ", ".join(indice_global_clausulas) if indice_global_clausulas else "Ninguna"
     anexos_str = ", ".join(nombres_anexos) if nombres_anexos else "Ninguno"

@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.10.0 | **Fecha:** Marzo 2026
+**Versión:** 9.11.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -174,8 +174,8 @@ Punto único de configuración. Lee todas las variables de entorno (`.env` o Sec
 1. **Escudo de seguridad (v9.9):** Sanitiza el texto (Capa 1) y lo escanea con el LLM (Capa 2). Si detecta prompt injection, lanza `PromptInjectionDetectedError`, registra en DB y alerta al admin por email.
 2. Segmenta el texto en secciones.
 3. Emite logs de **FASE 0** (estructura: N capítulos / M anexos) y **FASE 0.5** (índice global de cláusulas y anexos).
-4. Construye el vector store RAG y (opcionalmente) el grafo GraphRAG.
-5. Itera sobre cada sección llamando a `auditar_consistencia()`, emitiendo log por sección con conteo de hallazgos.
+4. Construye el vector store RAG (para consultas interactivas) y (opcionalmente) el grafo GraphRAG.
+5. Itera sobre cada sección llamando a `auditar_consistencia()`, emitiendo log por sección con conteo de hallazgos. **Los agentes reciben solo `texto_seccion` + `contexto_grafo` (v9.11)** — RAG y Scout no participan en auditoría para evitar ruido que reduce hallazgos.
 6. Devuelve el diccionario de resultados completo que luego se convierte en informe.
 
 ---
@@ -337,16 +337,19 @@ PDF/DOCX
     orchestrator.py → auditar_consistencia()
     │
     ├── [PARALELO] AGENTE JURISTA  ──┐
-    │   Input:  texto + contexto grafo + RAG │ ThreadPoolExecutor(max_workers=3)
+    │   Input:  texto + contexto grafo │ ThreadPoolExecutor(max_workers=3)
     │   Output: {hay_inconsistencias, hallazgos[]} │ (independientes entre sí)
     │                                               │
     ├── [PARALELO] AGENTE AUDITOR  ─────────────────┤
-    │   Input:  texto + contexto RAG + índices + grafo │
-    │   Output: {hay_inconsistencias, hallazgos[]}     │
-    │                                                   │
+    │   Input:  texto + contexto grafo + índices    │
+    │   Output: {hay_inconsistencias, hallazgos[]}  │
+    │                                               │
     └── [PARALELO] AGENTE CRONISTA ─────────────────┘
-        Input:  texto + contexto grafo + RAG
+        Input:  texto + contexto grafo
         Output: {hay_errores_logicos, hay_inconsistencia_plazos, hallazgos_procesos[]}
+
+    NOTA (v9.11): RAG y Scout deshabilitados en auditoría — solo GraphRAG provee
+    contexto inter-sección. RAG introducía ruido que reducía hallazgos ~35% vs notebook.
 
     Modelos estables (Gemini 2.5 Pro): 3 workers, 3 reintentos, 10s pausa, 2s entre secciones
     Modelos throttle (Gemini 3.1, Claude): 1 worker, 5 reintentos, 30s pausa, 10s entre secciones
@@ -387,8 +390,8 @@ El orquestador incluye `time.sleep(2)` entre secciones para modelos estables (Ge
 | Vector store | **FAISS** (en memoria, por sesión) |
 | Estrategia de búsqueda | **Hybrid RAG + Reranking**: BM25+FAISS/RRF recuperan top-20 candidatos; Cohere `rerank-multilingual-v3.0` reordena a top-K por relevancia real |
 | Metadata por chunk | título de sección, tipo, número, índice de chunk |
-| Uso del RAG en auditoría | Agente Auditor recibe top-1 fragmento de otras secciones |
-| Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` |
+| Uso del RAG en auditoría | **Deshabilitado (v9.11)** — los agentes solo reciben `texto_seccion` + `contexto_grafo`; RAG introducía ruido que reducía hallazgos en ~35% vs notebook |
+| Uso del RAG en consulta | Preguntas libres del usuario vía `/contracts/query` (activo) |
 | Persistencia del vector store | No persiste — se reconstruye por cada contrato cargado |
 
 ### GraphRAG (v8.6.0+)
@@ -411,7 +414,7 @@ El orquestador incluye `time.sleep(2)` entre secciones para modelos estables (Ge
 
 ## 6. Sistema Multi-Agente
 
-**Patrón:** Parallel Agents con contexto compartido (RAG + GraphRAG). Los 3 agentes son independientes y se ejecutan en paralelo (serie para modelos con cuota limitada).
+**Patrón:** Parallel Agents con contexto compartido (GraphRAG). Los 3 agentes son independientes y se ejecutan en paralelo (serie para modelos con cuota limitada). RAG deshabilitado en auditoría desde v9.11 — solo GraphRAG proporciona contexto inter-sección.
 
 | Agente | Rol | Input principal | Output |
 |---|---|---|---|

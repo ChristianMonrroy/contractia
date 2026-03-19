@@ -1,10 +1,17 @@
-# ContractIA v9.10.0
+# ContractIA v9.11.0
 
 Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
+
+## Novedades v9.11.0
+
+| Área | Cambio |
+|------|--------|
+| **Auditoría sin RAG (alineación notebook vs18)** | Los agentes de auditoría (Jurista, Auditor, Cronista) ya no reciben `contexto_rag`; solo trabajan con `texto_seccion` + `contexto_grafo` (GraphRAG). Esto elimina el ruido del RAG que causaba que los agentes perdieran ~38 hallazgos respecto al notebook. RAG + Scout siguen activos para consultas interactivas |
+| **Scout solo en consultas** | El Agente Scout (Agentic RAG) ya no se ejecuta durante auditorías; solo enriquece consultas interactivas donde el usuario hace preguntas libres |
 
 ## Novedades v9.10.0
 
