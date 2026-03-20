@@ -153,7 +153,7 @@ def auditar_consistencia(
     #   → alineado con notebook vs18, RAG introducía ruido (-35% hallazgos)
     # Modo Estándar (sin GraphRAG): agentes reciben texto + contexto_rag
     #   → RAG es la única fuente de contexto inter-sección
-    contexto_rag = ""
+    contexto_rag = "(No aplica en modo auditoría)"
     if not contexto_grafo and retriever is not None:
         if AGENTIC_RAG_ENABLED and vector_store is not None:
             try:
