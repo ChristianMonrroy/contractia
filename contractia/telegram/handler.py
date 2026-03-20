@@ -414,26 +414,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if data in ("modo_preguntas", "modo_auditoria"):
         modo = "preguntas" if data == "modo_preguntas" else "auditoria"
         context.user_data["modo_pendiente"] = modo
-        _set_estado(context, SELECCIONANDO_GRAFO)
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("🕸️ Sí, con GraphRAG", callback_data="graph_si"),
-                InlineKeyboardButton("⚡ No, solo RAG",     callback_data="graph_no"),
-            ]
-        ])
-        await query.message.reply_text(
-            "🔧 *¿Activar análisis de relaciones entre cláusulas (GraphRAG)?*\n\n"
-            "• *Con GraphRAG*: detecta dependencias entre cláusulas — más preciso, "
-            "tarda ~30-40 min adicionales según el tamaño del contrato.\n"
-            "• *Solo RAG*: búsqueda semántica estándar — más rápido.",
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-        )
-
-    elif data in ("graph_si", "graph_no"):
-        if _estado(context) != SELECCIONANDO_GRAFO:
-            return
-        context.user_data["graph_enabled"] = (data == "graph_si")
+        context.user_data["graph_enabled"] = True  # Siempre GraphRAG
         _set_estado(context, SELECCIONANDO_MODELO)
         keyboard = InlineKeyboardMarkup([
             [

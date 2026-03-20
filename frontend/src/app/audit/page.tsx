@@ -46,8 +46,8 @@ function AuditContent() {
   const [progressMsg, setProgressMsg] = useState("");
   const [isQueued, setIsQueued] = useState(false);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
-  const [graphEnabled, setGraphEnabled] = useState(false);
-  const [queryGraphEnabled, setQueryGraphEnabled] = useState(false);
+  const [graphEnabled] = useState(true);     // Siempre GraphRAG
+  const [queryGraphEnabled] = useState(true); // Siempre GraphRAG
   const [modeloSeleccionado, setModeloSeleccionado] = useState("gemini-2.5-pro");
   const [progressPct, setProgressPct] = useState(0);
   const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
@@ -233,13 +233,11 @@ function AuditContent() {
 
   const loadFromAudit = async (audit: AuditRow) => {
     setStatus("uploading");
-    setQueryGraphEnabled(!!audit.graph_enabled);
     setError("");
     try {
       const res = await contractsAPI.loadAuditAsSession(audit.audit_id);
       setSessionId(res.data.session_id);
       setFilename(res.data.filename);
-      setQueryGraphEnabled(res.data.graph_enabled);
       setStatus("ready");
     } catch (err: unknown) {
       setError(extractError(err, "No se pudo cargar la auditoría. Sube el contrato manualmente."));
@@ -390,44 +388,7 @@ function AuditContent() {
           </div>
         )}
 
-        {/* Selector de modo para consulta interactiva (visible antes de subir el archivo) */}
-        {mode === "query" && (status === "idle" || status === "error") && (
-          <div className="mb-6">
-            <p className="text-sm font-medium text-slate-600 mb-3">Modo de análisis</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <button
-                onClick={() => setQueryGraphEnabled(false)}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  !queryGraphEnabled
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
-                }`}
-              >
-                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
-                  Estándar (RAG)
-                  {!queryGraphEnabled && <span className="ml-2 text-xs text-blue-600 font-medium">✓ Seleccionado</span>}
-                </div>
-                <div className="text-xs text-slate-500">Recuperación semántica. Respuestas rápidas.</div>
-                <div className="text-xs text-slate-400 mt-1">Indexado: ~5-10 s</div>
-              </button>
-              <button
-                onClick={() => setQueryGraphEnabled(true)}
-                className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  queryGraphEnabled
-                    ? "border-purple-500 bg-purple-50"
-                    : "border-slate-200 hover:border-slate-300 bg-white"
-                }`}
-              >
-                <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
-                  Profundo (GraphRAG)
-                  {queryGraphEnabled && <span className="ml-2 text-xs text-purple-600 font-medium">✓ Seleccionado</span>}
-                </div>
-                <div className="text-xs text-slate-500">RAG + grafo de conocimiento. Detecta relaciones entre cláusulas.</div>
-                <div className="text-xs text-slate-400 mt-1">Indexado: ~5-10 min</div>
-              </button>
-            </div>
-          </div>
-        )}
+        {/* GraphRAG siempre activo — selector eliminado en v9.11 */}
 
         {/* Selector de modelo LLM (visible en idle/error, ambos modos) */}
         {(status === "idle" || status === "error") && (
@@ -588,58 +549,19 @@ function AuditContent() {
                       </div>
                     )}
 
-                    {/* Selector de modo de análisis */}
-                    <div className="mb-6">
-                      <p className="text-sm font-medium text-slate-600 mb-3">Modo de análisis</p>
-                      <div className="grid sm:grid-cols-2 gap-3">
-                        <button
-                          onClick={() => setGraphEnabled(false)}
-                          className={`p-4 rounded-xl border-2 text-left transition-all ${
-                            !graphEnabled
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-slate-200 hover:border-slate-300 bg-white"
-                          }`}
-                        >
-                          <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
-                            Estándar (RAG)
-                            {!graphEnabled && <span className="ml-2 text-xs text-blue-600 font-medium">✓ Seleccionado</span>}
-                          </div>
-                          <div className="text-xs text-slate-500">Análisis con recuperación semántica. Rápido y preciso.</div>
-                          <div className="text-xs text-slate-400 mt-1">≈ 3-5 min</div>
-                        </button>
-                        <button
-                          onClick={() => setGraphEnabled(true)}
-                          className={`p-4 rounded-xl border-2 text-left transition-all ${
-                            graphEnabled
-                              ? "border-purple-500 bg-purple-50"
-                              : "border-slate-200 hover:border-slate-300 bg-white"
-                          }`}
-                        >
-                          <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
-                            Profundo (GraphRAG)
-                            {graphEnabled && <span className="ml-2 text-xs text-purple-600 font-medium">✓ Seleccionado</span>}
-                          </div>
-                          <div className="text-xs text-slate-500">RAG + grafo de conocimiento. Detecta más relaciones entre cláusulas.</div>
-                          <div className="text-xs text-slate-400 mt-1">≈ 8-15 min</div>
-                        </button>
-                      </div>
-                    </div>
+                    {/* GraphRAG siempre activo — selector eliminado en v9.11 */}
 
                     <div className="text-center">
                     <button
                       onClick={startAudit}
                       disabled={!uploadedFile}
-                      className={`font-semibold px-8 py-4 rounded-xl transition-colors inline-flex items-center gap-2 text-lg shadow-lg disabled:opacity-50 text-white ${
-                        graphEnabled
-                          ? "bg-purple-700 hover:bg-purple-800"
-                          : "bg-[#1e3a5f] hover:bg-[#152d4a]"
-                      }`}
+                      className="font-semibold px-8 py-4 rounded-xl transition-colors inline-flex items-center gap-2 text-lg shadow-lg disabled:opacity-50 text-white bg-purple-700 hover:bg-purple-800"
                     >
                       <FileSearch className="w-5 h-5" />
-                      Iniciar auditoría {graphEnabled ? "profunda" : "completa"}
+                      Iniciar auditoría profunda
                     </button>
                     <p className="text-slate-400 text-sm mt-3">
-                      Los 3 agentes IA analizarán tu contrato ({graphEnabled ? "≈ 8-15 min" : "≈ 3-5 min"})
+                      Los 3 agentes IA analizarán tu contrato (≈ 8-15 min)
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
                       Puedes cerrar esta página — recibirás un email cuando termine

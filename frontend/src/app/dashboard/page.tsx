@@ -246,10 +246,7 @@ export default function DashboardPage() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1">
-                              {a.graph_enabled
-                                ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
-                                : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600">RAG</span>
-                              }
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">GraphRAG</span>
                               {a.modelo_usado && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
                                   {a.modelo_usado === "gemini-2.5-pro" ? "Gemini 2.5" :

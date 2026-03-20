@@ -68,10 +68,10 @@ class FromAuditRequest(BaseModel):
 @router.post("/upload")
 async def upload_contract(
     file: UploadFile = File(...),
-    graph_enabled: bool = Form(False),
+    graph_enabled: bool = Form(True),
     user: dict = Depends(get_current_user),
 ):
-    """Sube un contrato y lo indexa para consultas RAG (y opcionalmente GraphRAG)."""
+    """Sube un contrato y lo indexa con GraphRAG (siempre activo desde v9.11)."""
     ext = Path(file.filename or "contrato").suffix.lower()
     if ext not in (".pdf", ".docx"):
         raise HTTPException(400, "Solo se aceptan archivos PDF o DOCX.")
@@ -311,11 +311,11 @@ async def query_contract(
 @router.post("/audit")
 async def start_audit(
     file: UploadFile = File(...),
-    graph_enabled: bool = Form(False),
+    graph_enabled: bool = Form(True),
     modelo: str = Form("gemini-2.5-pro"),
     user: dict = Depends(get_current_user),
 ):
-    """Lanza una auditoría completa en background. Devuelve audit_id."""
+    """Lanza una auditoría con GraphRAG en background (siempre activo desde v9.11)."""
     user_id = int(user["sub"])
     usuario = get_usuario(user_id)
     if not usuario:
