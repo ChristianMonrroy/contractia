@@ -66,8 +66,7 @@ def render_auditoria_markdown(resultado: Dict, modelo: str = "gemini-2.5-pro") -
 
         for c_id in claves:
             lista_h = mapa_clausulas[c_id]
-            icono = "⚠️" if c_id == "General" else "📌"
-            md.append(f"\n#### {icono} Cláusula {c_id}")
+            md.append(f"\n#### Cláusula {c_id}")
 
             for item in lista_h:
                 if isinstance(item, dict):
