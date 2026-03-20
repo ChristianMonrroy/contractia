@@ -219,22 +219,20 @@ def generar_pdf_tecnico(
                 linea += f"  ({ctx[:80]}{'...' if len(ctx) > 80 else ''})"
             _bullet(pdf, linea)
 
-        # Imagen del grafo
+        # Imagen del grafo — página A3 horizontal para grafos grandes
         if imagen_grafo_png:
-            pdf.add_page()
+            pdf.add_page(orientation="L", format="A3")
             _h1(pdf, "Visualizacion del Grafo")
             _body(pdf, "Representacion visual del grafo de conocimiento del contrato.", size=9)
             pdf.ln(3)
 
-            import io
             import tempfile, os
-            # Guardar PNG en archivo temporal para fpdf2 (no soporta bytes directos en image())
             with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
                 tmp.write(imagen_grafo_png)
                 tmp_path = tmp.name
             try:
-                # Centrar la imagen en la página (170mm de ancho disponible)
-                pdf.image(tmp_path, x=20, y=None, w=170)
+                # A3 horizontal: 420x297mm, margen 10mm → 400mm ancho disponible
+                pdf.image(tmp_path, x=10, y=None, w=400)
             finally:
                 os.unlink(tmp_path)
 
