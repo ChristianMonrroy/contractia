@@ -153,10 +153,9 @@ def auditar_consistencia(
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
-    # ── Los 3 agentes son independientes → paralelo en modelos estables,
-    #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
+    # ── Ejecución secuencial (alineado con notebook vs18) ──────────────────────
     _is_throttle = modelo in _MODELOS_THROTTLE
-    _workers = 1 if _is_throttle else 3
+    _workers = 1
     _pausa_retry = _PAUSA_REINTENTO_THROTTLE_S if _is_throttle else _PAUSA_REINTENTO_S
     _reintentos = _MAX_REINTENTOS_THROTTLE if _is_throttle else _MAX_REINTENTOS
     with ThreadPoolExecutor(max_workers=_workers) as pool:
