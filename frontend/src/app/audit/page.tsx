@@ -561,7 +561,7 @@ function AuditContent() {
                       Iniciar auditoría profunda
                     </button>
                     <p className="text-slate-400 text-sm mt-3">
-                      Los 3 agentes IA analizarán tu contrato (≈ 8-15 min)
+                      Los 3 agentes IA analizarán tu contrato (≈ 1 hora)
                     </p>
                     <p className="text-slate-400 text-xs mt-1">
                       Puedes cerrar esta página — recibirás un email cuando termine
