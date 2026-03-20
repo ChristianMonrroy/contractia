@@ -23,6 +23,7 @@ from contractia.core.report import render_auditoria_markdown
 from contractia.llm.provider import build_llm
 from contractia.orchestrator import PromptInjectionDetectedError, ejecutar_auditoria_contrato
 from contractia.telegram.correo.pdf_report import generar_pdf_auditoria
+from contractia.telegram.correo.pdf_report_tecnico import generar_pdf_tecnico
 from contractia.telegram.correo.sender import enviar_email
 from contractia.telegram.correo.templates import email_auditoria_lista
 from contractia.telegram.db.database import (
@@ -194,8 +195,37 @@ async def ejecutar_auditoria(
                     parse_mode="Markdown",
                 )
 
-            # Enviar email con PDF adjunto
-            await _enviar_email_informe(user_id, filename, md, n_hallazgos, n_secciones, modelo)
+            # Generar y enviar informe técnico PDF
+            metadata_tecnica = resultado.get("metadata_tecnica")
+            grafo = resultado.get("grafo")
+            imagen_grafo_png = resultado.get("imagen_grafo_png")
+            pdf_tecnico_bytes = None
+            if metadata_tecnica:
+                try:
+                    if metadata_tecnica is not None:
+                        metadata_tecnica["modelo_usado"] = modelo
+                    pdf_tecnico_bytes = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: generar_pdf_tecnico(
+                            metadata_tecnica=metadata_tecnica,
+                            grafo=grafo,
+                            imagen_grafo_png=imagen_grafo_png,
+                            filename_contrato=filename,
+                            modelo=modelo,
+                        )
+                    )
+                    tecnico_path = tmp_dir / "informe_tecnico.pdf"
+                    tecnico_path.write_bytes(pdf_tecnico_bytes)
+                    with open(tecnico_path, "rb") as f:
+                        await update.message.reply_document(
+                            document=f,
+                            filename=filename.rsplit(".", 1)[0] + "_tecnico.pdf" if "." in filename else "informe_tecnico.pdf",
+                            caption="🔬 Informe Técnico (GraphRAG + Metadata estructural)",
+                        )
+                except Exception as te:
+                    print(f"[BOT-TECNICO] No se pudo generar informe técnico: {te}", flush=True)
+
+            # Enviar email con ambos PDFs adjuntos
+            await _enviar_email_informe(user_id, filename, md, n_hallazgos, n_secciones, modelo, pdf_tecnico_bytes)
 
         except PromptInjectionDetectedError:
             actualizar_auditoria(
@@ -319,8 +349,37 @@ async def ejecutar_auditoria_desde_texto(
                     parse_mode="Markdown",
                 )
 
-            # Enviar email con PDF adjunto
-            await _enviar_email_informe(user_id, filename, md, n_hallazgos, n_secciones, modelo)
+            # Generar y enviar informe técnico PDF
+            metadata_tecnica = resultado.get("metadata_tecnica")
+            grafo = resultado.get("grafo")
+            imagen_grafo_png = resultado.get("imagen_grafo_png")
+            pdf_tecnico_bytes = None
+            if metadata_tecnica:
+                try:
+                    if metadata_tecnica is not None:
+                        metadata_tecnica["modelo_usado"] = modelo
+                    pdf_tecnico_bytes = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: generar_pdf_tecnico(
+                            metadata_tecnica=metadata_tecnica,
+                            grafo=grafo,
+                            imagen_grafo_png=imagen_grafo_png,
+                            filename_contrato=filename,
+                            modelo=modelo,
+                        )
+                    )
+                    tecnico_path = tmp_dir_path / "informe_tecnico.pdf"
+                    tecnico_path.write_bytes(pdf_tecnico_bytes)
+                    with open(tecnico_path, "rb") as f:
+                        await message.reply_document(
+                            document=f,
+                            filename=filename.rsplit(".", 1)[0] + "_tecnico.pdf" if "." in filename else "informe_tecnico.pdf",
+                            caption="🔬 Informe Técnico (GraphRAG + Metadata estructural)",
+                        )
+                except Exception as te:
+                    print(f"[BOT-TECNICO] No se pudo generar informe técnico: {te}", flush=True)
+
+            # Enviar email con ambos PDFs adjuntos
+            await _enviar_email_informe(user_id, filename, md, n_hallazgos, n_secciones, modelo, pdf_tecnico_bytes)
 
         except PromptInjectionDetectedError:
             actualizar_auditoria(
@@ -355,8 +414,9 @@ async def _enviar_email_informe(
     n_hallazgos: int,
     n_secciones: int,
     modelo: str,
+    pdf_tecnico_bytes: bytes = None,
 ) -> None:
-    """Envía email con el informe PDF al usuario del bot (si tiene email registrado)."""
+    """Envía email con el informe PDF + técnico al usuario del bot."""
     try:
         usuario = await asyncio.get_event_loop().run_in_executor(
             None, lambda: get_usuario(telegram_id)
@@ -377,14 +437,18 @@ async def _enviar_email_informe(
         except Exception as pdf_err:
             print(f"[EMAIL-BOT] No se pudo generar PDF: {pdf_err}", flush=True)
 
+        adjunto_tecnico_nombre = filename.rsplit(".", 1)[0] + "_tecnico.pdf" if "." in filename else "informe_tecnico.pdf"
+
         await asyncio.get_event_loop().run_in_executor(
             None, lambda: enviar_email(
                 email_dest, asunto, html, texto_plain,
                 adjunto_pdf=pdf_bytes,
                 adjunto_nombre=adjunto_nombre,
+                adjunto_pdf_tecnico=pdf_tecnico_bytes,
+                adjunto_nombre_tecnico=adjunto_tecnico_nombre,
             )
         )
-        print(f"[EMAIL-BOT] Email enviado a {email_dest}", flush=True)
+        print(f"[EMAIL-BOT] Email enviado a {email_dest} (con técnico: {pdf_tecnico_bytes is not None})", flush=True)
     except Exception as e:
         print(f"[EMAIL-BOT] Error al enviar email: {e}", flush=True)
 
