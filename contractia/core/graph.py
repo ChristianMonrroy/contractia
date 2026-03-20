@@ -189,6 +189,7 @@ def obtener_contexto_grafo(
 
     contexto = []
     nodos_vistos: set = set()
+    cids_con_contexto: set = set()  # cláusulas que ya tienen contexto del grafo
 
     for cid in clausulas_locales:
         # Búsqueda por word-boundary: evita que "3.3" matchee "13.3"
@@ -201,6 +202,7 @@ def obtener_contexto_grafo(
             if nodo in nodos_vistos:
                 continue
             nodos_vistos.add(nodo)
+            cids_con_contexto.add(cid)
 
             # Sucesores directos
             for sucesor in G.successors(nodo):
@@ -222,6 +224,14 @@ def obtener_contexto_grafo(
                 rel = datos.get("relacion", "CONECTA_CON")
                 ctx = datos.get("contexto", "")
                 contexto.append(f"- {predecesor} --[{rel}]--> {nodo} (Contexto: {ctx})")
+
+    # Fallback: cláusulas referenciadas que no tienen tripletas en el grafo
+    # pero sí existen en el mapa — recuperar su texto directamente
+    for cid in clausulas_locales:
+        if cid not in cids_con_contexto and cid in mapa_textos:
+            texto_ref = mapa_textos[cid]["texto"]
+            seccion_ref = mapa_textos[cid].get("seccion", "")
+            contexto.append(f"- [TEXTO DE CLÁUSULA {cid} ({seccion_ref})]:\n{texto_ref}\n")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."
 
