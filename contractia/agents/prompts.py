@@ -2,19 +2,13 @@
 Templates de prompts para cada agente especialista.
 Separados del código para facilitar iteración y pruebas.
 
-v9.3.0: Alineación con notebook vs14
-- Jurista: nuevo rol "Especialista en Lógica Procedimental" (detecta inconsistencias procedimentales)
-- Auditor: simplificado a 6 reglas limpias + XML tags (elimina árbol de pasos CoT)
-- Cronista: simplificado + XML tags (elimina árbol de pasos CoT)
-
-v9.3.1: Sin truncado de sección (igual que notebook)
-- Eliminado _MAX_SECTION_CHARS: se envía el texto completo de cada sección
-
-v9.3.2: Reducción de falsos positivos y duplicados
-- contexto_rag separado en su propio tag <contexto_rag> (evita contaminación de sección)
-- Jurista/Auditor/Cronista: tipo restringido a valores explícitos
-- Auditor: criterio explícito para ignorar leyes/decretos externos
-- Cronista: ejemplo negativo explícito para regla de días
+v9.11: Alineación completa con notebook vs18
+- RAG eliminado de auditoría — solo GraphRAG provee contexto inter-sección
+- contexto_rag removido de los 3 prompts (era ruido que causaba falsos positivos)
+- Orden de datos: contexto_grafo antes de texto_seccion (lost-in-the-middle)
+- Auditor: VERIFICACIÓN DE EXISTENCIA con EXTREMA ATENCIÓN (vs18)
+- Auditor: INCOHERENCIA_TEMATICA restaurado, docs externos con ejemplos específicos
+- Cronista: SUSPENSIÓN DE PLAZOS con metáfora RELOJ DETENIDO (vs18)
 """
 
 from langchain_core.prompts import PromptTemplate
@@ -33,7 +27,7 @@ PROMPT_JURISTA = PromptTemplate(
 
         "# REGLAS DE PROCESAMIENTO\n"
         "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE el <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "El <contexto_grafo> es exclusivamente una base de datos de consulta.\n"
         "- **EXCLUSIÓN LEGAL (REGLA DE ORO):** El sistema tiene prohibido evaluar la validez legal o "
         "técnica de redacción. Si el texto menciona 'Leyes', 'Decretos', 'Código Civil' o cualquier norma "
         "externa, el sistema DEBE IGNORAR esa mención por completo. No se deben generar hallazgos por "
@@ -71,10 +65,9 @@ PROMPT_JURISTA = PromptTemplate(
 
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -91,7 +84,7 @@ PROMPT_AUDITOR = PromptTemplate(
 
         "# REGLAS DE PROCESAMIENTO\n"
         "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE las referencias en el <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "El <contexto_grafo> es exclusivamente una base de datos de consulta.\n"
         "- **VERIFICACIÓN DE EXISTENCIA (CRÍTICO):** El sistema DEBE buscar el número exacto en el <indice_global>. "
         "Los LLMs suelen fallar leyendo listas largas de números, así que BUSCA CON EXTREMA ATENCIÓN. "
         "Si el número (ej. 4.6) está en la lista, ENTONCES SÍ EXISTE. "
@@ -142,10 +135,9 @@ PROMPT_AUDITOR = PromptTemplate(
         "# DATOS DE ENTRADA\n"
         "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "idx_glob", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "idx_glob", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -162,7 +154,7 @@ PROMPT_CRONISTA = PromptTemplate(
 
         "# REGLAS DE PROCESAMIENTO\n"
         "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE los plazos del <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "El <contexto_grafo> es exclusivamente una base de datos de consulta.\n"
         "- **CONSTANTES DE TIEMPO:** 'Días' = días hábiles. 'Días Calendario' = días naturales. "
         "El sistema aplicará esta constante automáticamente sin exigir que el texto la defina. "
         "EJEMPLO PROHIBIDO: 'Los plazos se contabilizan desde el Día siguiente' → NO reportar.\n"
@@ -205,8 +197,7 @@ PROMPT_CRONISTA = PromptTemplate(
 
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )
