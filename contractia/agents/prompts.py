@@ -70,9 +70,9 @@ PROMPT_JURISTA = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )
@@ -97,13 +97,17 @@ PROMPT_AUDITOR = PromptTemplate(
         "Si el número (ej. 4.6) está en la lista, ENTONCES SÍ EXISTE. "
         "NUNCA clasifiques como REFERENCIA_INEXISTENTE a una cláusula que sí está en el índice. "
         "El <indice_global> es la FUENTE DE VERDAD ABSOLUTA — no inferir existencia desde el texto.\n"
-        "- **VALIDACIÓN TEMÁTICA:** Usar el <contexto_grafo> para verificar si la cláusula referenciada "
-        "trata sobre el mismo tema.\n"
-        "- **EXCLUSIÓN DE DOCUMENTOS EXTERNOS (REGLA DE ORO):** Tu universo de auditoría se limita "
+        "- **VALIDACIÓN TEMÁTICA:** Si la cláusula referenciada SÍ EXISTE en el índice, usa el "
+        "<contexto_grafo> para verificar si trata sobre el mismo tema. Si los temas no coinciden "
+        "(ej. remite a 4.6 para 'suspensión' pero 4.6 habla de 'tarifas'), clasifícalo como "
+        "INCOHERENCIA_TEMATICA.\n"
+        "- **REGLA DE ORO DE EXTERNALIDADES (CRÍTICO):** Tu universo de auditoría se limita "
         "EXCLUSIVAMENTE a las palabras 'Cláusula', 'Anexo', 'Numeral', 'Literal' y 'Apéndice'. "
-        "Si el texto menciona CUALQUIER OTRO DOCUMENTO (Leyes, Decretos, Código Civil, Reglamentos, "
-        "Bases de Licitación, Declaratoria de Interés, normas técnicas, etc.), "
-        "ASUME QUE ES UN DOCUMENTO EXTERNO VÁLIDO Y NO LO REPORTES.\n"
+        "Si el texto menciona CUALQUIER OTRO DOCUMENTO (ej. 'Declaratoria de Interés', 'Bases', "
+        "'Leyes', 'Decretos', 'Contrato de Fideicomiso', 'Contrato de Prestación de Servicios', etc.), "
+        "**ASUME QUE ES UN DOCUMENTO EXTERNO VÁLIDO Y NO LO REPORTES**. "
+        "Está estrictamente prohibido marcar como 'referencia rota' a un documento que no sea una "
+        "Cláusula o un Anexo.\n"
         "- **JERARQUÍA DOCUMENTAL:** Los 'Apéndices' pertenecen a los Anexos; los 'Numerales'/'Literales' "
         "a las Cláusulas. El sistema no debe exigir que los Apéndices estén en el <indice_global>.\n"
         "- **LÍMITES DEL SISTEMA (CERO SOLAPAMIENTO):**\n"
@@ -135,10 +139,10 @@ PROMPT_AUDITOR = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "idx_glob", "fecha_actual"],
 )
@@ -167,9 +171,10 @@ PROMPT_CRONISTA = PromptTemplate(
         "hallazgo por 'falta de información' o 'ambigüedad'.\n"
         "- **EXCEPCIONES TEMPORALES:** Las reglas excepcionales de cálculo de plazos son válidas y no "
         "deben marcarse como error matemático.\n"
-        "- **SUSPENSIÓN DE PLAZOS:** Los plazos de evaluación del CONCEDENTE se pausan si se solicita "
-        "información al CONCESIONARIO. El sistema no debe sumar los días de subsanación al plazo "
-        "original de evaluación.\n"
+        "- **SUSPENSIÓN DE PLAZOS (RELOJ DETENIDO):** Entiende que los plazos de evaluación del CONCEDENTE "
+        "se suspenden cuando este solicita información adicional o subsanaciones al CONCESIONARIO, "
+        "y se retoman cuando el CONCESIONARIO responde. El sistema no debe sumar los días de "
+        "subsanación al plazo original de evaluación.\n"
         "- **LÍMITES DEL SISTEMA (CERO SOLAPAMIENTO):**\n"
         "  1. El sistema evalúa exclusivamente el 'CUÁNDO' y 'CUÁNTO TIEMPO'.\n"
         "  2. Ignorar contradicciones sobre quién aprueba o cómo es el procedimiento.\n"
@@ -198,9 +203,9 @@ PROMPT_CRONISTA = PromptTemplate(
         "```\n\n"
 
         "# DATOS DE ENTRADA\n"
-        "<texto_seccion>\n{texto}\n</texto_seccion>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n"
+        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
+        "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
     input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
 )

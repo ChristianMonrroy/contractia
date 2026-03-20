@@ -30,24 +30,27 @@ from contractia.core.log_context import log
 
 _PROMPT_EXTRACCION = PromptTemplate(
     template=(
-        "# ROL\n"
-        "Eres un experto en extracción de datos legales y grafos de conocimiento.\n\n"
+        "# SISTEMA\n"
+        "Motor automatizado de extracción de datos estructurados y construcción de grafos de conocimiento.\n\n"
 
         "# TAREA\n"
-        "Analiza el texto de un contrato y extrae las relaciones lógicas internas en formato de tripletas.\n\n"
+        "Analizar el <texto_seccion> y extraer las relaciones lógicas internas en formato de tripletas "
+        "(Origen, Relación, Destino).\n\n"
 
         "# REGLAS DE EXTRACCIÓN\n"
-        "- **Entidades válidas:** Cláusulas, Plazos, Roles, Entregables, Penalidades.\n"
-        "- **REGLA DE DESAMBIGUACIÓN (MUY IMPORTANTE):** Para evitar colisiones entre el contrato "
-        "principal y los anexos, SIEMPRE incluye el nombre de la sección o anexo en la entidad de la "
-        "cláusula. Ejemplo: Usa 'Cláusula 7.1 (Capítulo VII)' o 'Cláusula 7.1 (Anexo 22)' en lugar "
+        "- **ENTIDADES VÁLIDAS:** Cláusulas, Plazos, Roles, Entregables, Penalidades.\n"
+        "- **REGLA DE DESAMBIGUACIÓN (CRÍTICO):** Para evitar colisiones en la base de datos, "
+        "el sistema SIEMPRE debe incluir el nombre de la sección o anexo en la entidad de la "
+        "cláusula. Ejemplo: Usar 'Cláusula 7.1 (Capítulo VII)' o 'Cláusula 7.1 (Anexo 22)' en lugar "
         "de solo 'Cláusula 7.1'.\n"
-        "- **PROHIBICIÓN ESTRICTA:** NO extraigas, ni menciones, ni crees nodos para leyes, normativas, "
-        "códigos civiles, decretos o cualquier documento externo al contrato. El análisis es 100% interno.\n"
-        "- **Relaciones válidas:** REFERENCIA_A, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE, OBLIGA_A.\n\n"
+        "- **PROHIBICIÓN DE EXTERNALIDADES (CRÍTICO):** El sistema tiene estrictamente prohibido "
+        "extraer, mencionar o crear nodos para leyes, normativas, códigos civiles, decretos o "
+        "cualquier documento externo al contrato. El análisis es 100% interno.\n"
+        "- **RELACIONES VÁLIDAS:** REFERENCIA_A, ESTABLECE_PLAZO, MODIFICA_A, DEPENDE_DE, OBLIGA_A.\n\n"
 
         "# FORMATO DE SALIDA\n"
-        "Responde ÚNICAMENTE con un bloque de código JSON válido. No incluyas texto fuera del bloque JSON.\n\n"
+        "Generar ÚNICAMENTE un bloque de código JSON válido que contenga una lista de diccionarios. "
+        "No incluir texto fuera del bloque JSON.\n\n"
         "```json\n"
         "[\n"
         "  {{\"origen\": \"Cláusula 5.1 (Capítulo V)\", \"relacion\": \"REFERENCIA_A\", "
