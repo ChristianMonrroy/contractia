@@ -1,12 +1,6 @@
 """
 Templates de prompts para cada agente especialista.
-Alineados con Multiagente_ContractIA_vs18.ipynb + salvaguardas anti-FP (v9.12).
-
-v9.12: Restaurar salvaguardas que reducen falsos positivos
-- TIPOS PERMITIDOS en cada agente (restringe tipos inventados)
-- Auditor: "Si NO hay info suficiente en el grafo, NO reportar"
-- Cronista: ejemplo prohibido + regla de días de subsanación
-- contexto_rag restaurado como fallback cuando GraphRAG no tiene tripletas
+100% alineados con Multiagente_ContractIA_vs18.ipynb.
 """
 
 from langchain_core.prompts import PromptTemplate
@@ -23,7 +17,7 @@ PROMPT_JURISTA = PromptTemplate(
         "Identificar inconsistencias PROCEDIMENTALES, operativas o lógicas dentro del <texto_seccion>.\n\n"
         "# REGLAS DE PROCESAMIENTO\n"
         "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE el <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "El <contexto_grafo> es exclusivamente una base de datos de consulta.\n"
         "- **EXCLUSIÓN LEGAL (REGLA DE ORO):** El sistema tiene prohibido evaluar la validez legal o "
         "técnica de redacción. Si el texto menciona 'Leyes', 'Decretos', 'Código Civil' o cualquier norma "
         "externa, el sistema DEBE IGNORAR esa mención por completo. No se deben generar hallazgos por "
@@ -38,9 +32,7 @@ PROMPT_JURISTA = PromptTemplate(
         "  2. Ignorar referencias a cláusulas inexistentes o temas incorrectos.\n"
         "  3. Evaluar exclusivamente el 'QUIÉN' y el 'CÓMO' (ej. flujos de aprobación, obligaciones "
         "contradictorias).\n"
-        "- **PARÁMETRO TEMPORAL:** Fecha del sistema = {fecha_actual}.\n"
-        "- **TIPO PERMITIDO:** El campo `tipo` SOLO puede ser: `INCONSISTENCIA_PROCEDIMENTAL`. "
-        "No uses ningún otro valor.\n\n"
+        "- **PARÁMETRO TEMPORAL:** Fecha del sistema = {fecha_actual}.\n\n"
         "# FORMATO DE SALIDA\n"
         "Generar ÚNICAMENTE el siguiente bloque de código JSON:\n\n"
         "```json\n"
@@ -59,10 +51,9 @@ PROMPT_JURISTA = PromptTemplate(
         "```\n\n"
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -76,18 +67,15 @@ PROMPT_AUDITOR = PromptTemplate(
         "# TAREA\n"
         "Validar la existencia y coherencia temática de las referencias cruzadas DENTRO del <texto_seccion>.\n\n"
         "# REGLAS DE PROCESAMIENTO\n"
-        "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE las referencias en el <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE las referencias en el <texto_seccion>.\n"
         "- **VERIFICACIÓN DE EXISTENCIA (CRÍTICO):** El sistema DEBE buscar el número exacto en el "
         "<indice_global>. Los LLMs suelen fallar leyendo listas largas de números, así que BUSCA CON "
         "EXTREMA ATENCIÓN. Si el número (ej. 4.6) está en la lista, ENTONCES SÍ EXISTE. NUNCA clasifiques "
-        "como REFERENCIA_INEXISTENTE a una cláusula que sí está en el índice. "
-        "El <indice_global> es la FUENTE DE VERDAD ABSOLUTA — no inferir existencia desde el texto.\n"
+        "como REFERENCIA_INEXISTENTE a una cláusula que sí está en el índice.\n"
         "- **VALIDACIÓN TEMÁTICA:** Si la cláusula referenciada SÍ EXISTE en el índice, usa el "
         "<contexto_grafo> para verificar si trata sobre el mismo tema. Si los temas no coinciden "
         "(ej. remite a 4.6 para 'suspensión' pero 4.6 habla de 'tarifas'), clasifícalo como "
-        "INCOHERENCIA_TEMATICA. Si NO hay información suficiente en el grafo para verificar el tema, "
-        "NO reportar hallazgo — la ausencia de contexto no es un error del contrato.\n"
+        "INCOHERENCIA_TEMATICA.\n"
         "- **REGLA DE ORO DE EXTERNALIDADES (CRÍTICO):** Tu universo de auditoría se limita "
         "EXCLUSIVAMENTE a las palabras 'Cláusula', 'Anexo', 'Numeral', 'Literal' y 'Apéndice'. "
         "Si el texto menciona CUALQUIER OTRO DOCUMENTO (ej. 'Declaratoria de Interés', 'Bases', "
@@ -102,12 +90,7 @@ PROMPT_AUDITOR = PromptTemplate(
         "  2. El sistema NO debe evaluar si los procedimientos son lógicos.\n"
         "  3. El sistema SOLO verifica si el enlace existe y si el tema coincide.\n"
         "- **REGLA DE RESOLUCIÓN:** Toda mención a una 'Cláusula Y' apunta al CONTRATO PRINCIPAL, "
-        "salvo que indique explícitamente 'del Anexo X'.\n"
-        "- **TIPOS PERMITIDOS:** El campo `tipo` SOLO puede ser: `REFERENCIA_INEXISTENTE`, "
-        "`REFERENCIA_ROTA` o `INCOHERENCIA_TEMATICA`. No uses ningún otro valor.\n\n"
-
-        "**PARÁMETRO TEMPORAL:** Fecha del sistema = {fecha_actual}.\n\n"
-
+        "salvo que indique explícitamente 'del Anexo X'.\n\n"
         "# FORMATO DE SALIDA\n"
         "Generar ÚNICAMENTE el siguiente bloque de código JSON:\n\n"
         "```json\n"
@@ -116,7 +99,7 @@ PROMPT_AUDITOR = PromptTemplate(
         "  \"hallazgos\": [\n"
         "    {{\n"
         "      \"clausula_afectada\": \"5.1\",\n"
-        "      \"tipo\": \"REFERENCIA_INEXISTENTE\",\n"
+        "      \"tipo\": \"REFERENCIA_ROTA o INCOHERENCIA_TEMATICA\",\n"
         "      \"cita\": \"texto exacto del error\",\n"
         "      \"explicacion\": \"motivo del error\",\n"
         "      \"severidad\": \"ALTA\"\n"
@@ -127,10 +110,9 @@ PROMPT_AUDITOR = PromptTemplate(
         "# DATOS DE ENTRADA\n"
         "<indice_global>\n{idx_glob}\n</indice_global>\n\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "idx_glob", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "idx_glob", "fecha_actual"],
 )
 
 # ═══════════════════════════════════════════════════════════════
@@ -144,11 +126,9 @@ PROMPT_CRONISTA = PromptTemplate(
         "# TAREA\n"
         "Detectar errores matemáticos, cronológicos o de cálculo de plazos en el <texto_seccion>.\n\n"
         "# REGLAS DE PROCESAMIENTO\n"
-        "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE los plazos del <texto_seccion>. "
-        "El <contexto_grafo> y el <contexto_rag> son exclusivamente bases de datos de consulta.\n"
+        "- **ENFOQUE ESTRICTO:** El sistema debe procesar ÚNICAMENTE los plazos del <texto_seccion>.\n"
         "- **CONSTANTES DE TIEMPO:** 'Días' = días hábiles. 'Días Calendario' = días naturales. "
-        "El sistema aplicará esta constante automáticamente sin exigir que el texto la defina. "
-        "EJEMPLO PROHIBIDO: 'Los plazos se contabilizan desde el Día siguiente' → NO reportar.\n"
+        "El sistema aplicará esta constante automáticamente sin exigir que el texto la defina.\n"
         "- **EXCLUSIÓN DE LEYES EXTERNAS (REGLA DE ORO):** El sistema tiene estrictamente prohibido "
         "evaluar cómo interactúa el contrato con leyes externas (ej. Código Civil). Si el texto remite "
         "a una ley para el cómputo de plazos, el sistema debe ignorar la oración y no generar ningún "
@@ -157,15 +137,12 @@ PROMPT_CRONISTA = PromptTemplate(
         "deben marcarse como error matemático.\n"
         "- **SUSPENSIÓN DE PLAZOS (RELOJ DETENIDO):** Entiende que los plazos de evaluación del CONCEDENTE "
         "se suspenden cuando este solicita información adicional o subsanaciones al CONCESIONARIO, "
-        "y se retoman cuando el CONCESIONARIO responde. El sistema no debe sumar los días de "
-        "subsanación al plazo original de evaluación.\n"
+        "y se retoman cuando el CONCESIONARIO responde.\n"
         "- **LÍMITES DEL SISTEMA (CERO SOLAPAMIENTO):**\n"
         "  1. El sistema evalúa exclusivamente el 'CUÁNDO' y 'CUÁNTO TIEMPO'.\n"
         "  2. Ignorar contradicciones sobre quién aprueba o cómo es el procedimiento.\n"
         "- **PARÁMETRO TEMPORAL:** Fecha del sistema = {fecha_actual}. El documento es un BORRADOR. "
-        "El sistema ignorará fechas pasadas en secciones de 'Antecedentes' o contexto histórico.\n"
-        "- **TIPOS PERMITIDOS:** El campo `tipo` SOLO puede ser: `ERROR_PLAZOS`, `ERROR_LOGICO` "
-        "o `INCONSISTENCIA_PLAZOS`. No uses ningún otro valor.\n\n"
+        "El sistema ignorará fechas pasadas en secciones de 'Antecedentes' o contexto histórico.\n\n"
         "# FORMATO DE SALIDA\n"
         "Generar ÚNICAMENTE el siguiente bloque de código JSON:\n\n"
         "```json\n"
@@ -186,8 +163,7 @@ PROMPT_CRONISTA = PromptTemplate(
         "```\n\n"
         "# DATOS DE ENTRADA\n"
         "<contexto_grafo>\n{contexto_grafo}\n</contexto_grafo>\n\n"
-        "<contexto_rag>\n{contexto_rag}\n</contexto_rag>\n\n"
         "<texto_seccion>\n{texto}\n</texto_seccion>\n"
     ),
-    input_variables=["texto", "contexto_grafo", "contexto_rag", "fecha_actual"],
+    input_variables=["texto", "contexto_grafo", "fecha_actual"],
 )

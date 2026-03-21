@@ -129,51 +129,22 @@ def auditar_consistencia(
     texto_seccion: str,
     indice_global_clausulas: List[str],
     llm,
-    retriever=None,
-    vector_store=None,
     contexto_grafo: str = "",
     modelo: Optional[str] = None,
     nombres_anexos: Optional[List[str]] = None,
     audit_id: Optional[str] = None,
 ) -> List[Dict]:
-    """Audita una sección individual con los tres agentes secuencialmente.
+    """Audita una sección individual con los tres agentes en paralelo.
 
-    Los tres agentes (Jurista, Auditor, Cronista) son independientes entre sí.
-    Reciben texto_seccion + contexto_grafo + contexto_rag (fallback).
-
-    RAG fallback (v9.12): cuando el grafo NO tiene tripletas para una sección,
-    el RAG provee contexto inter-sección como respaldo. Esto evita que secciones
-    sin cobertura de GraphRAG se auditen sin ningún contexto cruzado.
+    Los tres agentes (Jurista, Auditor, Cronista) son independientes entre sí
+    y se ejecutan concurrentemente. Solo reciben texto_seccion + contexto_grafo
+    (alineado con notebook vs18 — RAG eliminado por causar falsos positivos).
     """
 
     if not ENABLE_LLM or llm is None:
         return []
 
     jurista, auditor, cronista = crear_agentes(llm)
-
-    # ── RAG fallback: solo cuando GraphRAG no tiene contexto (v9.12) ────────
-    # GraphRAG activo + tripletas → contexto_grafo ya tiene datos, RAG no se usa
-    # GraphRAG activo pero sin tripletas → contexto_grafo vacío, RAG como fallback
-    contexto_rag = ""
-    if not contexto_grafo and retriever is not None:
-        if AGENTIC_RAG_ENABLED and vector_store is not None:
-            try:
-                scout = crear_scout(llm, retriever, vector_store)
-                ctx_scout = scout.ejecutar(texto_seccion)
-                if ctx_scout:
-                    contexto_rag = (
-                        "\n\n--- CONTEXTO ADICIONAL (Scout, secciones relacionadas) ---\n"
-                        + ctx_scout
-                        + "\n--- FIN CONTEXTO ADICIONAL ---\n"
-                    )
-                    log(f"   Scout: {len(ctx_scout)} chars de contexto enriquecido")
-                else:
-                    contexto_rag = _rag_estatico(retriever, texto_seccion)
-            except Exception as e:
-                log(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
-                contexto_rag = _rag_estatico(retriever, texto_seccion)
-        else:
-            contexto_rag = _rag_estatico(retriever, texto_seccion)
 
     clausulas_str = ", ".join(indice_global_clausulas) if indice_global_clausulas else "Ninguna"
     anexos_str = ", ".join(nombres_anexos) if nombres_anexos else "Ninguno"
@@ -194,7 +165,6 @@ def auditar_consistencia(
             {
                 "texto": texto_seccion,
                 "contexto_grafo": contexto_grafo,
-                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -208,7 +178,6 @@ def auditar_consistencia(
                 "texto": texto_seccion,
                 "idx_glob": str_idx_glob,
                 "contexto_grafo": contexto_grafo,
-                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -221,7 +190,6 @@ def auditar_consistencia(
             {
                 "texto": texto_seccion,
                 "contexto_grafo": contexto_grafo,
-                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -427,8 +395,6 @@ def ejecutar_auditoria_contrato(
                 texto_seccion=sec.get("contenido", ""),
                 indice_global_clausulas=indice_global_clausulas,
                 llm=llm,
-                retriever=retriever,
-                vector_store=vector_store,
                 contexto_grafo=contexto_grafo,
                 modelo=modelo,
                 nombres_anexos=nombres_anexos,
