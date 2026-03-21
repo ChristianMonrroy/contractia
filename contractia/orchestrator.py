@@ -129,6 +129,8 @@ def auditar_consistencia(
     texto_seccion: str,
     indice_global_clausulas: List[str],
     llm,
+    retriever=None,
+    vector_store=None,
     contexto_grafo: str = "",
     modelo: Optional[str] = None,
     nombres_anexos: Optional[List[str]] = None,
@@ -137,14 +139,40 @@ def auditar_consistencia(
     """Audita una sección individual con los tres agentes en paralelo.
 
     Los tres agentes (Jurista, Auditor, Cronista) son independientes entre sí
-    y se ejecutan concurrentemente. Solo reciben texto_seccion + contexto_grafo
-    (alineado con notebook vs18 — RAG eliminado por causar falsos positivos).
+    y se ejecutan concurrentemente. Cada agente reintenta hasta _MAX_REINTENTOS
+    veces antes de devolver vacío.
     """
 
     if not ENABLE_LLM or llm is None:
         return []
 
     jurista, auditor, cronista = crear_agentes(llm)
+
+    # ── RAG: solo cuando NO hay GraphRAG (v9.11) ───────────────────────────────
+    # Modo Profundo (GraphRAG): agentes reciben texto + contexto_grafo, sin RAG
+    #   → alineado con notebook vs18, RAG introducía ruido (-35% hallazgos)
+    # Modo Estándar (sin GraphRAG): agentes reciben texto + contexto_rag
+    #   → RAG es la única fuente de contexto inter-sección
+    contexto_rag = "(No aplica en modo auditoría)"
+    if not contexto_grafo and retriever is not None:
+        if AGENTIC_RAG_ENABLED and vector_store is not None:
+            try:
+                scout = crear_scout(llm, retriever, vector_store)
+                ctx_scout = scout.ejecutar(texto_seccion)
+                if ctx_scout:
+                    contexto_rag = (
+                        "\n\n--- CONTEXTO AGÉNTICO (Scout v9.0) ---\n"
+                        + ctx_scout
+                        + "\n--- FIN CONTEXTO SCOUT ---\n"
+                    )
+                    log(f"   Scout: {len(ctx_scout)} chars de contexto enriquecido")
+                else:
+                    contexto_rag = _rag_estatico(retriever, texto_seccion)
+            except Exception as e:
+                log(f"   ⚠️ Scout falló ({e}), usando RAG estático.")
+                contexto_rag = _rag_estatico(retriever, texto_seccion)
+        else:
+            contexto_rag = _rag_estatico(retriever, texto_seccion)
 
     clausulas_str = ", ".join(indice_global_clausulas) if indice_global_clausulas else "Ninguna"
     anexos_str = ", ".join(nombres_anexos) if nombres_anexos else "Ninguno"
@@ -153,9 +181,10 @@ def auditar_consistencia(
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
-    # ── Ejecución secuencial (alineado con notebook vs18) ──────────────────────
+    # ── Los 3 agentes son independientes → paralelo en modelos estables,
+    #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
     _is_throttle = modelo in _MODELOS_THROTTLE
-    _workers = 1
+    _workers = 1 if _is_throttle else 3
     _pausa_retry = _PAUSA_REINTENTO_THROTTLE_S if _is_throttle else _PAUSA_REINTENTO_S
     _reintentos = _MAX_REINTENTOS_THROTTLE if _is_throttle else _MAX_REINTENTOS
     with ThreadPoolExecutor(max_workers=_workers) as pool:
@@ -165,6 +194,7 @@ def auditar_consistencia(
             {
                 "texto": texto_seccion,
                 "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -178,6 +208,7 @@ def auditar_consistencia(
                 "texto": texto_seccion,
                 "idx_glob": str_idx_glob,
                 "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -190,6 +221,7 @@ def auditar_consistencia(
             {
                 "texto": texto_seccion,
                 "contexto_grafo": contexto_grafo,
+                "contexto_rag": contexto_rag,
                 "fecha_actual": fecha_hoy,
             },
             audit_id,
@@ -395,6 +427,8 @@ def ejecutar_auditoria_contrato(
                 texto_seccion=sec.get("contenido", ""),
                 indice_global_clausulas=indice_global_clausulas,
                 llm=llm,
+                retriever=retriever,
+                vector_store=vector_store,
                 contexto_grafo=contexto_grafo,
                 modelo=modelo,
                 nombres_anexos=nombres_anexos,

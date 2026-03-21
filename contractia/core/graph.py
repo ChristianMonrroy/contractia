@@ -236,7 +236,7 @@ def obtener_contexto_grafo(
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."
 
 
-def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 600) -> Optional[bytes]:
+def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 80) -> Optional[bytes]:
     """
     Genera una imagen PNG del grafo de conocimiento y la devuelve como bytes.
 
@@ -254,30 +254,19 @@ def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 600) -> Optio
         matplotlib.use("Agg")  # Backend sin GUI, compatible con Cloud Run
         import matplotlib.pyplot as plt
 
-        total_nodos = G.number_of_nodes()
-        total_relaciones = G.number_of_edges()
-
         # Si hay demasiados nodos, filtrar a los más conectados
-        if total_nodos > max_nodos:
+        if G.number_of_nodes() > max_nodos:
             grado = dict(G.degree())
             top_nodos = sorted(grado, key=grado.get, reverse=True)[:max_nodos]
             G = G.subgraph(top_nodos)
 
-        # A3 horizontal (420x297mm ≈ 16.5x11.7in) escalado para grafos grandes
-        n = G.number_of_nodes()
-        if n > 200:
-            fig, ax = plt.subplots(figsize=(48, 34))  # Muy grande para 400+ nodos
-        elif n > 80:
-            fig, ax = plt.subplots(figsize=(32, 22))  # Grande para 80-200 nodos
-        else:
-            fig, ax = plt.subplots(figsize=(18, 12))  # Normal para <80 nodos
+        fig, ax = plt.subplots(figsize=(18, 12))
 
         # Layout jerárquico si es un DAG, de lo contrario spring
         try:
             pos = nx.nx_agraph.graphviz_layout(G, prog="dot")
         except Exception:
-            _k = 4.0 if n > 200 else 3.0 if n > 80 else 2.5
-            pos = nx.spring_layout(G, seed=42, k=_k)
+            pos = nx.spring_layout(G, seed=42, k=2.5)
 
         # Colorear nodos por tipo
         colores = []
@@ -290,17 +279,13 @@ def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 600) -> Optio
             else:
                 colores.append("#95A5A6")
 
-        # Ajustar tamaños según cantidad de nodos
-        _node_size = 300 if n > 200 else 500 if n > 80 else 800
-        _font_size = 4 if n > 200 else 5 if n > 80 else 6
-
         nx.draw_networkx(
             G,
             pos=pos,
             ax=ax,
             node_color=colores,
-            node_size=_node_size,
-            font_size=_font_size,
+            node_size=800,
+            font_size=6,
             arrows=True,
             arrowsize=12,
             edge_color="#AAAAAA",
@@ -309,26 +294,16 @@ def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 600) -> Optio
 
         # Etiquetas de aristas (relaciones)
         edge_labels = {(u, v): d.get("relacion", "") for u, v, d in G.edges(data=True)}
-        _edge_font = 3 if n > 200 else 4 if n > 80 else 5
         nx.draw_networkx_edge_labels(
             G, pos=pos, edge_labels=edge_labels,
-            font_size=_edge_font, ax=ax,
+            font_size=5, ax=ax,
         )
 
-        if total_nodos > max_nodos:
-            ax.set_title(
-                f"Grafo de Conocimiento ContractIA — "
-                f"{total_nodos} nodos, {total_relaciones} relaciones "
-                f"(mostrando los {G.number_of_nodes()} nodos más conectados "
-                f"con {G.number_of_edges()} relaciones)",
-                fontsize=11,
-            )
-        else:
-            ax.set_title(
-                f"Grafo de Conocimiento ContractIA — "
-                f"{total_nodos} nodos, {total_relaciones} relaciones",
-                fontsize=12,
-            )
+        ax.set_title(
+            f"Grafo de Conocimiento ContractIA — "
+            f"{G.number_of_nodes()} nodos, {G.number_of_edges()} relaciones",
+            fontsize=12,
+        )
         ax.axis("off")
         plt.tight_layout()
 
