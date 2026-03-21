@@ -1,13 +1,53 @@
 """
 Carga de documentos PDF y DOCX desde una carpeta.
-Usa PyPDFLoader (idéntico al notebook vs18) para extracción de texto.
+Soporta PDFs con texto embebido y PDFs escaneados (OCR automático).
 """
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader
+from langchain_community.document_loaders import Docx2txtLoader
 from langchain_core.documents import Document
+
+# Tiempo máximo para extraer texto de una sola página.
+# Páginas con fuentes complejas o estructuras inusuales pueden hacer
+# que pypdf se bloquee indefinidamente sin este límite.
+_PAGE_TIMEOUT_S = 15
+
+
+def _extract_page_text(page) -> tuple[str, bool]:
+    """Extrae texto de una página PDF con timeout de seguridad.
+
+    Returns:
+        (texto, ok) donde ok=False indica que pypdf superó el timeout
+        y conviene intentar OCR de respaldo para no perder el contenido.
+    """
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(page.extract_text)
+        try:
+            return fut.result(timeout=_PAGE_TIMEOUT_S) or "", True
+        except FuturesTimeout:
+            print(f"  ⚠️ pypdf lento en esta página, activando OCR de respaldo...")
+            return "", False
+        except Exception as e:
+            print(f"  ⚠️ Error en pypdf: {e}. Activando OCR de respaldo...")
+            return "", False
+
+
+def _ocr_pagina(archivo: Path, page_num_1based: int) -> str:
+    """OCR de una sola página (respaldo cuando pypdf falla/tarda demasiado)."""
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+        imagenes = convert_from_path(
+            str(archivo), dpi=150, first_page=page_num_1based, last_page=page_num_1based
+        )
+        if imagenes:
+            return pytesseract.image_to_string(imagenes[0], lang="spa+eng")
+    except Exception as e:
+        print(f"  ⚠️ OCR de respaldo falló en página {page_num_1based}: {e}")
+    return ""
 
 
 def _load_pdf(
@@ -15,22 +55,109 @@ def _load_pdf(
     ocr_progress: Optional[Callable[[int, str], None]] = None,
 ) -> List[Document]:
     """
-    Carga un PDF usando PyPDFLoader (misma librería que el notebook vs18).
+    Carga un PDF página a página, reportando progreso en tiempo real.
 
-    Esto garantiza que el texto extraído sea idéntico al del notebook,
-    produciendo grafos GraphRAG con el mismo número de nodos/relaciones.
+    Fase 1 — texto embebido (pypdf): muestra "Leyendo página X/N…"
+    Fase 2 — OCR con Tesseract si no hay texto: muestra "OCR página X/N…"
+
+    El rango de porcentaje usado es 10 % → 25 % (dentro de _run_audit).
     """
-    loader = PyPDFLoader(str(archivo))
-    docs = loader.load()
+    # ── Obtener número de páginas ──
+    n_pages = 0
+    try:
+        from pypdf import PdfReader as _PdfReader
+        _r = _PdfReader(str(archivo))
+        n_pages = len(_r.pages)
+    except Exception:
+        pass
 
-    # Reportar progreso si hay callback
-    if ocr_progress:
-        n = len(docs)
-        for i in range(n):
-            pct = 10 + int(((i + 1) / n) * 15)  # 10 % → 25 %
-            ocr_progress(pct, f"Leyendo página {i + 1}/{n}…")
+    # ── Fase 1: lectura con pypdf, página a página ──
+    docs_embebidos: List[Document] = []
+    try:
+        from pypdf import PdfReader
 
-    return docs
+        reader = PdfReader(str(archivo))
+        n = len(reader.pages)
+
+        for i, page in enumerate(reader.pages):
+            if ocr_progress and n > 0:
+                pct = 10 + int(((i + 1) / n) * 15)  # 10 % → 25 %
+                ocr_progress(pct, f"Leyendo página {i + 1}/{n}…")
+
+            texto, ok = _extract_page_text(page)
+
+            # Si pypdf tardó demasiado o falló, usar OCR para no perder el contenido
+            if not ok:
+                if ocr_progress and n > 0:
+                    ocr_progress(pct, f"OCR página {i + 1}/{n} (respaldo)…")
+                texto = _ocr_pagina(archivo, i + 1)
+
+            if texto.strip():
+                docs_embebidos.append(Document(
+                    page_content=texto,
+                    metadata={"source": str(archivo), "page": i},
+                ))
+
+        if docs_embebidos:
+            return docs_embebidos
+
+    except Exception as e:
+        print(f"  ⚠️ pypdf falló: {e}")
+
+    # ── Fase 2: OCR con Tesseract (PDF escaneado / sin texto embebido) ──
+    print(f"  → Sin texto embebido en {archivo.name}, aplicando OCR ({n_pages} páginas)...")
+    try:
+        from pdf2image import convert_from_path
+        import pytesseract
+
+        ocr_docs: List[Document] = []
+
+        if n_pages > 0:
+            for i in range(1, n_pages + 1):
+                if ocr_progress:
+                    pct = 10 + int((i / n_pages) * 15)
+                    ocr_progress(pct, f"OCR página {i}/{n_pages}…")
+
+                try:
+                    imagenes = convert_from_path(
+                        str(archivo), dpi=150, first_page=i, last_page=i
+                    )
+                    if imagenes:
+                        texto = pytesseract.image_to_string(imagenes[0], lang="spa+eng")
+                        if texto.strip():
+                            ocr_docs.append(Document(
+                                page_content=texto,
+                                metadata={"source": str(archivo), "page": i - 1},
+                            ))
+                except Exception as e:
+                    print(f"  ⚠️ OCR falló en página {i}: {e}")
+        else:
+            # Fallback: procesar todas las páginas a la vez
+            imagenes = convert_from_path(str(archivo), dpi=150)
+            total = len(imagenes)
+            for i, img in enumerate(imagenes, start=1):
+                if ocr_progress:
+                    pct = 10 + int((i / total) * 15)
+                    ocr_progress(pct, f"OCR página {i}/{total}…")
+                try:
+                    texto = pytesseract.image_to_string(img, lang="spa+eng")
+                    if texto.strip():
+                        ocr_docs.append(Document(
+                            page_content=texto,
+                            metadata={"source": str(archivo), "page": i - 1},
+                        ))
+                except Exception as e:
+                    print(f"  ⚠️ OCR falló en página {i}: {e}")
+
+        if ocr_docs:
+            print(f"  ✅ OCR extrajo texto de {len(ocr_docs)} página(s).")
+            return ocr_docs
+
+        print(f"  ⚠️ OCR no encontró texto en {archivo.name}.")
+    except Exception as e:
+        print(f"  ⚠️ OCR falló para {archivo.name}: {e}")
+
+    return []
 
 
 def procesar_documentos_carpeta(
@@ -44,7 +171,7 @@ def procesar_documentos_carpeta(
 
     Args:
         ocr_progress: callback(pct, msg) que se llama por cada página
-                      del PDF para reportar progreso.
+                      del PDF (tanto texto embebido como OCR).
     """
     folder = Path(folder_path)
     if not folder.exists():
