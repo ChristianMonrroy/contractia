@@ -1,16 +1,37 @@
-# ContractIA v9.11.0
+# ContractIA v10.2.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro / Gemini 3.1 Pro Preview / Claude Sonnet 4.6), con arquitectura multi-agente, Agentic RAG + Hybrid RAG + Reranking + GraphRAG, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente en paralelo, GraphRAG, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
 
+## Benchmark v10.2.0
+
+| Métrica | Resultado |
+|---------|-----------|
+| **F1-Score** | **76-83%** |
+| **Recall** | 77-80% (55-57 de 71 hallazgos de referencia) |
+| **Precisión** | 74-86% (9-19 falsos positivos) |
+| **Tiempo de auditoría** | ~24 min (324 págs, 41 secciones, 448 cláusulas) |
+| **Contrato de prueba** | VIC PTAR San Martín (concesión de saneamiento, 324 páginas) |
+
+## Novedades v10.2.0
+
+| Área | Cambio |
+|------|--------|
+| **Agentes en paralelo** | Los 3 agentes (Jurista, Auditor, Cronista) se ejecutan simultáneamente con `ThreadPoolExecutor(max_workers=3)`. Reduce el tiempo de auditoría de ~72 min a ~24 min sin pérdida de calidad |
+| **Timeout 600s** | Timeout del LLM aumentado de 180s a 600s (idéntico al notebook vs18). Permite a Gemini razonar más profundamente: tiempo por agente sube de ~12s a ~34s, pero F1 sube de 61% a 83% |
+| **Sin structured output** | Eliminado `with_structured_output(Pydantic)` de los agentes. Se usa texto libre + `parse_json_seguro` (idéntico al notebook). El modo estructurado restringía la generación del LLM |
+| **parse_json idéntico a notebook** | Eliminada reparación de JSON truncado y tags `<razonamiento>`. Produce grafos más pequeños y estables (~235 nodos vs ~400) |
+| **PyPDFLoader** | Extracción de texto idéntica al notebook (antes PdfReader + OCR producía ~2,000 chars extras que desestabilizaban el grafo) |
+| **Prompts idénticos a notebook vs18** | Sin `contexto_rag`, sin TIPOS PERMITIDOS, sin salvaguardas anti-FP. El LLM elige tipos libremente |
+
 ## Novedades v9.11.0
 
 | Área | Cambio |
 |------|--------|
-| **Auditoría sin RAG (alineación notebook vs18)** | Los agentes de auditoría (Jurista, Auditor, Cronista) ya no reciben `contexto_rag`; solo trabajan con `texto_seccion` + `contexto_grafo` (GraphRAG). Esto elimina el ruido del RAG que causaba que los agentes perdieran ~38 hallazgos respecto al notebook. RAG + Scout siguen activos para consultas interactivas |
+| **Auditoría sin RAG (alineación notebook vs18)** | Los agentes de auditoría (Jurista, Auditor, Cronista) ya no reciben `contexto_rag`; solo trabajan con `texto_seccion` + `contexto_grafo` (GraphRAG). RAG + Scout siguen activos para consultas interactivas |
 | **Scout solo en consultas** | El Agente Scout (Agentic RAG) ya no se ejecuta durante auditorías; solo enriquece consultas interactivas donde el usuario hace preguntas libres |
 
 ## Novedades v9.10.0

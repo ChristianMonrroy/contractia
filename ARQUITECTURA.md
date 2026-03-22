@@ -1,5 +1,5 @@
 # ContractIA — Documento de Arquitectura Técnica
-**Versión:** 9.11.0 | **Fecha:** Marzo 2026
+**Versión:** 10.2.0 | **Fecha:** Marzo 2026
 
 ---
 
@@ -47,9 +47,11 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          ┌────────▼─────────────────────────┐
          │        MULTI-AGENT LAYER         │
          │                                  │
-         │  Jurista → Auditor → Cronista    │
+         │  Jurista ─┐                      │
+         │  Auditor  ├─ paralelo (3 workers)│
+         │  Cronista ┘                      │
          │  (LangChain + PromptTemplate)    │
-         │  + contexto RAG + GraphRAG       │
+         │  + contexto GraphRAG             │
          └────────┬─────────────────────────┘
                   │
          ┌────────▼─────────┐
@@ -57,7 +59,8 @@ ContractIA es un sistema de **auditoría inteligente de contratos legales** acce
          │  provider.py     │
          │                  │
          │  VertexAI        │
-         │  (Gemini 3.1 Pro)│
+         │  (Gemini 2.5 Pro)│
+         │  timeout=600s    │
          └──────────────────┘
 
 ┌─────────────────────────────────────┐
