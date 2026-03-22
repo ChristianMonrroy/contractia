@@ -25,7 +25,7 @@ VERTEXAI_LOCATION: str          = os.getenv("VERTEXAI_LOCATION", "us-central1")
 VERTEXAI_MODEL: str             = os.getenv("VERTEXAI_MODEL", "gemini-2.5-pro-latest")
 VERTEXAI_FALLBACK: str          = os.getenv("VERTEXAI_FALLBACK", "gemini-2.5-pro-latest")
 VERTEXAI_MODELOS_PERMITIDOS: list = [
-    "gemini-2.5-pro",
+    "gemini-2.5-pro-latest",
     "gemini-3.1-pro-preview",
     "claude-sonnet-4-6",
     "claude-opus-4-6",
