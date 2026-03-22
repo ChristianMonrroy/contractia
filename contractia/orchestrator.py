@@ -134,11 +134,10 @@ def auditar_consistencia(
     nombres_anexos: Optional[List[str]] = None,
     audit_id: Optional[str] = None,
 ) -> List[Dict]:
-    """Audita una sección individual con los tres agentes en paralelo.
+    """Audita una sección con los tres agentes secuencialmente.
 
-    Los tres agentes (Jurista, Auditor, Cronista) son independientes entre sí
-    y se ejecutan concurrentemente. Solo reciben texto_seccion + contexto_grafo
-    (alineado con notebook vs18 — RAG eliminado por causar falsos positivos).
+    Ejecución idéntica al notebook vs18: Jurista → Auditor → Cronista,
+    uno a la vez, sin ThreadPoolExecutor ni reintentos.
     """
 
     if not ENABLE_LLM or llm is None:
@@ -153,72 +152,49 @@ def auditar_consistencia(
     hallazgos_totales = []
     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
 
-    # ── Los 3 agentes son independientes → paralelo en modelos estables,
-    #    secuencial en modelos con cuota limitada (preview o admin) ───────────────
-    _is_throttle = modelo in _MODELOS_THROTTLE
-    _workers = 1 if _is_throttle else 3
-    _pausa_retry = _PAUSA_REINTENTO_THROTTLE_S if _is_throttle else _PAUSA_REINTENTO_S
-    _reintentos = _MAX_REINTENTOS_THROTTLE if _is_throttle else _MAX_REINTENTOS
-    with ThreadPoolExecutor(max_workers=_workers) as pool:
-        fut_jurista = pool.submit(
-            _ejecutar_con_reintento,
-            jurista,
-            {
-                "texto": texto_seccion,
-                "contexto_grafo": contexto_grafo,
-                "fecha_actual": fecha_hoy,
-            },
-            audit_id,
-            _pausa_retry,
-            _reintentos,
-        )
-        fut_auditor = pool.submit(
-            _ejecutar_con_reintento,
-            auditor,
-            {
-                "texto": texto_seccion,
-                "idx_glob": str_idx_glob,
-                "contexto_grafo": contexto_grafo,
-                "fecha_actual": fecha_hoy,
-            },
-            audit_id,
-            _pausa_retry,
-            _reintentos,
-        )
-        fut_cronista = pool.submit(
-            _ejecutar_con_reintento,
-            cronista,
-            {
-                "texto": texto_seccion,
-                "contexto_grafo": contexto_grafo,
-                "fecha_actual": fecha_hoy,
-            },
-            audit_id,
-            _pausa_retry,
-            _reintentos,
-        )
-        res_jurista = fut_jurista.result()
-        res_auditor = fut_auditor.result()
-        res_cronista = fut_cronista.result()
+    # ── Jurista (primero, igual que notebook) ──
+    try:
+        res_jurista = jurista.ejecutar({
+            "texto": texto_seccion,
+            "contexto_grafo": contexto_grafo,
+            "fecha_actual": fecha_hoy,
+        })
+        if isinstance(res_jurista, dict) and res_jurista.get("hay_inconsistencias"):
+            hallazgos_totales.extend(res_jurista.get("hallazgos", []))
+        elif isinstance(res_jurista, list):
+            hallazgos_totales.extend(res_jurista)
+    except Exception as e:
+        print(f"⚠️ Error Jurista: {e}")
 
-    # Procesar resultado del Jurista (inconsistencias procedimentales)
-    if isinstance(res_jurista, dict) and res_jurista.get("hay_inconsistencias"):
-        hallazgos_totales.extend(res_jurista.get("hallazgos", []))
-    elif isinstance(res_jurista, list):
-        hallazgos_totales.extend(res_jurista)
+    # ── Auditor (segundo, igual que notebook) ──
+    try:
+        res_auditor = auditor.ejecutar({
+            "texto": texto_seccion,
+            "idx_glob": str_idx_glob,
+            "contexto_grafo": contexto_grafo,
+            "fecha_actual": fecha_hoy,
+        })
+        if isinstance(res_auditor, dict) and res_auditor.get("hay_inconsistencias"):
+            hallazgos_totales.extend(res_auditor.get("hallazgos", []))
+        elif isinstance(res_auditor, list):
+            hallazgos_totales.extend(res_auditor)
+    except Exception as e:
+        print(f"⚠️ Error Auditor: {e}")
 
-    # Procesar resultado del Auditor (referencias cruzadas)
-    if isinstance(res_auditor, dict) and res_auditor.get("hay_inconsistencias"):
-        hallazgos_totales.extend(res_auditor.get("hallazgos", []))
-    elif isinstance(res_auditor, list):
-        hallazgos_totales.extend(res_auditor)
-
-    # Procesar resultado del Cronista (plazos)
-    if isinstance(res_cronista, dict):
-        if res_cronista.get("hay_errores_logicos") or res_cronista.get("hay_inconsistencia_plazos"):
-            hallazgos_totales.extend(res_cronista.get("hallazgos_procesos", []))
-    elif isinstance(res_cronista, list):
-        hallazgos_totales.extend(res_cronista)
+    # ── Cronista (tercero, igual que notebook) ──
+    try:
+        res_cronista = cronista.ejecutar({
+            "texto": texto_seccion,
+            "contexto_grafo": contexto_grafo,
+            "fecha_actual": fecha_hoy,
+        })
+        if isinstance(res_cronista, dict):
+            if res_cronista.get("hay_errores_logicos") or res_cronista.get("hay_inconsistencia_plazos"):
+                hallazgos_totales.extend(res_cronista.get("hallazgos_procesos", []))
+        elif isinstance(res_cronista, list):
+            hallazgos_totales.extend(res_cronista)
+    except Exception as e:
+        print(f"⚠️ Error Cronista: {e}")
 
     return hallazgos_totales
 
