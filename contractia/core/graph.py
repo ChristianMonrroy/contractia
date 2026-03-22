@@ -224,7 +224,7 @@ def obtener_contexto_grafo(
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."
 
 
-def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 80) -> Optional[bytes]:
+def generar_imagen_grafo(G: Optional[nx.DiGraph], max_nodos: int = 500) -> Optional[bytes]:
     """
     Genera una imagen PNG del grafo de conocimiento y la devuelve como bytes.
 
