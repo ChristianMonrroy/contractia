@@ -22,8 +22,8 @@ OLLAMA_TIMEOUT: int         = int(os.getenv("OLLAMA_TIMEOUT", "600"))
 
 VERTEXAI_PROJECT: str           = os.getenv("VERTEXAI_PROJECT", "")
 VERTEXAI_LOCATION: str          = os.getenv("VERTEXAI_LOCATION", "us-central1")
-VERTEXAI_MODEL: str             = os.getenv("VERTEXAI_MODEL", "gemini-2.5-pro")
-VERTEXAI_FALLBACK: str          = os.getenv("VERTEXAI_FALLBACK", "gemini-2.5-pro")
+VERTEXAI_MODEL: str             = os.getenv("VERTEXAI_MODEL", "gemini-2.5-pro-latest")
+VERTEXAI_FALLBACK: str          = os.getenv("VERTEXAI_FALLBACK", "gemini-2.5-pro-latest")
 VERTEXAI_MODELOS_PERMITIDOS: list = [
     "gemini-2.5-pro",
     "gemini-3.1-pro-preview",
