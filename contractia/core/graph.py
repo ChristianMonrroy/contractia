@@ -188,11 +188,10 @@ def obtener_contexto_grafo(
         return "No hay relaciones en el grafo para esta sección."
 
     contexto = []
-    nodos_vistos: set = set()
-    cids_con_contexto: set = set()  # cláusulas que ya tienen contexto del grafo
+    nodos_vistos = set()
 
     for cid in clausulas_locales:
-        # Búsqueda por word-boundary: evita que "3.3" matchee "13.3"
+        # Búsqueda exacta (\b) para evitar que "3.3" coincida con "13.3"
         nodos_grafo = [
             n for n in G.nodes()
             if re.search(rf"\b{re.escape(cid)}\b", str(n))
@@ -202,9 +201,7 @@ def obtener_contexto_grafo(
             if nodo in nodos_vistos:
                 continue
             nodos_vistos.add(nodo)
-            cids_con_contexto.add(cid)
 
-            # Sucesores directos
             for sucesor in G.successors(nodo):
                 datos = G.get_edge_data(nodo, sucesor)
                 rel = datos.get("relacion", "CONECTA_CON")
@@ -218,20 +215,11 @@ def obtener_contexto_grafo(
                         texto_ref = mapa_textos[id_ref]["texto"]
                         contexto.append(f"  [TEXTO RECUPERADO DE {sucesor}]:\n{texto_ref}\n")
 
-            # Predecesores directos
             for predecesor in G.predecessors(nodo):
                 datos = G.get_edge_data(predecesor, nodo)
                 rel = datos.get("relacion", "CONECTA_CON")
                 ctx = datos.get("contexto", "")
                 contexto.append(f"- {predecesor} --[{rel}]--> {nodo} (Contexto: {ctx})")
-
-    # Fallback: cláusulas referenciadas que no tienen tripletas en el grafo
-    # pero sí existen en el mapa — recuperar su texto directamente
-    for cid in clausulas_locales:
-        if cid not in cids_con_contexto and cid in mapa_textos:
-            texto_ref = mapa_textos[cid]["texto"]
-            seccion_ref = mapa_textos[cid].get("seccion", "")
-            contexto.append(f"- [TEXTO DE CLÁUSULA {cid} ({seccion_ref})]:\n{texto_ref}\n")
 
     return "\n".join(contexto) if contexto else "No hay relaciones en el grafo para esta sección."
 
