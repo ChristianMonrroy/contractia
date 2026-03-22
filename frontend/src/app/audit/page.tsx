@@ -48,7 +48,7 @@ function AuditContent() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [graphEnabled] = useState(true);     // Siempre GraphRAG
   const [queryGraphEnabled] = useState(true); // Siempre GraphRAG
-  const [modeloSeleccionado, setModeloSeleccionado] = useState("gemini-2.5-pro");
+  const [modeloSeleccionado, setModeloSeleccionado] = useState("gemini-2.5-pro-latest");
   const [progressPct, setProgressPct] = useState(0);
   const [currentAuditId, setCurrentAuditId] = useState(auditIdParam || "");
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -396,20 +396,20 @@ function AuditContent() {
             <p className="text-sm font-medium text-slate-600 mb-3">Modelo de IA</p>
             <div className={`grid gap-3 ${user?.rol === "admin" ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-2"}`}>
               <button
-                onClick={() => setModeloSeleccionado("gemini-2.5-pro")}
+                onClick={() => setModeloSeleccionado("gemini-2.5-pro-latest")}
                 className={`p-4 rounded-xl border-2 text-left transition-all ${
-                  modeloSeleccionado === "gemini-2.5-pro"
+                  modeloSeleccionado === "gemini-2.5-pro-latest"
                     ? "border-blue-500 bg-blue-50"
                     : "border-slate-200 hover:border-slate-300 bg-white"
                 }`}
               >
                 <div className="font-semibold text-[#1e3a5f] text-sm mb-1">
                   Gemini 2.5 Pro
-                  {modeloSeleccionado === "gemini-2.5-pro" && (
+                  {modeloSeleccionado === "gemini-2.5-pro-latest" && (
                     <span className="ml-2 text-xs text-blue-600 font-medium">✓ Seleccionado</span>
                   )}
                 </div>
-                <div className="text-xs text-slate-500">Modelo estable. Ideal para la mayoría de contratos.</div>
+                <div className="text-xs text-slate-500">Última versión. Mejor razonamiento.</div>
               </button>
               <button
                 onClick={() => setModeloSeleccionado("gemini-3.1-pro-preview")}

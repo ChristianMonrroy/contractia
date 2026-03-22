@@ -72,7 +72,7 @@ export const contractsAPI = {
   query: (data: { session_id: string; pregunta: string; modelo?: string }) =>
     api.post<{ respuesta: string }>("/contracts/query", data),
 
-  audit: (file: File, graphEnabled = false, modelo = "gemini-2.5-pro") => {
+  audit: (file: File, graphEnabled = false, modelo = "gemini-2.5-pro-latest") => {
     const form = new FormData();
     form.append("file", file);
     form.append("graph_enabled", String(graphEnabled));

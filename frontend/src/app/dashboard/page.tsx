@@ -250,6 +250,7 @@ export default function DashboardPage() {
                               {a.modelo_usado && (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
                                   {a.modelo_usado === "gemini-2.5-pro" ? "Gemini 2.5" :
+                                   a.modelo_usado === "gemini-2.5-pro-latest" ? "Gemini 2.5" :
                                    a.modelo_usado === "gemini-3.1-pro-preview" ? "Gemini 3.1" :
                                    a.modelo_usado === "claude-sonnet-4-6" ? "Claude Sonnet" :
                                    a.modelo_usado === "claude-opus-4-6" ? "Claude Opus" :
