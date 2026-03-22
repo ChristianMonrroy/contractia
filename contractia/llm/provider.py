@@ -139,15 +139,11 @@ def _build_vertexai(model_override: str | None = None):
     for model_name in modelos_a_intentar:
         try:
             print(f"ℹ️  Inicializando Vertex AI: {model_name}")
-            # Preview models have low quota → more retries with longer backoff
-            _is_slow = model_name == "gemini-3.1-pro-preview"
-            _max_retries = 6 if _is_slow else 3
             llm = ChatVertexAI(
                 model_name=model_name,
                 temperature=VERTEXAI_TEMPERATURE,
-                timeout=480 if _is_slow else 180,  # 8 min para modelos lentos, 3 min para el resto
+                timeout=600,  # 10 min — idéntico al notebook vs18
                 max_output_tokens=VERTEXAI_MAX_TOKENS,
-                max_retries=_max_retries,
             )
             print(f"✅ LLM '{model_name}' inicializado.")
             return llm
