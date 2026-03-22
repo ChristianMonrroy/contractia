@@ -227,12 +227,14 @@ def ejecutar_auditoria_contrato(
         user_id: ID del usuario que solicitó la auditoría (para registro de injection).
         filename: Nombre del archivo subido (para registro de injection).
     """
-    # ── CAPA 1: Sanitización programática ──
-    _log_directo("--- Escudo de seguridad: Sanitización (Capa 1) ---", audit_id)
+    # ── CAPA 1: Sanitización programática (desactivada — el notebook no la tiene) ──
+    # La sanitización removía caracteres Unicode invisibles que podrían afectar
+    # la segmentación. Se mantiene solo la detección de alertas sin modificar texto.
+    _log_directo("--- Escudo de seguridad: Detección heurística (Capa 1) ---", audit_id)
     resultado_sanitizacion = sanitizar_texto(texto_contrato)
-    texto_contrato = resultado_sanitizacion.texto_limpio
+    # NO reemplazar texto: texto_contrato = resultado_sanitizacion.texto_limpio
     if resultado_sanitizacion.chars_eliminados > 0:
-        _log_directo(f"Sanitización: {resultado_sanitizacion.chars_eliminados} caracteres invisibles eliminados.", audit_id)
+        _log_directo(f"Sanitización: {resultado_sanitizacion.chars_eliminados} caracteres invisibles detectados (no eliminados).", audit_id)
     if resultado_sanitizacion.tiene_alertas:
         _log_directo(f"Sanitización: {len(resultado_sanitizacion.alertas)} patrón(es) sospechoso(s) detectado(s).", audit_id)
 
