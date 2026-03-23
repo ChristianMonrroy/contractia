@@ -1,0 +1,287 @@
+%% ── 12. APRENDIZAJES Y LECCIONES ─────────────────────────────────────────────
+\chapter{Aprendizajes y Lecciones}
+
+Este capítulo documenta los aprendizajes más significativos extraídos del
+ciclo completo de desarrollo y evaluación de ContractIA: desde los primeros
+experimentos en notebook hasta el MVP desplegado en producción. Se organizan
+en cuatro categorías: técnicos (arquitectura e implementación), de
+infraestructura y operaciones, metodológicos (proceso de desarrollo), y de
+negocio (adopción e impacto institucional).
+
+\section*{Aprendizajes Técnicos}
+
+\begin{enumerate}
+
+    \item \textbf{Los agentes especializados superan ampliamente al agente único.}
+
+    La descomposición del análisis en tres agentes con roles diferenciados
+    (Jurista, Auditor, Cronista) produjo $+77\%$ más hallazgos respecto al
+    agente único de la v1.0 (119 vs.\ 35 en el contrato piloto), sin
+    degradar la precisión. El beneficio no proviene solo de la paralelización,
+    sino de que cada agente recibe un prompt ajustado a su dominio semántico:
+    el Jurista responde mejor a preguntas de cumplimiento normativo que un
+    agente generalista que también debe detectar plazos y contradicciones.
+
+    \textit{Principio derivado:} en tareas de análisis documental complejo,
+    la especialización de agentes por tipo de tarea genera más valor que
+    aumentar la complejidad del prompt de un único agente.
+
+    \item \textbf{El RAG híbrido es esencial para análisis legal de precisión.}
+
+    La búsqueda semántica pura (FAISS) falla en la recuperación de referencias
+    legales específicas como \texttt{Artículo 18.3 del D.Leg.\ 1362} o
+    \texttt{cláusula 6.2.b} del propio contrato, ya que estos identificadores
+    no tienen un vecino semántico cercano en el espacio de embeddings.
+    El componente léxico BM25 resuelve este problema directamente.
+    El Reranker Cohere actúa como un tercer filtro que prioriza la relevancia
+    contextual sobre la puntuación bruta de recuperación.
+
+    \textit{Principio derivado:} para dominios con vocabulario técnico-legal
+    preciso, el RAG híbrido (léxico + semántico + reranker) no es un lujo
+    sino un requisito de precisión.
+
+    \item \textbf{GraphRAG actúa como amplificador o filtro según el modelo LLM.}
+
+    Con Gemini~2.5~Pro, el grafo amplifica los hallazgos al identificar
+    relaciones \texttt{contradice} entre cláusulas distantes. Con
+    Gemini~3.1~Pro~Preview, el grafo más denso (477 nodos vs.\ 208) reduce
+    los hallazgos porque el modelo usa la riqueza relacional para descartar
+    tensiones textuales que no alcanzan el umbral de inconsistencia real.
+    Ninguna de las dos conductas es incorrecta: reflejan el trade-off
+    sensibilidad/precisión del modelo subyacente.
+
+    \textit{Principio derivado:} el efecto de GraphRAG no puede evaluarse
+    de forma aislada; siempre está mediado por el comportamiento del LLM
+    que construye y consume el grafo.
+
+    \item \textbf{\texttt{ContextVar} no propaga en \texttt{run\_in\_executor}.}
+
+    Python propagates \texttt{contextvars.ContextVar} en coroutines
+    asíncronas, pero no en threads del \texttt{executor} de asyncio.
+    Esto causó que el \texttt{audit\_id} del trabajo en curso no estuviera
+    disponible en los módulos de segmentación y GraphRAG que corren en
+    \texttt{run\_in\_executor}, rompiendo el sistema de logging en producción.
+    La solución fue eliminar el \texttt{ContextVar} y pasar \texttt{audit\_id}
+    explícitamente como parámetro en todas las funciones del pipeline.
+
+    \textit{Principio derivado:} en arquitecturas que mezclan \texttt{asyncio}
+    y \texttt{ThreadPoolExecutor}, evitar el estado implícito por
+    \texttt{ContextVar}; preferir paso explícito de parámetros de contexto.
+
+    \item \textbf{Los esquemas Pydantic son el mecanismo de contrato entre el LLM y el sistema.}
+
+    Sin validación Pydantic, la salida JSON del LLM es impredecible: campos
+    faltantes, tipos incorrectos, texto libre donde se espera un enum.
+    Los esquemas estrictos (\texttt{model\_config = ConfigDict(strict=True)})
+    forzaron al LLM a respetar el contrato de datos en $> 98\%$ de las
+    llamadas, y permitieron detectar y reintentar el $< 2\%$ restante
+    sin propagar datos corruptos al consolidador.
+
+    \textit{Principio derivado:} en sistemas LLM en producción, la validación
+    estructurada de la salida no es opcional; es la interfaz entre el
+    componente no determinista y el sistema determinista.
+
+    \item \textbf{El módulo anti-TOC es tan crítico como el RAG.}
+
+    En las primeras iteraciones, sin anti-TOC, el índice de contenido del
+    contrato (TOC de 12 páginas con referencias del tipo ``6.2.b ..... 87'')
+    era indexado como fragmentos de cláusulas. El RAG recuperaba estos
+    fragmentos y los agentes generaban hallazgos falsos sobre ``obligaciones''
+    que eran en realidad entradas del índice. El módulo anti-TOC basado en
+    densidad de referencias numéricas y longitud mínima de fragmento
+    eliminó este problema completamente.
+
+    \textit{Principio derivado:} en contratos legales, la calidad de la
+    segmentación upstream determina el techo de precisión de todo el
+    pipeline downstream.
+
+\end{enumerate}
+
+\section*{Aprendizajes de Infraestructura y Operaciones}
+
+\begin{enumerate}
+
+    \item \textbf{Cloud Run no soporta SSE nativo sin proxy.}
+
+    Las respuestas de tipo Server-Sent Events (SSE) son bufferizadas por
+    el proxy de Cloud Run antes de llegar al cliente, lo que hace que el
+    cliente no reciba actualizaciones en tiempo real sino un único mensaje
+    al final. Sin desplegar un proxy nginx por delante, SSE es inviable
+    en Cloud Run. La solución adoptada fue reemplazar SSE con polling
+    cada 5--10 segundos desde el cliente, que es más simple, sin estado
+    en el servidor, y compatible con cualquier proxy intermedio.
+
+    \textit{Principio derivado:} en entornos serverless (Cloud Run, Lambda,
+    Cloud Functions), los patrones de streaming requieren verificación
+    previa con la capa de red del proveedor.
+
+    \item \textbf{Workload Identity Federation elimina la necesidad de claves de servicio.}
+
+    Usar un \textit{Service Account Key} JSON almacenado en GitHub Secrets
+    es un riesgo de seguridad: la clave puede filtrarse, no tiene rotación
+    automática, y es difícil de revocar selectivamente. Migrar a Workload
+    Identity Federation (WIF) permitió que GitHub Actions autentique contra
+    GCP sin almacenar ninguna clave, reduciendo la superficie de ataque del
+    CI/CD a cero secretos de largo plazo.
+
+    \textit{Principio derivado:} en pipelines CI/CD que despliegan a la nube,
+    WIF (o equivalente federado) es siempre preferible a claves de servicio
+    almacenadas.
+
+    \item \textbf{Los análisis de larga duración requieren diseño asíncrono desde el inicio.}
+
+    Diseñar el endpoint \texttt{/audit} como síncrono hubiera limitado
+    el sistema a contratos que completan en $< 60$ segundos (timeout de
+    Cloud Run). Diseñarlo como asíncrono desde v9.5 (dispara
+    \texttt{BackgroundTask}, devuelve \texttt{job\_id}) permitió escalar
+    a análisis de 75+ minutos sin cambiar la interfaz del cliente. El
+    sistema de polling y notificación por email fue una consecuencia natural
+    de esta decisión arquitectónica, no un parche posterior.
+
+    \textit{Principio derivado:} para tareas de larga duración, el patrón
+    \textit{fire-and-poll} debe ser la primera opción de diseño, no la última.
+
+    \item \textbf{Secret Manager justifica su costo operativo desde el primer secreto.}
+
+    Gestionar credenciales en variables de entorno del Dockerfile o en
+    archivos \texttt{.env} es frágil, difícil de auditar y propenso a
+    fugas en logs. Centralizar todos los secretos en Cloud Secret Manager
+    con acceso por service account eliminó los secretos del código base,
+    del historial de Git y de los logs de Cloud Run, y habilitó la
+    auditoría de acceso por secreto en Cloud Audit Logs.
+
+\end{enumerate}
+
+\section*{Aprendizajes Metodológicos}
+
+\begin{enumerate}
+
+    \item \textbf{Desplegar en producción desde etapas tempranas revela problemas invisibles en notebook.}
+
+    El prototipo en notebook (v1.0) procesó el Contrato A en 47 minutos
+    con 35 hallazgos. El MVP en producción (v9.8) procesa el Contrato A
+    en 75 minutos con 119 hallazgos. La diferencia no es solo de mejoras
+    arquitectónicas: el entorno de Cloud Run expuso problemas de
+    \textit{throttling} de la API de Vertex AI (429 en horas pico), latencias
+    de red variables hacia Cohere, y tiempos de escritura a Cloud SQL que
+    el notebook local nunca mostró. Sin producción temprana, estos problemas
+    habrían emergido solo en la fase de lanzamiento.
+
+    \item \textbf{Un único contrato de referencia fijo acelera la evaluación iterativa.}
+
+    Usar el mismo contrato (Contrato A) como benchmark constante
+    en todas las iteraciones permitió comparaciones directas y objetivas:
+    ``v8.8 detectó 89 hallazgos en 65 min; v9.0 detectó 103 en 72 min''.
+    Sin un benchmark fijo, las mejoras iterativas habrían sido anecdóticas
+    y difíciles de comunicar a stakeholders.
+
+    \item \textbf{La evaluación comparativa de modelos genera conocimiento metodológico no anticipado.}
+
+    Correr Gemini~2.5~Pro y Gemini~3.1~Preview sobre el mismo contrato
+    no era un requisito del MVP; fue una decisión experimental. El hallazgo
+    de la ``paradoja grafo-hallazgos'' (mayor grafo $\neq$ más hallazgos)
+    no solo es valioso para ContractIA sino para el diseño de cualquier
+    sistema que use GraphRAG con LLMs de diferente capacidad de razonamiento.
+    Los experimentos comparativos, aunque costosos, son una fuente de
+    conocimiento sistematizable.
+
+    \item \textbf{El Lean Startup reduce el riesgo en proyectos de IA aplicada.}
+
+    Comenzar con la hipótesis más simple (¿puede un LLM detectar una
+    inconsistencia en un contrato?) y validarla antes de construir el
+    pipeline completo redujo el riesgo de invertir semanas en una
+    arquitectura que luego resultara inviable. Cada iteración resolvió
+    un único problema, medido contra el benchmark fijo, antes de agregar
+    nueva complejidad.
+
+\end{enumerate}
+
+\section*{Aprendizajes de Negocio e Institucional}
+
+\begin{enumerate}
+
+    \item \textbf{La reducción de 320 horas a 1 hora es el argumento de adopción más poderoso.}
+
+    En las conversaciones con especialistas de ProInversión, ningún argumento
+    técnico (precisión, cobertura, trazabilidad) tuvo el impacto comunicativo
+    de este número. ``320 horas de trabajo de 5 especialistas reducidas a
+    75 minutos'' traduce el valor técnico al idioma de la gestión institucional.
+    Para la adopción de herramientas de IA en el sector público, el ROI
+    expresado en tiempo-hombre es más persuasivo que cualquier métrica técnica.
+
+    \item \textbf{El reporte ejecutivo es tan importante como los hallazgos.}
+
+    El sistema podría detectar 200 inconsistencias y aun así no ser adoptado
+    si los resultados no pueden ser consumidos eficientemente. Los directivos
+    necesitan un resumen ejecutivo de 2--3 páginas con los 10 hallazgos
+    de mayor riesgo y su impacto potencial. Los especialistas necesitan
+    el reporte técnico completo con citas textuales y referencias normativas.
+    Invertir en los dos formatos de salida es tan importante como invertir
+    en la precisión del análisis.
+
+    \item \textbf{La trazabilidad es el requisito no negociable en entornos institucionales.}
+
+    Sin ubicación exacta (capítulo, sección, número de cláusula), fragmento
+    de evidencia literal y referencia normativa, un hallazgo generado por
+    IA no puede ser usado en un proceso formal de auditoría contractual.
+    Los especialistas necesitan poder ir directamente al fragmento del
+    contrato que origina el hallazgo para evaluarlo; sin esa capacidad,
+    el hallazgo no tiene valor operativo. Esta lección moldeó el diseño
+    del esquema Pydantic de cada agente desde la v5.
+
+    \item \textbf{La IA como apoyo, no como reemplazo, reduce la resistencia institucional.}
+
+    Presentar ContractIA como un sistema de ``screening previo'' que
+    reduce el tiempo de preparación del especialista, en lugar de
+    ``sistema que reemplaza la revisión legal'', eliminó las objeciones
+    más comunes de los usuarios potenciales. El framing correcto del
+    producto es tan importante como el producto mismo para la adopción
+    en entidades con alta sensibilidad hacia la responsabilidad profesional.
+
+    \item \textbf{Los hallazgos más valiosos son los que el especialista no habría encontrado.}
+
+    Los 5 hallazgos confirmados por ambos modelos (sección 10) son
+    significativos, pero los más impactantes durante las demos fueron
+    los hallazgos de referencias cruzadas entre cláusulas no adyacentes
+    (por ejemplo, la contradicción entre 4.7 y 4.13--4.14): inconsistencias
+    que un revisor leyendo secuencialmente rara vez detecta, pero que el
+    sistema encuentra sistematicamente al analizar el grafo de relaciones.
+    Este tipo de hallazgo ``imposible de encontrar manualmente'' es el
+    argumento más fuerte para la adopción del sistema.
+
+\end{enumerate}
+
+\section*{Síntesis: Principios para Sistemas LLM en Producción}
+
+Los aprendizajes anteriores se condensan en los siguientes principios
+aplicables a cualquier sistema de análisis documental con LLMs:
+
+\begin{table}[H]
+\centering
+\caption{Principios derivados del desarrollo de ContractIA}
+\label{tab:principios}
+\begin{tabular}{p{1cm} p{4.5cm} p{8cm}}
+\toprule
+\textbf{\#} & \textbf{Principio} & \textbf{Aplicación} \\
+\midrule
+1 & Especialización $>$ generalización &
+    Múltiples agentes con prompts diferenciados generan más valor que un
+    agente generalista con prompt largo. \\
+2 & RAG híbrido para dominios técnicos &
+    BM25 + semántico + reranker para dominios con vocabulario preciso. \\
+3 & Validación estructurada de salida &
+    Pydantic o equivalente; nunca confiar en JSON libre del LLM. \\
+4 & Calidad de segmentación = techo de precisión &
+    El pipeline es tan preciso como el módulo de extracción upstream. \\
+5 & Asincronía desde el inicio &
+    Tareas $> 60$ s deben ser \textit{fire-and-poll} desde el diseño. \\
+6 & Producción temprana &
+    Desplegar en Cloud Run desde v5 expone problemas invisibles en notebook. \\
+7 & Benchmark fijo &
+    Un único caso de referencia fijo permite comparaciones iterativas objetivas. \\
+8 & ROI en tiempo-hombre &
+    Para adopción institucional, el argumento es el tiempo reducido, no la
+    métrica técnica. \\
+\bottomrule
+\end{tabular}
+\end{table}

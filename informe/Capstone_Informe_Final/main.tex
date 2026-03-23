@@ -1,0 +1,276 @@
+%% ----------------------------------------------------------------
+%% main.tex -- MAIN FILE (the one that you compile with LaTeX)
+%% ----------------------------------------------------------------
+%
+%
+% LaTeX main file example for UTEC thesis format.
+% Created by Victor Murray in collaboration with Oscar Ramos and Juan Carlos Barbaran.
+% June, 2021
+%
+%
+
+\documentclass[a4paper, 12pt, oneside]{tesisutec}
+
+% Librerias del capitulo 3
+\usepackage{tikz}
+\usepackage{xcolor}
+\usepackage{array} % Needed for >{\centering\arraybackslash} in tabular
+\usepackage{enumitem}
+\usepackage{csquotes}
+\usepackage{pdflscape}
+\usepackage{fmtcount}
+\usepackage{pifont}
+\usepackage{pgfgantt}
+
+\usepackage{booktabs} % Para líneas horizontales con mejor espaciado
+\usepackage{longtable} % Para tablas que abarcan varias páginas
+\usepackage{adjustbox} % Para ajustar el tamaño de la tabla si es necesario
+\usepackage{etoolbox} % Para comandos de notas en tabla
+
+\usetikzlibrary{positioning, shapes, shapes.geometric, arrows.meta, fit, calc, backgrounds}
+
+
+\newlist{objetivos}{enumerate}{1}
+\setlist[objetivos, 1]{
+    label=Objetivo \protect\arabic{objetivosi}, % Formato de la etiqueta: "Objetivo" + número
+    leftmargin=*,
+    itemsep=1em, % Espacio extra entre objetivos (opcional)
+    labelwidth=3em, % Ancho de la etiqueta
+    align=left
+}
+\AtBeginEnvironment{objetivos}{\setcounter{objetivosi}{0}} % Reinicia el contador si es necesario
+
+\newlist{legales}{enumerate}{1}
+\setlist[legales, 1]{
+    % La sintaxis correcta para el label del nivel 1 (legalesi)
+    label={US-LEG-0\protect\padzero{\value{legalesi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{tecnicos}{enumerate}{1}
+\setlist[tecnicos, 1]{
+    % La sintaxis correcta para el label del nivel 1 (tecnicosi)
+    label={US-TEC-0\protect\padzero{\value{tecnicosi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{economistas}{enumerate}{1}
+\setlist[economistas, 1]{
+    % La sintaxis correcta para el label del nivel 1 (economistasi)
+    label={US-ECO-0\protect\padzero{\value{economistasi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{ambientales}{enumerate}{1}
+\setlist[ambientales, 1]{
+    % La sintaxis correcta para el label del nivel 1 (ambientalesi)
+    label={US-AMB-0\protect\padzero{\value{ambientalesi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{directores}{enumerate}{1}
+\setlist[directores, 1]{
+    % La sintaxis correcta para el label del nivel 1 (directoresi)
+    label={US-DIR-0\protect\padzero{\value{directoresi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{auditores}{enumerate}{1}
+\setlist[auditores, 1]{
+    % La sintaxis correcta para el label del nivel 1 (auditoresi)
+    label={US-AUD-0\protect\padzero{\value{auditoresi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+\newlist{supervisores}{enumerate}{1}
+\setlist[supervisores, 1]{
+    % La sintaxis correcta para el label del nivel 1 (supervisoresi)
+    label={US-SUP-0\protect\padzero{\value{supervisoresi}}}, 
+    leftmargin=*,
+    itemsep=1em,
+    labelwidth=2.5cm,
+    align=left
+}
+
+% Configuración de TikZ para el diagrama
+\tikzset{
+    % Estilo para el inicio del proceso
+    start_node/.style={
+        rectangle,
+        draw,
+        fill=white,
+        thick,
+        minimum width=4cm,
+        minimum height=0.7cm,
+        align=center
+    },
+    % Estilo para los pasos (rectángulos)
+    step_node/.style={
+        rectangle,
+        draw,
+        fill=white,
+        thick,
+        minimum width=6cm,
+        minimum height=1cm,
+        align=left,
+        text width=5.5cm % Ancho de texto para controlar el salto de línea
+    },
+    % Estilo para el sub-bloque de auditoría
+    sub_block/.style={
+        rectangle,
+        draw,
+        fill=white,
+        thick,
+        inner sep=5pt,
+        align=left
+    },
+    % Estilo para las flechas de flujo
+    flow_arrow/.style={
+        -Latex,
+        very thick
+    },
+    % Espacio entre nodos
+    node distance=0.8cm
+}
+
+
+%=======================================================
+% Location of the graphics files (set up for graphics to be in PDF format)
+\graphicspath{images/}
+
+% Include any extra LaTeX packages required
+\usepackage[square, numbers, comma, sort&compress]{natbib}
+\usepackage{verbatim}  %
+\usepackage[spanish]{babel}
+\selectlanguage{spanish}
+
+\makeatletter
+% Reinsert missing \algbackskip
+\def\algbackskip{\hskip-\ALG@thistlm}
+\makeatother
+
+\usepackage{float}
+\usepackage[spanish,onelanguage,ruled,vlined]{algorithm2e}
+
+\hypersetup{urlcolor=blue, colorlinks=true}
+
+% Fix: ancho suficiente para números romanos (VIII.1) en índices
+\setlength{\cfttabnumwidth}{5.5em}
+\setlength{\cftfignumwidth}{5.5em}
+
+% Fix: ancho suficiente para números de sección/subsección en TOC (e.g. 5.7.1, 5.7.2)
+\cftsetindents{section}{0em}{3em}
+\cftsetindents{subsection}{0em}{3.8em}
+
+%
+\usepackage{notoccite}  % Librería necesaria para arreglar el orden de referencias en overleaf.com
+\usepackage{hyperref} % Librería para hacer 'clickable' todas las referencias. OPCIONAL.
+
+% For Spanish
+\usepackage[utf8]{inputenc}
+
+%% ============================================================================
+\begin{document}
+
+%\department{INGENIERÍA ELECTRÓNICA}
+\degree{maestro en Ciencia de Datos e Inteligencia Artificial}
+
+\title{DISEÑO E IMPLEMENTACIÓN DE UN AGENTE DE INTELIGENCIA ARTIFICIAL PARA AUDITORÍA AUTOMATIZADA DE CONTRATOS DE CONCESIÓN EN EL PERÚ}
+\author{Bueno, Oscar \orcid{TU-ORCID-AQUÍ} \\ Monrroy, Christian \orcid{ORCID-DE-OSCAR-AQUÍ}}
+
+\supervisor{Chicoma, Luis \orcid{0000-0000-0000-0000}} % [obligatorio] agregar ORCID del asesor
+
+\date{2025}
+
+
+\maketitle
+\setstretch{1.5}
+
+\input{encabezados/dedicatoria}
+
+\input{encabezados/agradecimientos}
+
+
+
+
+
+
+%\normalfont\normalsize
+
+
+
+
+
+
+
+
+\renewcommand{\contentsname}{\Large \bfseries TABLA DE CONTENIDO}
+
+\tableofcontents
+\newpage
+\renewcommand{\listtablename}{\Large \bfseries ÍNDICE DE TABLAS}
+\listoftables
+\newpage
+\renewcommand{\listfigurename}{\Large \bfseries ÍNDICE DE FIGURAS}
+\listoffigures
+
+\addtocontents{toc}{\vspace{1.5em}}
+
+%% ============================================================================
+\pagestyle{fancy}
+\input{secciones/resumen}
+\input{secciones/abstract} 
+\input{secciones/capitulo1}
+\input{secciones/capitulo2}
+\input{secciones/capitulo3}
+\input{secciones/capitulo4}
+\input{secciones/capitulo5}
+\input{secciones/capitulo6}
+\input{secciones/capitulo7}
+\input{secciones/capitulo8}
+\input{secciones/capitulo9}
+\input{secciones/capitulo10}
+\input{secciones/capitulo11}
+\input{secciones/capitulo12}
+\input{secciones/capitulo13}
+\input{secciones/capitulo14}
+%\input{secciones/recomendaciones} % sección opcional
+
+
+%% ============================================================================
+\renewcommand{\bibname}{\centering\Large\bf{REFERENCIAS BIBLIOGR\'AFICAS}}
+\addcontentsline{toc}{section}{REFERENCIAS BIBLIOGRÁFICAS}
+\markboth{REFERENCIAS BIBLIOGRÁFICAS}{REFERENCIAS BIBLIOGRÁFICAS} 
+\bibliographystyle{IEEEtran} % Use the IEEEtran style
+\bibliography{referencias}   % The references are in "referencias.bib"
+
+
+
+\input{secciones/anexos}% sección opcional
+
+\end{document}
+%% ----------------------------------------------------------------
+
+
+%%% Local Variables:
+%%% mode: latex
+%%% TeX-master: t
+%%% End:

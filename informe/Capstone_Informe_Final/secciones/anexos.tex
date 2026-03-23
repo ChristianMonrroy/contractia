@@ -1,0 +1,346 @@
+\chapter*{\center \Large ANEXOS} 
+\addcontentsline{toc}{section}{ANEXOS} 
+\markboth{ANEXOS}{ANEXOS} 
+
+Este capítulo recopila los materiales de referencia, tablas de soporte,
+especificaciones técnicas y recursos complementarios del informe.
+
+% ─── ANEXO A ──────────────────────────────────────────────────────────────────
+\section*{Anexo A: Diagrama de Arquitectura del Sistema}
+
+El diagrama de arquitectura completo del MVP ContractIA (Figura~\ref{fig:Arquitectura Detallada},
+incluida en el Capítulo 7) muestra las siguientes capas:
+
+\begin{itemize}
+    \item \textbf{Interfaz de usuario:} frontend Next.js (\texttt{contractia.pe})
+    y bot Telegram en modo webhook.
+    \item \textbf{Backend:} API FastAPI en Cloud Run; orquestador de agentes
+    multi-agente; módulo de recuperación de conocimiento (RAG híbrido +
+    GraphRAG).
+    \item \textbf{Servicios IA:} Gemini~2.5~Pro y \texttt{text-embedding-004}
+    vía Vertex AI; Cohere Reranker vía API externa.
+    \item \textbf{Infraestructura:} Cloud SQL (PostgreSQL~15), Cloud Storage,
+    Artifact Registry, Secret Manager.
+    \item \textbf{CI/CD:} GitHub Actions → Artifact Registry → Cloud Run,
+    con Workload Identity Federation.
+\end{itemize}
+
+% ─── ANEXO B ──────────────────────────────────────────────────────────────────
+\section*{Anexo B: Comparativa Gemini 2.5 Pro vs.\ Gemini 3.1 Pro Preview}
+
+\begin{table}[H]
+\centering
+\caption{Comparativa detallada de modelos LLM — Contrato A}
+\label{tab:comparativa_modelos_anexo}
+\begin{tabular}{p{4.5cm} p{3.5cm} p{3.5cm}}
+\toprule
+\textbf{Dimensión} & \textbf{Gemini 2.5 Pro} & \textbf{Gemini 3.1 Preview} \\
+\midrule
+Total hallazgos             & 119               & 67 \\
+Severidad ALTA              & 68 (57.1\%)       & 38 (56.7\%) \\
+Severidad MEDIA             & 39 (32.8\%)       & 23 (34.3\%) \\
+Severidad BAJA              & 12 (10.1\%)       & 6 (9.0\%) \\
+ERROR\_PLAZO                & 34                & 19 \\
+INCONSISTENCIA              & 31                & 17 \\
+ERROR\_LOGICO               & 27                & 16 \\
+OMISION\_NORMATIVA          & 27                & 15 \\
+Nodos en grafo              & 208               & 477 \\
+Relaciones en grafo         & 258               & 617 \\
+Aristas \texttt{contradice} & 12                & 31 \\
+Tiempo total                & $\approx 75$ min  & $\approx 170$ min \\
+Costo estimado              & $\approx \$60$    & $\approx \$150$ \\
+Falsos positivos estimados  & $\approx 13\%$    & $\approx 8\%$ \\
+\textbf{Recomendación}      & \textbf{Producción} & \textbf{Validador ALTA} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El archivo \texttt{Comparativa\_Gemini25\_vs\_Gemini31.pdf} (disponible en el
+repositorio del proyecto) contiene el análisis completo hallazgo a hallazgo,
+incluyendo los 5 confirmados por ambos modelos y el análisis de falsos positivos
+identificados durante la revisión manual.
+
+% ─── ANEXO C ──────────────────────────────────────────────────────────────────
+\section*{Anexo C: Formato de Logs de Auditoría}
+
+Cada ejecución de análisis genera un log estructurado persistido en la tabla
+\texttt{audit\_logs} de Cloud SQL. El esquema del log por sección es el siguiente:
+
+\begin{table}[H]
+\centering
+\caption{Esquema de la tabla \texttt{audit\_logs} en Cloud SQL}
+\label{tab:audit_logs_schema}
+\begin{tabular}{p{3.5cm} p{2.5cm} p{7cm}}
+\toprule
+\textbf{Campo} & \textbf{Tipo} & \textbf{Descripción} \\
+\midrule
+\texttt{id}            & UUID      & Identificador único del evento de log \\
+\texttt{audit\_id}     & UUID      & Trabajo de auditoría al que pertenece \\
+\texttt{fase}          & VARCHAR   & Nombre de la fase del pipeline (FASE\_0 a FASE\_5) \\
+\texttt{seccion\_idx}  & INTEGER   & Índice de la sección en curso (0-based) \\
+\texttt{nivel}         & VARCHAR   & INFO / WARNING / ERROR \\
+\texttt{mensaje}       & TEXT      & Descripción del evento \\
+\texttt{datos}         & JSONB     & Payload adicional (tiempos, conteos, errores) \\
+\texttt{created\_at}   & TIMESTAMP & Timestamp UTC del evento \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los logs del análisis del Contrato A con Gemini~2.5~Pro registraron
+$\approx 1{,}800$ eventos distribuidos entre las fases del pipeline, con
+un promedio de 44 eventos por sección analizada.
+
+% ─── ANEXO D ──────────────────────────────────────────────────────────────────
+\section*{Anexo D: Estructura del Repositorio de Código}
+
+\begin{table}[H]
+\centering
+\caption{Estructura completa del repositorio ContractIA}
+\label{tab:repo_completo}
+\begin{tabular}{p{5cm} p{8cm}}
+\toprule
+\textbf{Ruta} & \textbf{Contenido} \\
+\midrule
+\texttt{contractia/config.py}       & Variables de entorno y feature flags \\
+\texttt{contractia/pipeline.py}     & Orquestación FASE 0 -- FASE 5 \\
+\texttt{contractia/orchestrator.py} & \texttt{auditar\_consistencia()} por sección \\
+\texttt{contractia/agents/}         & \texttt{factory.py}; Jurista, Auditor, Cronista; schemas Pydantic \\
+\texttt{contractia/rag/}            & FAISS, BM25, Cohere Reranker, GraphRAG (NetworkX) \\
+\texttt{contractia/segmentation/}   & PyMuPDF, anti-TOC, segmentador jerárquico \\
+\texttt{contractia/reports/}        & Generador PDF (FPDF2), consolidador \\
+\texttt{contractia/telegram/}       & Handler bot, comandos, psycopg2 wrapper \\
+\texttt{contractia/log\_context.py} & Sistema de logging estructurado para auditorías \\
+\texttt{api/main.py}                & Entrada FastAPI, routers, \texttt{/health} \\
+\texttt{api/auth.py}                & JWT: generación y validación de tokens (8h) \\
+\texttt{api/routers/auth.py}        & Endpoints de autenticación y registro \\
+\texttt{api/routers/contracts.py}   & Upload, audit, status, report \\
+\texttt{api/routers/admin.py}       & Gestión de usuarios, roles y cola \\
+\texttt{frontend/}                  & Next.js 14 (TypeScript); Tailwind CSS \\
+\texttt{Dockerfile}                 & Python 3.11 slim; Uvicorn; sin secretos \\
+\texttt{.github/workflows/deploy.yml} & CI/CD: build → push → deploy Cloud Run \\
+\texttt{contracts/informe\_capstone.tex} & Este documento (LaTeX) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─── ANEXO E ──────────────────────────────────────────────────────────────────
+\section*{Anexo E: KPIs de Desempeño — Evolución Prototipo → MVP}
+
+\begin{table}[H]
+\centering
+\caption{Evolución de KPIs desde el prototipo v1.0 hasta el MVP v9.8}
+\label{tab:kpis_mvp}
+\begin{tabular}{p{3.5cm} p{2.5cm} p{2.5cm} p{2.5cm} p{2cm}}
+\toprule
+\textbf{KPI} & \textbf{Objetivo} & \textbf{Proto v1} & \textbf{MVP v9.8} & \textbf{Estado} \\
+\midrule
+Tiempo procesamiento  & $\approx 1$ h   & 47 min   & $\approx 75$ min   & \checkmark\ SUP \\
+Cobertura secciones   & $100\%$         & $100\%$  & $100\%$ (41/41)    & \checkmark\ ALC \\
+Cobertura cláusulas   & $> 95\%$        & n/a      & $100\%$ (448/448)  & \checkmark\ SUP \\
+Hallazgos detectados  & $> 30$          & 35       & 119                & \checkmark\ SUP \\
+Precisión semántica   & $\geq 85\%$     & n/a      & $\approx 87\%$     & \checkmark\ ALC \\
+Recall estimado       & $\geq 90\%$     & n/a      & $\approx 94\%$     & \checkmark\ ALC \\
+Trazabilidad          & $100\%$         & $100\%$  & $100\%$            & \checkmark\ ALC \\
+Despliegue productivo & Sí              & No       & Sí (Cloud Run)     & \checkmark\ ALC \\
+Costo / análisis      & $< \$200$       & $\sim\$5$& $\approx \$60$     & \checkmark\ ALC \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\small SUP = SUPERADO \quad ALC = ALCANZADO \quad n/a = no medido en prototipo
+
+% ─── ANEXO F ──────────────────────────────────────────────────────────────────
+\section*{Anexo F: Stack Tecnológico Completo}
+
+\begin{longtable}{p{3.2cm} p{3.8cm} p{6.5cm}}
+\caption{Stack tecnológico del MVP ContractIA v9.8}
+\label{tab:stack_completo} \\
+\toprule
+\textbf{Capa} & \textbf{Tecnología} & \textbf{Uso en ContractIA} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Continuación de la Tabla~\ref{tab:stack_completo}} \\[4pt]
+\toprule
+\textbf{Capa} & \textbf{Tecnología} & \textbf{Uso en ContractIA} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\small\itshape Continúa en la siguiente página} \\
+\endfoot
+\bottomrule
+\endlastfoot
+Lenguaje principal  & Python 3.11          & Pipeline, API, bot \\[6pt]
+Framework API       & FastAPI 0.111        & Endpoints REST; validación automática OpenAPI \\[6pt]
+Validación          & Pydantic v2          & Schemas de agentes; contrato LLM$\leftrightarrow$sistema \\[6pt]
+LLM producción      & Gemini 2.5 Pro       & Análisis multi-agente; extracción GraphRAG \\[6pt]
+LLM evaluación      & Gemini 3.1 Preview   & Benchmark comparativo \\[6pt]
+Embeddings          & text-embedding-004   & Vectorización de cláusulas y normativa \\[6pt]
+Plataforma IA       & Vertex AI (GCP)      & Inferencia LLM y embeddings \\[6pt]
+Reranker            & Cohere Reranker v3   & Cross-encoder top-20 → top-5 \\[6pt]
+Búsqueda vectorial  & FAISS                & Índice semántico de fragmentos \\[6pt]
+Búsqueda léxica     & BM25 (rank-bm25)     & Recuperación de términos legales precisos \\[6pt]
+Grafos              & NetworkX 3.x         & DiGraph por sección; relaciones contractuales \\[6pt]
+Extracción PDF      & PyMuPDF + pdfminer   & Texto y metadatos de contratos \\[6pt]
+Reportes            & FPDF2                & Generación de reportes ejecutivos PDF \\[6pt]
+Framework web       & Next.js 14 + React   & Frontend; TypeScript; Tailwind CSS \\[6pt]
+Base de datos       & PostgreSQL 15        & Cloud SQL; usuarios, jobs, logs \\[6pt]
+Almacenamiento      & Cloud Storage        & PDFs y reportes con signed URLs \\[6pt]
+Contenedor          & Docker (Python slim)  & Imagen reproducible sin secretos \\[6pt]
+Orquestación        & Cloud Run (GCP)      & Serverless; escala a cero \\[6pt]
+CI/CD               & GitHub Actions + WIF & Deploy automático en cada merge a main \\[6pt]
+Secretos            & Secret Manager       & Credenciales en tiempo de ejecución \\[6pt]
+Bot                 & python-telegram-bot  & Webhook; comandos; flujo de aprobación \\
+\end{longtable}
+
+% ─── ANEXO G ──────────────────────────────────────────────────────────────────
+\section*{Anexo G: Muestra de Hallazgos Representativos}
+
+La siguiente tabla presenta una muestra de 6 hallazgos representativos del
+análisis del Contrato A con Gemini~2.5~Pro, ilustrando los cuatro
+tipos de inconsistencia detectados y el nivel de trazabilidad del sistema:
+
+\begin{longtable}{p{1.5cm} p{3.2cm} p{1.2cm} p{7.5cm}}
+\caption{Muestra de hallazgos representativos — Contrato A}
+\label{tab:muestra_hallazgos} \\
+\toprule
+\textbf{Cláus.} & \textbf{Tipo} & \textbf{Sev.} & \textbf{Descripción del hallazgo} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{l}{\small\itshape Continuación de la Tabla~\ref{tab:muestra_hallazgos}} \\[4pt]
+\toprule
+\textbf{Cláus.} & \textbf{Tipo} & \textbf{Sev.} & \textbf{Descripción del hallazgo} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+3.3.h &
+    ERROR\_PLAZO & ALTA &
+    Plazo de transferencia de Participación Mínima: 30 días en cláusula vs.\ 15 días en Anexo de Transferencia. Contradicción directa confirmada por ambos modelos. \\[8pt]
+4.7 &
+    ERROR\_PLAZO & ALTA &
+    Suspensión de 180 días es incompatible con plazos de reactivación de 4.13 y 4.14 (90 días máx.). Genera riesgo de incumplimiento sin causa. \\[8pt]
+4.13 &
+    ERROR\_LOGICO & ALTA &
+    Silencio positivo puede activarse antes de que el regulador haya recibido la documentación completa. Falla lógica en el mecanismo de aprobación tácita. \\[8pt]
+6.36.b &
+    ERROR\_LOGICO & ALTA &
+    Exige observaciones sobre etapa constructiva que el cronograma (Anexo 3) ubica antes de la suscripción del contrato. Obligación físicamente imposible de cumplir. \\[8pt]
+8.2 &
+    INCONSIST. & ALTA &
+    Fórmula de retribución aplica deducciones de calidad sobre componentes de inversión excluidos de penalidades por 8.1. Error financiero estructural. \\[8pt]
+12.5 &
+    OMISION\_NORM. & MEDIA &
+    La cláusula de resolución de controversias no menciona el arbitraje ante OSCE ni el plazo mínimo de conciliación previa exigido por el Artículo 45 del D.Leg.\ 1362. \\
+\end{longtable}
+
+% ─── ANEXO H ──────────────────────────────────────────────────────────────────
+\section*{Anexo H: Variables de Entorno del Sistema}
+
+\begin{longtable}{p{4.5cm} p{3cm} p{6cm}}
+\caption{Variables de entorno configurables del MVP ContractIA}
+\label{tab:env_vars} \\
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Descripción} \\
+\midrule
+\endfirsthead
+\multicolumn{3}{l}{\small\itshape Continuación de la Tabla~\ref{tab:env_vars}} \\[4pt]
+\toprule
+\textbf{Variable} & \textbf{Default} & \textbf{Descripción} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r}{\small\itshape Continúa en la siguiente página} \\
+\endfoot
+\bottomrule
+\endlastfoot
+\texttt{LLM\_MODEL}              & \texttt{gemini-2.5-pro} & Modelo LLM principal \\[6pt]
+\texttt{RAG\_ENABLED}            & \texttt{true}   & Activa el módulo RAG \\[6pt]
+\texttt{GRAPHRAG\_ENABLED}       & \texttt{true}   & Activa el módulo GraphRAG \\[6pt]
+\texttt{AGENTIC\_RAG\_ENABLED}   & \texttt{false}  & Activa el Agente Scout (v10.0) \\[6pt]
+\texttt{SCOUT\_MAX\_ITER}        & \texttt{2}      & Iteraciones máximas del Scout \\[6pt]
+\texttt{RERANKER\_ENABLED}       & \texttt{true}   & Activa el Cohere Reranker \\[6pt]
+\texttt{MAX\_CONCURRENT\_AUDITS} & \texttt{1}      & Semáforo de auditorías concurrentes \\[6pt]
+\texttt{MAX\_QUEUE\_PER\_USER}   & \texttt{5}      & Máx.\ trabajos en cola por usuario \\[6pt]
+\texttt{TEMPERATURE}             & \texttt{0.1}    & Temperatura de inferencia LLM \\[6pt]
+\texttt{GCP\_PROJECT\_ID}        & —               & ID del proyecto GCP \\[6pt]
+\texttt{GCP\_REGION}             & \texttt{us-central1} & Región de Vertex AI y Cloud Run \\[6pt]
+\texttt{DATABASE\_URL}           & —               & Cadena de conexión PostgreSQL (Secret Manager) \\[6pt]
+\texttt{SMTP\_HOST}              & —               & Servidor SMTP para notificaciones (Secret Manager) \\[6pt]
+\texttt{JWT\_SECRET}             & —               & Clave para firma de tokens JWT (Secret Manager) \\[6pt]
+\texttt{TELEGRAM\_TOKEN}         & —               & Token del bot Telegram (Secret Manager) \\
+\end{longtable}
+
+\noindent Las variables marcadas con ``—'' en el campo \textit{Default} no
+tienen valor por defecto y se obtienen en tiempo de ejecución desde
+Google Cloud Secret Manager.
+
+% ─── ANEXO I ──────────────────────────────────────────────────────────────────
+\section*{Anexo I: Glosario de Términos Técnicos}
+
+\begin{longtable}{p{3.5cm} p{9.5cm}}
+\caption{Glosario de términos técnicos y acrónimos}
+\label{tab:glosario} \\
+\toprule
+\textbf{Término} & \textbf{Definición} \\
+\midrule
+\endfirsthead
+\multicolumn{2}{l}{\small\itshape Continuación de la Tabla~\ref{tab:glosario}} \\[4pt]
+\toprule
+\textbf{Término} & \textbf{Definición} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{2}{r}{\small\itshape Continúa en la siguiente página} \\
+\endfoot
+\bottomrule
+\endlastfoot
+APP &
+    Asociación Público-Privada. Modalidad de inversión privada en infraestructura
+    y servicios públicos regulada por el D.Leg.\ 1362 en el Perú. \\[6pt]
+BM25 &
+    \textit{Best Match 25}. Función de recuperación probabilística léxica
+    que pondera la frecuencia de términos y la longitud del documento. \\[6pt]
+Embedding &
+    Representación vectorial densa de un texto en un espacio de alta dimensión,
+    generada por un modelo de lenguaje. Permite medir similitud semántica. \\[6pt]
+FAISS &
+    \textit{Facebook AI Similarity Search}. Librería de búsqueda de vecinos
+    más cercanos en espacios vectoriales de alta dimensión. \\[6pt]
+GraphRAG &
+    Variante de RAG que construye un grafo de conocimiento del documento
+    para enriquecer el contexto de recuperación con relaciones estructurales. \\[6pt]
+Hallazgo &
+    Inconsistencia, contradicción, omisión o error detectado por el sistema
+    en el contrato analizado, con trazabilidad completa (ubicación + evidencia). \\[6pt]
+LLM &
+    \textit{Large Language Model}. Modelo de lenguaje de gran escala entrenado
+    con técnicas de aprendizaje profundo sobre grandes corpus de texto. \\[6pt]
+MVP &
+    \textit{Minimum Viable Product}. Producto mínimo viable con las
+    funcionalidades esenciales para su validación por usuarios reales. \\[6pt]
+Pydantic &
+    Librería Python de validación de datos mediante anotaciones de tipos.
+    Usada como interfaz estructurada entre los agentes LLM y el sistema. \\[6pt]
+RAG &
+    \textit{Retrieval-Augmented Generation}. Técnica que combina recuperación
+    de documentos relevantes con generación de texto por un LLM para
+    fundamentar las respuestas en fuentes externas verificables. \\[6pt]
+Reranker &
+    Modelo cross-encoder que reordena un conjunto de candidatos recuperados
+    por su relevancia contextual respecto a una consulta específica. \\[6pt]
+RRF &
+    \textit{Reciprocal Rank Fusion}. Método de fusión de rankings que
+    combina listas de resultados de distintos sistemas de recuperación. \\[6pt]
+Serverless &
+    Paradigma de cómputo en la nube donde la infraestructura escala
+    automáticamente a cero cuando no hay carga activa. \\[6pt]
+TOC &
+    \textit{Table of Contents}. Índice de contenido de un contrato PDF,
+    que debe ser excluido del pipeline de indexación para evitar hallazgos falsos. \\[6pt]
+Trazabilidad &
+    Capacidad de un hallazgo de ser verificado independientemente mediante
+    la ubicación exacta, la evidencia textual y la referencia normativa asociada. \\[6pt]
+WIF &
+    \textit{Workload Identity Federation}. Mecanismo de autenticación sin
+    claves de servicio entre GitHub Actions y Google Cloud Platform. \\
+\end{longtable}

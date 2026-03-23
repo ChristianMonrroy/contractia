@@ -1,0 +1,218 @@
+\chapter{Definición del MVP}
+
+Este capítulo define formalmente el Producto Mínimo Viable (MVP) de ContractIA:
+qué construimos, para quién, qué problema resuelve, qué queda fuera del alcance
+y cómo sabemos que el MVP cumplió su propósito. La definición está alineada con
+el autodiagnóstico del Capítulo~5 y sirve de referencia para la validación
+presentada en el Capítulo~9.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Propuesta de Valor}
+
+ContractIA entrega una propuesta de valor concreta y medible:
+
+\begin{quote}
+\textit{``Un especialista legal de ProInversión puede obtener, en aproximadamente
+1 hora y sin asistencia del equipo técnico, un reporte completo de inconsistencias
+contractuales con trazabilidad exacta a cláusula, evidencia textual y referencia
+normativa, reduciendo el esfuerzo de screening inicial de 320 horas a menos del
+1\% del tiempo original.''}
+\end{quote}
+
+Esta propuesta se diferencia de las soluciones existentes en tres dimensiones:
+
+\begin{table}[H]
+\centering
+\caption{Diferenciación de ContractIA frente a enfoques alternativos}
+\label{tab:diferenciacion}
+\begin{tabular}{p{3.5cm} p{3.5cm} p{3.5cm} p{3.5cm}}
+\toprule
+\textbf{Dimensión} & \textbf{Revisión manual} &
+\textbf{Herramientas de búsqueda} & \textbf{ContractIA MVP} \\
+\midrule
+Tiempo de screening & 320 horas & 200 horas & $\approx$1 hora \\[3pt]
+Cobertura & $\sim$60\% (muestreo) & $\sim$70\% & 100\% \\[3pt]
+Detección semántica & Alta (humano) & Baja & Alta (LLM) \\[3pt]
+Conocimiento normativo & Requiere experto & No integrado & RAG integrado \\[3pt]
+Trazabilidad & Manual / parcial & Parcial & Automática 100\% \\[3pt]
+Costo estimado & \$7{,}200/contrato & \$4{,}000/contrato & \$4--8/contrato \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{User Stories Priorizadas (MoSCoW)}
+
+Las funcionalidades del MVP fueron priorizadas aplicando el marco MoSCoW
+(Must Have / Should Have / Could Have / Won't Have). La Tabla~\ref{tab:moscow}
+resume las historias de usuario que guiaron el desarrollo.
+
+\begin{table}[H]
+\centering
+\caption{Priorización MoSCoW de User Stories del MVP}
+\label{tab:moscow}
+\begin{tabular}{p{0.8cm} p{4.5cm} p{3.5cm} p{4.5cm}}
+\toprule
+\textbf{Prior.} & \textbf{Como\ldots} & \textbf{Quiero\ldots} &
+\textbf{Para\ldots} \\
+\midrule
+\textbf{M} & Especialista legal & Cargar un contrato PDF y recibir un
+reporte de inconsistencias en $\approx$1 hora & Reducir el tiempo de
+screening inicial de 320 horas \\[4pt]
+\textbf{M} & Especialista legal & Ver la ubicación exacta (capítulo,
+sección, cláusula) de cada hallazgo & Verificar y priorizar la revisión
+especializada \\[4pt]
+\textbf{M} & Especialista legal & Que cada hallazgo incluya la referencia
+normativa que lo sustenta & Fundamentar observaciones sin búsqueda manual
+de normas \\[4pt]
+\textbf{M} & Especialista legal & Dejar el análisis corriendo y recibirlo
+por email al terminar & No tener que esperar frente a la pantalla durante
+el procesamiento \\[4pt]
+\textbf{S} & Auditor senior & Ver un resumen ejecutivo con hallazgos
+clasificados por severidad & Priorizar la atención en riesgos ALTA antes
+de revisar los MEDIA/BAJA \\[4pt]
+\textbf{S} & Administrador & Gestionar usuarios y aprobar accesos desde
+el bot Telegram & Controlar quién puede usar el sistema sin exponer la API \\[4pt]
+\textbf{C} & Especialista legal & Comparar dos versiones del mismo contrato
+y ver qué cambió & Identificar modificaciones entre adendas sin revisión
+manual \\[4pt]
+\textbf{W} & Institución & Conectar ContractIA con el repositorio
+documental oficial & (Fase 2 del roadmap; requiere integración
+institucional) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\textbf{Leyenda:} M = Must Have (imprescindible en MVP),
+S = Should Have (importante, incluido si el tiempo lo permite),
+C = Could Have (deseable, postergado), W = Won't Have (explícitamente
+fuera del alcance de este MVP).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Alcance Funcional}
+
+El MVP implementa las siguientes capacidades funcionales:
+
+\begin{enumerate}
+    \item \textbf{Ingesta y OCR:} Procesamiento de contratos PDF (y DOCX,
+    aunque no recomendado) con extracción de texto, normalización UTF-8
+    y detección de páginas ilegibles. Sin límite de páginas establecido;
+    el tiempo de procesamiento escala proporcionalmente a la extensión
+    del documento.
+    \item \textbf{Segmentación automática:} Detección de capítulos y anexos
+    mediante expresiones regulares con mecanismo anti-TOC y resolución de
+    duplicados por densidad de cláusulas.
+    \item \textbf{Indexación multinivel:} Construcción de tres índices
+    (Secciones, Global de Cláusulas, Local por sección).
+    \item \textbf{GraphRAG:} Construcción de grafo de conocimiento contractual
+    con extracción de tripletas (entidad, relación, entidad) por sección.
+    \item \textbf{RAG híbrido:} Recuperación de contexto normativo mediante
+    FAISS + BM25 con reranking por Cohere.
+    \item \textbf{Auditoría multi-agente:} Ejecución paralela de tres agentes
+    (Jurista, Auditor, Cronista) sobre cada sección.
+    \item \textbf{Clasificación de hallazgos:} Severidad automática (ALTA /
+    MEDIA / BAJA) con trazabilidad a cláusula y párrafo.
+    \item \textbf{Reportes:} Generación de informe ejecutivo y reporte técnico
+    en PDF, con grafo de conocimiento visualizado.
+    \item \textbf{API REST:} Endpoints autenticados (JWT) para integración con
+    sistemas externos.
+    \item \textbf{Interfaces de usuario:} Frontend web (Next.js) y bot
+    Telegram con flujo de carga, cola de trabajos (máx.\ 5 por usuario),
+    procesamiento en segundo plano y notificación por email al finalizar.
+\end{enumerate}
+
+\section{Alcance No Funcional}
+
+\begin{itemize}
+    \item Tiempo de procesamiento: aproximadamente 1 hora para contratos
+    de concesión de gran extensión (300+ páginas) con Gemini~2.5~Pro;
+    escala proporcionalmente según volumen de secciones.
+    \item Disponibilidad: $\geq 99\%$ en Cloud Run (auto-scaling).
+    \item Autenticación: JWT con roles (usuario, auditor, admin).
+    \item Privacidad: Cumplimiento con Ley N$^\circ$~29733 y estándares GCP.
+\end{itemize}
+
+\section{Criterios de Éxito}
+
+Los criterios de éxito del MVP están alineados con los objetivos SMART
+definidos en el Capítulo~3. La Tabla~\ref{tab:criterios_exito} resume
+los indicadores, valores objetivo y resultados obtenidos en la validación.
+
+\begin{table}[H]
+\centering
+\caption{Criterios de éxito del MVP ContractIA}
+\label{tab:criterios_exito}
+\begin{tabular}{p{4cm} p{3cm} p{3cm} p{3.5cm}}
+\toprule
+\textbf{Criterio} & \textbf{Métrica} & \textbf{Objetivo} &
+\textbf{Resultado (validación)} \\
+\midrule
+Tiempo de screening & TTR (horas) & $\approx 1$ hora &
+  $\approx 1$h $15$min $\checkmark$ \\[4pt]
+Cobertura de análisis & \% cláusulas auditadas & $> 95\%$ &
+  $100\%$ $\checkmark$ \\[4pt]
+Precisión semántica & \% hallazgos válidos & $\geq 85\%$ &
+  $87\%$ $\checkmark$ \\[4pt]
+Recall & \% inconsistencias detectadas & $\geq 85\%$ &
+  $94\%$ $\checkmark$ \\[4pt]
+Trazabilidad & \% hallazgos con ubicación exacta & $100\%$ &
+  $100\%$ $\checkmark$ \\[4pt]
+Flujo autónomo & Sistema operable sin equipo técnico & Sí &
+  Sí $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Exclusiones}
+
+Las siguientes capacidades fueron deliberadamente excluidas del MVP para
+mantener el foco en la hipótesis central y entregar valor demostrable
+en el tiempo del proyecto:
+
+\begin{itemize}
+    \item \textbf{Procesamiento simultáneo entre usuarios:} El sistema
+    implementa una cola individual por usuario (máx.\ 5 trabajos pendientes)
+    con un contrato activo a la vez por usuario; no hay paralelismo entre
+    usuarios simultáneos ni procesamiento en GPU.
+    \item \textbf{Integración con sistemas documentales institucionales:}
+    No hay conexión con SharePoint, SEACE, INFOBRAS ni repositorios
+    gubernamentales; la carga de contratos es manual vía interfaz web o bot.
+    \item \textbf{Módulo predictivo de riesgo contractual longitudinal:}
+    No se incluye análisis histórico entre contratos ni clasificación
+    predictiva de riesgo; está planificado en la Fase 4 del roadmap.
+    \item \textbf{Contratos en formato DOCX:} Soportados técnicamente pero
+    no recomendados en producción; el sistema está optimizado para PDF.
+    \item \textbf{Autenticación SSO institucional:} El acceso se gestiona
+    mediante lista blanca de usuarios en el bot Telegram y JWT en la API;
+    no hay integración con Active Directory ni proveedores de identidad
+    corporativos.
+    \item \textbf{Comparación de versiones de contratos:} La detección
+    de diferencias entre adendas o versiones del mismo contrato está
+    planificada en la Fase 2 del roadmap.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Criterios de Aceptación del MVP}
+
+El MVP se considera entregado y funcional cuando cumple simultáneamente
+las siguientes condiciones verificables:
+
+\begin{enumerate}
+    \item Un usuario con acceso aprobado puede cargar un contrato PDF
+    desde el bot Telegram o la interfaz web sin intervención del equipo
+    de desarrollo.
+    \item El sistema procesa el contrato de forma autónoma (segmentación,
+    indexación, RAG, análisis multi-agente) y genera el reporte sin
+    errores de pipeline.
+    \item El usuario recibe notificación por email al finalizar el
+    análisis y puede descargar el reporte desde la interfaz.
+    \item El reporte contiene hallazgos clasificados por severidad
+    (ALTA / MEDIA / BAJA) con ubicación exacta (capítulo, sección,
+    cláusula, párrafo) y referencia normativa cuando aplica.
+    \item El tiempo total de procesamiento para un contrato de referencia
+    (324 páginas, 41 secciones) no supera las 2 horas en condiciones
+    normales de operación.
+    \item El sistema permanece disponible y operable sin reinicio manual
+    durante al menos 7 días consecutivos de uso.
+\end{enumerate}

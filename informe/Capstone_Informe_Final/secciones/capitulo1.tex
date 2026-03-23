@@ -1,0 +1,49 @@
+\chapter{Introducción}
+
+La transformación digital del Estado peruano ha avanzado de manera desigual entre
+sus distintas funciones: mientras que los procesos transaccionales y administrativos
+han incorporado herramientas de gestión digital, los procesos de análisis técnico-legal
+de alta complejidad ---como la revisión de contratos de concesión de infraestructura---
+permanecen fundamentalmente dependientes del criterio humano y de métodos manuales
+no estandarizados. Esta brecha entre la complejidad creciente de los instrumentos
+jurídicos y la capacidad de análisis disponible representa un riesgo latente para
+la calidad de las decisiones y la eficiencia del ciclo de inversión pública.
+
+A nivel global, la investigación en \textit{Natural Language Processing} (NLP)
+aplicado al dominio legal ha producido avances significativos: conjuntos de datos
+especializados como CUAD \cite{hendrycks2021cuad} y ContractNLI
+\cite{koreeda2021contractnli}, plataformas comerciales de análisis documental
+\cite{google_contract_docai_2021, ibm_watsonx_contracts_2024}, y revisiones
+sistemáticas sobre el estado del arte en LLMs para derecho \cite{singh2025survey}.
+Sin embargo, estas soluciones presentan una limitación común frente al contexto
+peruano: están diseñadas para marcos normativos anglosajones, no incorporan la
+normativa sectorial local (Ley de APP, TUO de Contrataciones del Estado, normas
+del OSITRAN, OSINERGMIN, SUNASS, entre otras), y no están adaptadas a los
+patrones estructurales específicos de los contratos de concesión elaborados por
+instituciones como ProInversión. Esta brecha de adaptación motivó el presente proyecto.
+
+\textit{ContractIA} surge como respuesta a esa brecha: un sistema de inteligencia
+artificial diseñado desde el inicio para el dominio legal peruano, con foco en la
+auditoría automatizada de contratos de concesión de infraestructura. El proyecto
+se enmarca en el curso de Capstone Project II de la Maestría y constituye la
+evidencia integradora de competencias en inteligencia artificial aplicada,
+arquitectura de sistemas de datos y gestión de productos digitales. Su propósito
+no es reemplazar al especialista legal, sino dotarlo de una herramienta de
+\textit{screening} sistemático que eleve la cobertura, la consistencia y la
+trazabilidad del proceso de revisión, reduciendo el tiempo invertido en tareas
+de detección para concentrar el juicio experto en la interpretación y decisión.
+
+El presente informe documenta el recorrido completo desde la identificación del
+problema hasta la validación del MVP en producción, organizado en las siguientes
+secciones: la Sección~2 desarrolla el contexto organizacional del problema y las
+entrevistas con especialistas; la Sección~3 define los objetivos SMART del proyecto;
+la Sección~4 describe el marco metodológico adoptado; la Sección~5 presenta el
+autodiagnóstico del proceso actual; la Sección~6 define el MVP y sus criterios de
+aceptación; la Sección~7 detalla la arquitectura técnica de la solución; la
+Sección~8 describe el proceso de construcción e implementación; la Sección~9
+establece la métrica principal de validación; la Sección~10 reporta los resultados
+de la evaluación experimental; la Sección~11 analiza las limitaciones y riesgos
+identificados; la Sección~12 sistematiza los aprendizajes del proyecto; la
+Sección~13 presenta las conclusiones; la Sección~14 proyecta el trabajo futuro
+mediante un roadmap de cuatro fases; y las Secciones~15 y~16 consolidan las
+referencias y los anexos técnicos.

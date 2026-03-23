@@ -22,7 +22,7 @@ type AuditLog = { ts: string; nivel: string; msg: string };
 
 const MODEL_LABEL: Record<string, string> = {
   "gemini-2.5-pro": "Gemini 2.5",
-  "gemini-2.5-pro-latest": "Gemini 2.5",
+  "gemini-2.5-pro": "Gemini 2.5",
   "gemini-3.1-pro-preview": "Gemini 3.1",
   "claude-sonnet-4-6": "Claude Sonnet",
   "claude-opus-4-6": "Claude Opus",

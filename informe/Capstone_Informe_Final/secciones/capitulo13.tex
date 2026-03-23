@@ -1,0 +1,154 @@
+%% ── 13. CONCLUSIONES ─────────────────────────────────────────────────────────
+\chapter{Conclusiones}
+
+El presente trabajo diseñó, implementó y validó ContractIA, un agente de
+inteligencia artificial especializado en la auditoría automatizada de contratos
+de concesión de infraestructura bajo el marco APP peruano. El sistema integra
+técnicas de recuperación aumentada de generación (RAG híbrido), grafos de
+conocimiento (GraphRAG), orquestación multi-agente y despliegue en nube
+serverless, logrando un producto funcional accesible vía web y Telegram.
+
+A continuación se presentan las conclusiones ordenadas por los tres ejes
+del problema original: eficiencia operativa, calidad técnica del análisis
+y viabilidad institucional.
+
+\section*{Sobre la Eficiencia Operativa}
+
+\textbf{Primera conclusión:}
+El MVP demostró una reducción del tiempo de screening inicial de 320 horas
+a $\approx 75$ minutos, equivalente a una reducción del \textbf{99.6\%} del
+esfuerzo humano requerido para la revisión inicial de un contrato de
+concesión de gran extensión. Este resultado supera el objetivo SMART
+establecido ($\approx 1$ hora), valida la hipótesis central del proyecto
+y confirma la viabilidad técnica del enfoque propuesto.
+
+La reducción de tiempo no implica simplificación del análisis: el sistema
+procesó \textbf{100\%} de las 41 secciones y 448 cláusulas del Contrato A, frente al $\approx 60\%$ de cobertura del proceso manual por muestreo. La cobertura total es una mejora estructural, no marginal, que permite detectar inconsistencias en secciones que históricamente no
+eran revisadas en los plazos institucionales disponibles.
+
+\textbf{Segunda conclusión:}
+El costo operativo por análisis ($\approx \$50$--$\$100$ en tokens e infraestructura GCP) representa una reducción del \textbf{98.6\%} respecto al costo manual estimado ($\approx \$7{,}200$ en horas-hombre). A escala institucional, esto hace viable el análisis sistemático de todos los contratos de una cartera APP, no solo de los contratos seleccionados por muestreo.
+
+\section*{Sobre la Calidad Técnica del Análisis}
+
+\textbf{Tercera conclusión:}
+La arquitectura multi-agente (Jurista/Auditor/Cronista) con RAG híbrido
+(FAISS + BM25 + Cohere Reranker) y GraphRAG (NetworkX) detectó
+\textbf{119 hallazgos} en el contrato piloto, con los siguientes indicadores
+de calidad validados:
+
+\begin{table}[H]
+\centering
+\caption{Resumen de indicadores de calidad del MVP}
+\label{tab:resumen_calidad}
+\begin{tabular}{p{4cm} p{3cm} p{3cm} p{3cm}}
+\toprule
+\textbf{Indicador} & \textbf{Objetivo} & \textbf{Resultado} & \textbf{Estado} \\
+\midrule
+Precisión semántica & $\geq 85\%$ & $\approx 87\%$ & \checkmark\ Alcanzado \\
+Recall estimado     & $\geq 90\%$ & $\approx 94\%$ & \checkmark\ Alcanzado \\
+Cobertura secciones & $100\%$     & $100\%$ (41/41) & \checkmark\ Alcanzado \\
+Trazabilidad        & $100\%$     & $100\%$ (119/119) & \checkmark\ Alcanzado \\
+Total hallazgos     & $> 30$      & 119 ($\times 3.9$) & \checkmark\ Superado \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La distribución uniforme de hallazgos entre los cuatro tipos
+(\texttt{ERROR\_PLAZO} 29\%, \texttt{INCONSISTENCIA} 26\%,
+\texttt{ERROR\_LOGICO} 23\%, \texttt{OMISION\_NORMATIVA} 23\%) confirma
+que el sistema cubre de manera equilibrada las dimensiones temporal,
+semántica, lógica y normativa del análisis contractual, sin sesgo hacia
+un único tipo de inconsistencia.
+
+\textbf{Cuarta conclusión:}
+La evaluación comparativa entre Gemini~2.5~Pro y Gemini~3.1~Pro~Preview
+reveló una \textbf{paradoja metodológica con valor científico}: el modelo
+con grafo de conocimiento más rico (477 nodos, 617 relaciones vs.\ 208/258)
+detectó significativamente \textit{menos} hallazgos (67 vs.\ 119), pero con
+una distribución de severidad casi idéntica ($\approx 57\%$ ALTA en ambos).
+Esta observación sugiere que un LLM más capaz usa el grafo como mecanismo
+de filtrado de alta precisión, mientras que un modelo de menor capacidad
+relacional lo usa como amplificador de cobertura.
+
+Esta dicotomía cobertura--precisión entre modelos, mediada por la densidad
+del grafo de conocimiento, constituye un \textbf{aporte metodológico} al
+diseño de sistemas de auditoría multi-modelo: la elección del modelo no
+puede hacerse solo por benchmarks genéricos, sino que debe considerar el
+trade-off cobertura/precisión en el dominio específico.
+
+\textbf{Quinta conclusión:}
+El \textbf{100\% de trazabilidad} logrado --- cada hallazgo con ubicación
+exacta, evidencia textual, referencia normativa y razonamiento explícito ---
+constituye el diferenciador institucional más importante del sistema.
+Sin trazabilidad completa, los hallazgos generados por IA no son accionables
+en procesos formales de auditoría contractual. Esta característica aborda
+directamente uno de los principales puntos de dolor reportados por
+especialistas de ProInversión: la ausencia de documentación estructurada
+en la revisión manual.
+
+\section*{Sobre la Viabilidad Institucional}
+
+\textbf{Sexta conclusión:}
+El despliegue exitoso del MVP en producción sobre Google Cloud Run, con
+frontend Next.js accesible en \texttt{contractia.pe}, bot Telegram operativo,
+sistema de cola por usuario, notificación por correo y CI/CD automatizado,
+demostró que la solución no es solo un prototipo académico sino un sistema
+\textbf{operativo, mantenible y escalable}. La arquitectura serverless
+elimina los costos fijos de infraestructura y permite escalar a cero cuando
+no hay análisis en curso, haciendo viable la operación institucional con
+presupuestos de TI moderados.
+
+\textbf{Séptima conclusión:}
+El enfoque iterativo de desarrollo (15 versiones de notebook + 4 versiones
+de plataforma) y el uso del mismo contrato piloto como benchmark constante
+validaron que el ciclo \textit{build--measure--learn} es aplicable y efectivo
+en proyectos de IA aplicada. La metodología permitió reducir el riesgo técnico
+acumulativo, detectar problemas de producción tempranamente y comunicar
+el progreso con evidencia cuantitativa en cada iteración.
+
+\textbf{Octava conclusión:}
+ContractIA no pretende reemplazar al especialista legal ni al auditor
+contractual. Su rol definido es el de \textbf{herramienta de screening
+previo}: acelerar la fase de identificación inicial de inconsistencias,
+ampliar la cobertura al 100\% del documento y generar un insumo estructurado
+y trazable que el especialista puede revisar, validar y convertir en
+observaciones formales. El $\approx 13\%$ de falsos positivos estimado
+confirma que el juicio experto sigue siendo indispensable para la toma de
+decisiones finales.
+
+\section*{Contribución al Campo}
+
+ContractIA constituye, en el contexto peruano, uno de los primeros sistemas
+operativos de auditoría contractual basado en LLMs con los siguientes aportes
+diferenciados:
+
+\begin{enumerate}
+    \item \textbf{Arquitectura multi-agente especializada por tipo de
+    inconsistencia} en el dominio de contratos de concesión APP, con esquemas
+    de salida estructurados y trazabilidad completa.
+    \item \textbf{Pipeline RAG híbrido} (vectorial + léxico + cross-encoder)
+    adaptado al vocabulario técnico-legal del marco normativo peruano de APPs.
+    \item \textbf{Integración de GraphRAG} para detección de inconsistencias
+    entre cláusulas no adyacentes, habilitando un tipo de hallazgo
+    estructuralmente imposible en revisiones lineales.
+    \item \textbf{Demostración empírica} de la paradoja cobertura--precisión
+    en sistemas GraphRAG con modelos LLM de distinta capacidad relacional.
+    \item \textbf{Plataforma institucional desplegada en producción},
+    incluyendo autenticación, roles, cola de trabajos, notificaciones y
+    CI/CD, lista para pilotaje con usuarios reales de ProInversión.
+\end{enumerate}
+
+\section*{Perspectiva Final}
+
+Los resultados obtenidos permiten afirmar que la integración de LLMs,
+RAG híbrido y GraphRAG es una estrategia efectiva y viable para automatizar
+el análisis de documentos contractuales complejos. La reducción del 99.6\%
+en tiempo, la cobertura total y la multiplicación por 4.8 en hallazgos
+detectados demuestran un impacto operativo concreto y medible.
+
+ContractIA se posiciona como un \textbf{habilitador clave para la
+transformación digital del proceso de auditoría contractual en el Perú},
+con potencial de extensión a otros tipos de contratos, entidades del
+sector público y, en el largo plazo, a otras jurisdicciones
+latinoamericanas con marcos APP similares.

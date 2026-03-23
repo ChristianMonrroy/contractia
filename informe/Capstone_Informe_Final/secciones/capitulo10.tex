@@ -1,0 +1,325 @@
+%% ── 10. EVALUACIÓN DE RESULTADOS ─────────────────────────────────────────────
+\chapter{Evaluación de Resultados}
+
+Este capítulo presenta los resultados del análisis del MVP sobre el contrato
+piloto Contrato A, la distribución y tipología de hallazgos, la
+comparación entre modelos LLM evaluados, los hallazgos de mayor confianza
+confirmados de forma independiente, y un análisis crítico de las fortalezas
+y limitaciones observadas durante la evaluación.
+
+\section*{Contrato Evaluado: Contrato A}
+
+El contrato seleccionado para la evaluación del MVP es el Contrato A, concesionado por
+ProInversión. Sus características lo convierten en un caso de prueba
+representativo y exigente:
+
+\begin{table}[H]
+\centering
+\caption{Características del contrato A}
+\label{tab:contrato_ptar}
+\begin{tabular}{p{4.5cm} p{8.5cm}}
+\toprule
+\textbf{Característica} & \textbf{Valor} \\
+\midrule
+Extensión total           & 324 páginas \\
+Número de secciones       & 41 \\
+Número de cláusulas       & 448 \\
+Total de caracteres       & 749{,}499 \\
+Tipo de contrato          & Concesión APP — agua y saneamiento \\
+Concedente                & ProInversión (Estado peruano) \\
+Estructura                & Tablas anidadas, anexos técnicos, numeración mixta \\
+Complejidad normativa     & D.Leg.\ 1362, Reglamento APP, normas SUNASS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Este contrato fue elegido por su alta complejidad estructural (tablas
+dentro de tablas, secciones con sub-numeración no estándar) y su riqueza
+normativa (múltiples referencias cruzadas a cuerpos legales sectoriales),
+lo que representa el escenario más exigente para un sistema de auditoría
+automática.
+
+\section*{Resultados Cuantitativos por Modelo}
+
+\begin{table}[H]
+\centering
+\caption{Resultados comparativos del MVP — Contrato A (324 páginas)}
+\label{tab:resultados_mvp}
+\begin{tabular}{p{4.5cm} p{3cm} p{3cm}}
+\toprule
+\textbf{Métrica} & \textbf{Gemini 2.5 Pro} & \textbf{Gemini 3.1 Preview} \\
+\midrule
+Total hallazgos           & \textbf{119}       & 67 \\
+Severidad ALTA            & 68 (57\%)          & 38 (57\%) \\
+Severidad MEDIA           & 39 (33\%)          & 23 (34\%) \\
+Severidad BAJA            & 12 (10\%)          & 6 (9\%) \\
+Secciones auditadas       & 41/41 (100\%)      & 41/41 (100\%) \\
+Tiempo total              & $\approx 75$ min   & $\approx 170$ min \\
+Tiempo promedio/sección   & $\approx 45$ seg   & $\approx 3$--$7$ min \\
+Nodos en grafo (GraphRAG) & 208                & 477 \\
+Relaciones en grafo       & 258                & 617 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Distribución de Hallazgos por Tipo}
+
+Los hallazgos se clasifican en cuatro categorías según la naturaleza
+de la inconsistencia detectada:
+
+\begin{table}[H]
+\centering
+\caption{Distribución de hallazgos por tipo — Gemini 2.5 Pro}
+\label{tab:hallazgos_tipo}
+\begin{tabular}{p{4cm} p{2cm} p{2cm} p{5cm}}
+\toprule
+\textbf{Tipo} & \textbf{Count} & \textbf{\%} & \textbf{Descripción} \\
+\midrule
+ERROR\_PLAZO &
+    34 & 28.6\% &
+    Contradicciones entre fechas, plazos o cronogramas en distintas secciones \\
+INCONSISTENCIA &
+    31 & 26.1\% &
+    Incoherencias semánticas internas: obligaciones contradictorias o
+    redacciones mutuamente excluyentes \\
+ERROR\_LOGICO &
+    27 & 22.7\% &
+    Fallas lógicas: imposibilidades cronológicas, circularidades, condiciones
+    que nunca pueden cumplirse \\
+OMISION\_NORMATIVA &
+    27 & 22.7\% &
+    Ausencia de requisitos exigidos por D.Leg.\ 1362, Reglamento APP o
+    normativa sectorial, detectados por el módulo RAG \\
+\midrule
+\textbf{Total} & \textbf{119} & \textbf{100\%} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La distribución es relativamente uniforme entre los cuatro tipos, lo que
+indica que el sistema cubre de manera equilibrada las distintas dimensiones
+de análisis (temporal, semántica, lógica y normativa) sin sesgo hacia un
+único tipo de inconsistencia.
+
+\section*{Distribución de Hallazgos por Agente}
+
+Cada hallazgo fue generado por uno de los tres agentes especializados:
+
+\begin{table}[H]
+\centering
+\caption{Hallazgos por agente y área de especialización — Gemini 2.5 Pro}
+\label{tab:hallazgos_agente}
+\begin{tabular}{p{2.5cm} p{2cm} p{8cm}}
+\toprule
+\textbf{Agente} & \textbf{Hallazgos} & \textbf{Especialización principal} \\
+\midrule
+Jurista  & 47 (40\%) & Omisiones normativas; inconsistencias con D.Leg.\ 1362
+                       y guías ProInversión \\
+Auditor  & 52 (44\%) & Contradicciones internas; referencias cruzadas rotas;
+                       incoherencias entre secciones \\
+Cronista & 20 (17\%) & Conflictos de fechas; plazos inconsistentes;
+                       imposibilidades cronológicas \\
+\midrule
+\textbf{Total} & \textbf{119} & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El Auditor generó la mayor proporción de hallazgos (44\%), lo que refleja
+la alta densidad de referencias cruzadas en un contrato de concesión APP de
+esta complejidad. El Jurista aportó el 40\% con omisiones e inconsistencias
+normativas, confirmando el valor del módulo RAG para contextualizar el
+análisis con la legislación vigente.
+
+\section*{Hallazgos de Alta Confianza (Confirmados por Ambos Modelos)}
+
+Los siguientes hallazgos fueron identificados de forma independiente por
+Gemini~2.5~Pro y Gemini~3.1~Pro~Preview, lo que les otorga el mayor nivel
+de confianza al descartar variabilidad del modelo:
+
+\begin{enumerate}
+    \item \textbf{Cláusula 3.3.h} — \texttt{ERROR\_PLAZO} \\
+    \textit{Descripción:} Contradicción en los plazos del procedimiento de
+    transferencia de Participación Mínima. La cláusula 3.3.h establece un
+    plazo de 30 días que es incompatible con el plazo de 15 días requerido
+    por el anexo técnico de transferencia. \\
+    \textit{Impacto potencial:} Ambigüedad jurídica en procesos de transferencia
+    accionaria; riesgo de disputa entre las partes.
+
+    \item \textbf{Cláusula 4.7} — \texttt{ERROR\_PLAZO} \\
+    \textit{Descripción:} La suspensión de 180 días establecida en 4.7 contradice
+    los plazos de notificación y reactivación de las Cláusulas 4.13 y 4.14,
+    que presuponen una suspensión máxima de 90 días. \\
+    \textit{Impacto potencial:} Riesgo operativo en situaciones de fuerza mayor;
+    el concesionario podría encontrarse en incumplimiento sin justificación
+    clara.
+
+    \item \textbf{Cláusula 4.13} — \texttt{ERROR\_LOGICO} \\
+    \textit{Descripción:} El mecanismo de aprobación tácita está mal definido:
+    la condición de silencio positivo puede activarse antes de que el regulador
+    haya recibido formalmente la documentación completa. \\
+    \textit{Impacto potencial:} Aprobaciones automáticas de obras o modificaciones
+    sin revisión efectiva del concedente.
+
+    \item \textbf{Cláusula 6.36.b} — \texttt{ERROR\_LOGICO} \\
+    \textit{Descripción:} La cláusula exige observaciones sobre una etapa
+    constructiva que, según el cronograma del contrato (Anexo 3), ya habría
+    concluido antes de la fecha de suscripción. \\
+    \textit{Impacto potencial:} Obligación contractual que resulta físicamente
+    imposible de cumplir; puede ser usada para argumentar incumplimiento
+    injustificado.
+
+    \item \textbf{Cláusula 8.2} — \texttt{INCONSISTENCIA} \\
+    \textit{Descripción:} La fórmula de retribución al concesionario aplica
+    deducciones por indicadores de calidad sobre componentes de inversión
+    que, según la cláusula 8.1, están excluidos del mecanismo de penalidades
+    operativas. \\
+    \textit{Impacto potencial:} Error financiero estructural; podría generar
+    subpagos recurrentes o reclamos arbitrales.
+\end{enumerate}
+
+\section*{Análisis del Grafo de Conocimiento (GraphRAG)}
+
+El módulo GraphRAG construyó un grafo dirigido del contrato con las
+siguientes características:
+
+\begin{table}[H]
+\centering
+\caption{Estadísticas del grafo de conocimiento por modelo}
+\label{tab:grafo}
+\begin{tabular}{p{5cm} p{3cm} p{3cm}}
+\toprule
+\textbf{Estadística} & \textbf{Gemini 2.5 Pro} & \textbf{Gemini 3.1 Preview} \\
+\midrule
+Nodos totales (sujetos/objetos)  & 208 & 477 \\
+Relaciones totales               & 258 & 617 \\
+Tipo más frecuente               & \texttt{referencia} & \texttt{referencia} \\
+Relaciones \texttt{contradice}   & 12  & 31 \\
+Relaciones \texttt{obliga\_a}    & 58  & 134 \\
+Relaciones \texttt{modifica}     & 24  & 67 \\
+Nodos con $\geq 5$ conexiones    & 18  & 43 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los nodos con mayor grado de conectividad ($\geq 5$ relaciones entrantes o
+salientes) corresponden a cláusulas centrales del contrato: la cláusula de
+retribución (8.2), el régimen de garantías (Cap.\ 7), y las obligaciones de
+construcción y operación (Cap.\ 6). Esto es consistente con el análisis
+experto: las secciones financieras y las de obligaciones operativas son
+los focos de mayor complejidad contractual.
+
+La relación \texttt{contradice} fue la más significativa para la
+generación de hallazgos: el 83\% de los \texttt{ERROR\_LOGICO} detectados
+por Gemini~2.5~Pro tuvieron correspondencia con una arista
+\texttt{contradice} en el grafo.
+
+\section*{Análisis Crítico: Gemini 2.5 Pro vs.\ Gemini 3.1 Pro Preview}
+
+\begin{table}[H]
+\centering
+\caption{Análisis comparativo de los modelos evaluados}
+\label{tab:comparacion_modelos}
+\begin{tabular}{p{3.5cm} p{4.5cm} p{4.5cm}}
+\toprule
+\textbf{Dimensión} & \textbf{Gemini 2.5 Pro} & \textbf{Gemini 3.1 Preview} \\
+\midrule
+Volumen de hallazgos &
+    119 (mayor sensibilidad) &
+    67 (mayor precisión estimada) \\
+Grafo de conocimiento &
+    208 nodos / 258 relaciones &
+    477 nodos / 617 relaciones ($\times 2.3$) \\
+Latencia &
+    $\approx 75$ min & $\approx 170$ min ($\times 2.3$ más lento) \\
+Costo estimado / análisis &
+    $\approx \$50$--$\$70$ &
+    $\approx \$120$--$\$180$ \\
+Calidad de explicaciones &
+    Concisa y estructurada &
+    Más detallada y contextualizada \\
+Falsos positivos estimados &
+    $\approx 13\%$ (4/30 en muestra) &
+    $\approx 8\%$ (estimación preliminar) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Interpretación de la paradoja grafo/hallazgos:}
+Gemini~3.1 construye un grafo de conocimiento $\times 2.3$ más rico, pero
+genera 44\% menos hallazgos. Esta aparente paradoja se explica por el
+comportamiento diferente ante la ambigüedad: Gemini~2.5~Pro tiende a reportar
+toda inconsistencia potencial (alta sensibilidad), mientras que Gemini~3.1
+usa el grafo más denso para filtrar relaciones que, si bien son tensions
+textuales, no constituyen inconsistencias definitivas en el contexto del
+contrato completo (mayor precisión). La distribución de severidad es casi
+idéntica entre ambos modelos ($\approx 57\%$ ALTA, $\approx 33\%$ MEDIA,
+$\approx 10\%$ BAJA), lo que confirma coherencia metodológica en la
+clasificación de riesgo.
+
+\textbf{Recomendación:} Gemini~2.5~Pro es el modelo óptimo para producción
+por su velocidad y cobertura. Gemini~3.1 es candidato para una segunda
+fase de validación de hallazgos de severidad ALTA, dentro de la arquitectura
+futura de agente validador descrita en el Capítulo 5.
+
+\section*{Comparación Global con el Proceso Manual}
+
+\begin{table}[H]
+\centering
+\caption{ContractIA MVP vs.\ proceso manual — resumen de evaluación}
+\label{tab:eval_baseline}
+\begin{tabular}{p{3.8cm} p{3.8cm} p{4.5cm}}
+\toprule
+\textbf{Dimensión} & \textbf{Proceso Manual} & \textbf{ContractIA MVP} \\
+\midrule
+Tiempo total &
+    $\approx 320$ h &
+    $\approx 75$ min ($-99.6\%$) \\
+Cobertura &
+    $\approx 60\%$ (muestreo) &
+    $100\%$ ($+67\%$) \\
+Inconsistencias detectadas &
+    $\approx 25$ (estimación) &
+    119 ($\times 4.8$) \\
+Reproducibilidad &
+    Baja (depende del especialista) &
+    Alta (temperatura 0.1) \\
+Trazabilidad &
+    Manual / parcial &
+    Automática al 100\% \\
+Costo / contrato &
+    $\approx \$7{,}200$ &
+    $\approx \$50$--$\$100$ ($-98.6\%$) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Síntesis de la Evaluación}
+
+Los resultados de la evaluación permiten extraer cuatro conclusiones
+principales:
+
+\begin{enumerate}
+    \item \textbf{Viabilidad técnica confirmada:} El MVP procesó el
+    contrato Contrato A de forma completa, sin errores de
+    ejecución, en $\approx 75$ minutos, superando los objetivos SMART
+    establecidos en el Capítulo 3.
+
+    \item \textbf{Alta cobertura y sensibilidad:} Los 119 hallazgos
+    detectados frente a $\approx 25$ estimados por el proceso manual
+    demuestran que el análisis multi-agente es significativamente más
+    exhaustivo y sistemático que la revisión selectiva por muestreo.
+
+    \item \textbf{Trazabilidad como diferenciador institucional:}
+    El 100\% de los hallazgos incluyen ubicación exacta, evidencia textual,
+    referencia normativa y razonamiento explícito. Este nivel de
+    documentación no existe en el proceso manual y es el principal
+    atributo valorado por los especialistas de ProInversión.
+
+    \item \textbf{El sistema no reemplaza al especialista:}
+    El $\approx 13\%$ de falsos positivos confirmados y los $\approx 8$
+    falsos negativos estimados demuestran que el MVP actúa correctamente
+    como \textit{screening} previo. Los hallazgos de severidad ALTA
+    requieren validación experta antes de constituir observaciones
+    formales al contrato.
+\end{enumerate}

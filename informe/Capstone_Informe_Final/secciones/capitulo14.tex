@@ -1,0 +1,312 @@
+%% ── 14. TRABAJO FUTURO ───────────────────────────────────────────────────────
+\chapter{Trabajo Futuro}
+
+Este capítulo describe la hoja de ruta de evolución de ContractIA desde su
+estado actual de MVP hasta una plataforma institucional completa. El trabajo
+futuro se organiza en tres horizontes temporales articulados con el roadmap
+del Capítulo 5, priorizando las acciones de mayor impacto y menor riesgo
+técnico en cada etapa. Cada iniciativa incluye su motivación, entregables
+esperados e impacto proyectado sobre los indicadores del sistema.
+
+\section*{Corto Plazo (0--3 meses): Robustez y Cobertura Analítica}
+
+El objetivo de este horizonte es consolidar el núcleo analítico y ampliar
+su cobertura, partiendo de los resultados y limitaciones identificados en
+la evaluación del MVP.
+
+\begin{enumerate}
+
+    \item \textbf{Agente Scout — RAG Agéntico (v10.0)}
+
+    \textit{Motivación:} el RAG actual es estático: una única llamada de
+    recuperación por sección, antes del análisis de agentes. Un Scout
+    agéntico decide dinámicamente qué recuperar según lo que lee en cada
+    fragmento del contrato, ejecutando múltiples rondas de recuperación
+    si es necesario.
+
+    \textit{Diseño:} loop ReAct manual (sin \texttt{bind\_tools} de
+    LangChain por incompatibilidad con \texttt{with\_structured\_output});
+    herramientas \texttt{buscar\_en\_contrato(consulta)} y
+    \texttt{obtener\_clausula(numero)}; máximo 2 iteraciones por defecto;
+    activado mediante flag \texttt{AGENTIC\_RAG\_ENABLED=true} para evitar
+    regresión.
+
+    \textit{Impacto esperado:} mejora del contexto entregado a los agentes
+    en secciones con múltiples referencias cruzadas; reducción de falsos
+    negativos en \texttt{OMISION\_NORMATIVA}.
+
+    \item \textbf{Validación multi-contrato (Generalización)}
+
+    \textit{Motivación:} los indicadores de precisión ($\approx 87\%$) y
+    recall ($\approx 94\%$) fueron calculados sobre un único contrato piloto.
+    La generalización del sistema requiere evidencia estadística sobre
+    contratos de distinto sector, año y nivel de complejidad.
+
+    \textit{Acción:} ejecutar el pipeline completo sobre 5--10 contratos de
+    concesión de ProInversión de diferentes sectores (agua, energía, vial,
+    telecomunicaciones) y comparar: número de hallazgos, distribución de
+    tipos, tiempo de procesamiento y tasa de error de segmentación.
+
+    \textit{Entregable:} informe de generalización con rangos de precisión
+    y recall por sector; identificación de contratos problemáticos para el
+    módulo anti-TOC.
+
+    \item \textbf{Evaluación de modelos Claude (Anthropic via Vertex AI)}
+
+    \textit{Motivación:} la solicitud de cuota para Claude Sonnet~4.6 y
+    Opus~4.6 fue rechazada durante el periodo de evaluación. Los resultados
+    preliminares en análisis semántico sugieren que los modelos Anthropic
+    podrían ofrecer mayor precisión en la detección de inconsistencias
+    lógicas sutiles.
+
+    \textit{Acción:} reenviar solicitud de cuota a Vertex AI con
+    justificación técnica detallada y caso de uso institucional; una vez
+    aprobada, ejecutar benchmark completo sobre el Contrato A
+    con Claude Sonnet~4.6 y Opus~4.6 bajo el mismo protocolo de evaluación.
+
+    \textit{Entregable:} tabla comparativa de 4 modelos (Gemini~2.5~Pro,
+    Gemini~3.1~Preview, Claude~Sonnet~4.6, Claude~Opus~4.6) en hallazgos,
+    precisión, recall, latencia y costo.
+
+    \item \textbf{Incremento de concurrencia y pruebas de carga}
+
+    \textit{Motivación:} el MVP limita a 1 análisis concurrente
+    (\texttt{Semaphore(1)}). En un escenario institucional con 3--5 auditores
+    activos simultáneamente, la espera máxima podría superar 3 horas.
+
+    \textit{Acción:} incrementar el semáforo a 3; ejecutar pruebas de carga
+    con 3 contratos simultáneos en Cloud Run; medir impacto en cuota
+    de Vertex AI, latencia de Cloud SQL y uso de memoria del contenedor.
+
+    \textit{Entregable:} configuración validada con Semaphore(3); guía de
+    escalado para la Fase 3 del roadmap.
+
+    \item \textbf{Ampliación de la base normativa}
+
+    \textit{Motivación:} la base actual cubre solo D.Leg.\ 1362, su
+    Reglamento y normativa SUNASS. Los contratos de otros sectores
+    referencian normativa no cubierta (MEM, MTC, Osiptel), lo que genera
+    falsos negativos en \texttt{OMISION\_NORMATIVA}.
+
+    \textit{Acción:} incorporar normativa sectorial de energía (MEM),
+    transporte (MTC) y telecomunicaciones (Osiptel); desarrollar un
+    pipeline automatizado de actualización periódica de la base vectorizada
+    que detecte y cargue nuevas resoluciones y decretos.
+
+\end{enumerate}
+
+\section*{Mediano Plazo (3--6 meses): Plataforma Multiusuario y Análisis Avanzado}
+
+El objetivo de este horizonte es transformar el MVP en una plataforma
+accesible para múltiples perfiles institucionales, con capacidades de
+análisis longitudinal y comparativo.
+
+\begin{enumerate}
+
+    \item \textbf{Arquitectura de validador dual (Cobertura + Precisión)}
+
+    \textit{Motivación:} la paradoja cobertura--precisión observada entre
+    Gemini~2.5~Pro y Gemini~3.1~Preview sugiere una arquitectura óptima:
+    usar el modelo de mayor cobertura para el screening inicial y el modelo
+    de mayor precisión para validar los hallazgos ALTA antes de incluirlos
+    en el reporte final.
+
+    \textit{Diseño:}
+    \begin{itemize}
+        \item Fase 1 — Gemini~2.5~Pro: análisis completo, todos los
+        hallazgos (alta sensibilidad).
+        \item Fase 2 — Gemini~3.1~Preview (o Claude~Opus~4.6): validación
+        de los top-N hallazgos ALTA por sección (alta precisión).
+        \item Hallazgos confirmados por ambas fases → severidad ALTA
+        confirmada; resto → severidad MEDIA para revisión manual.
+    \end{itemize}
+
+    \textit{Impacto esperado:} reducción de falsos positivos del $\approx 13\%$
+    al $< 5\%$ en hallazgos ALTA; mayor confianza institucional en el reporte.
+
+    \item \textbf{Sistema de roles granular y auditoría de acciones}
+
+    \textit{Motivación:} el MVP tiene dos roles básicos
+    (\texttt{basico}/\texttt{auditor}). Una plataforma institucional
+    requiere roles diferenciados con permisos específicos.
+
+    \textit{Diseño:} roles propuestos: \texttt{legal} (acceso a hallazgos
+    normativos), \texttt{tecnico} (acceso a hallazgos de plazos y lógica),
+    \texttt{ambiental} (acceso a cláusulas ambientales), \texttt{auditor}
+    (acceso completo), \texttt{director} (solo reporte ejecutivo),
+    \texttt{admin} (gestión de usuarios y base normativa).
+    Log inmutable de acciones de usuario en tabla \texttt{audit\_actions}.
+
+    \item \textbf{Módulo de comparación entre versiones del contrato}
+
+    \textit{Motivación:} los contratos de concesión son documentos vivos
+    que se modifican mediante adendas. Detectar qué inconsistencias son
+    nuevas, cuáles persisten y cuáles fueron corregidas entre versiones
+    es una necesidad operativa crítica para la supervisión contractual.
+
+    \textit{Funcionalidad:}
+    \begin{itemize}
+        \item Diff semántico entre dos versiones del mismo contrato:
+        hallazgos nuevos, resueltos y persistentes.
+        \item Vista ``track changes'' de obligaciones modificadas.
+        \item Alerta automática si una adenda introduce una nueva
+        inconsistencia en secciones previamente limpias.
+    \end{itemize}
+
+    \item \textbf{Panel de riesgos longitudinal y scoring contractual}
+
+    \textit{Motivación:} los directivos de ProInversión necesitan una
+    vista de riesgo agregada por proyecto, no hallazgo a hallazgo.
+
+    \textit{Funcionalidad:}
+    \begin{itemize}
+        \item \textbf{Score de riesgo contractual} (0--100): ponderación
+        de hallazgos por severidad, tipo y sección de impacto.
+        \item \textbf{Dashboard por proyecto}: evolución del score entre
+        versiones del contrato; comparación entre proyectos del mismo
+        sector.
+        \item \textbf{Top-10 hallazgos}: los de mayor impacto financiero
+        o legal, priorizados automáticamente para revisión directiva.
+    \end{itemize}
+
+    \item \textbf{Integración con repositorio documental de ProInversión}
+
+    \textit{Motivación:} el MVP requiere carga manual de contratos. Una
+    integración con el repositorio documental institucional permitiría
+    el análisis automático de nuevos contratos al momento de su publicación.
+
+    \textit{Diseño:} endpoint \texttt{/webhooks/nuevo-contrato} que recibe
+    notificación del repositorio; descarga automática del PDF; encolamiento
+    inmediato del análisis; devolución del reporte al sistema de origen.
+
+\end{enumerate}
+
+\section*{Largo Plazo (6--12 meses): Escalabilidad, Certificación y Expansión}
+
+El objetivo de este horizonte es convertir ContractIA en un estándar
+institucional de auditoría contractual, certificado, escalable y extensible
+a nuevos dominios.
+
+\begin{enumerate}
+
+    \item \textbf{Contenerización y orquestación para producción a escala}
+
+    \textit{Motivación:} Cloud Run con \texttt{Semaphore(3)} es suficiente
+    para el piloto institucional, pero no para una cartera de 50+ contratos
+    concurrentes.
+
+    \textit{Acción:} migración a Google Kubernetes Engine (GKE) o
+    ECS-Fargate; procesamiento paralelo de contratos en colas distribuidas
+    (Cloud Tasks o Pub/Sub); caché distribuido de embeddings normativos
+    (Redis); autoescalado horizontal basado en la longitud de la cola.
+
+    \item \textbf{FinOps IA: optimización de costos operativos}
+
+    \textit{Motivación:} a escala de 100+ análisis/año, el costo de tokens
+    LLM puede superar los \$10{,}000 anuales. La optimización de costos
+    es un requisito para la sostenibilidad financiera del servicio.
+
+    \textit{Acciones:}
+    \begin{itemize}
+        \item Caché de embeddings normativos: vectorizar la base normativa
+        una sola vez y reutilizarla entre análisis.
+        \item Reducción adaptativa de contexto: ajustar el tamaño del
+        fragmento enviado al LLM según la complejidad estimada de la
+        sección.
+        \item Evaluación de modelos de menor costo para secciones de baja
+        complejidad (Gemini Flash o Haiku como pre-filtro).
+        \item Batch processing nocturno para análisis de bajo impacto temporal.
+    \end{itemize}
+
+    \item \textbf{Modelos predictivos de riesgo contractual}
+
+    \textit{Motivación:} con un historial de 50+ contratos analizados,
+    es posible construir modelos que anticipen el tipo y la densidad de
+    inconsistencias esperadas antes de leer el contrato completo.
+
+    \textit{Diseño:} features: sector, año, concedente, tipo de APP,
+    extensión, número de secciones, historial de adendas. Target:
+    score de riesgo y tipos de inconsistencia más probables. Uso:
+    priorización automática de contratos para revisión urgente.
+
+    \item \textbf{Certificación externa y validación metodológica}
+
+    \textit{Motivación:} para que ContractIA sea adoptado como herramienta
+    oficial en ProInversión, requiere validación por auditores o expertos
+    legales independientes que certifiquen la metodología y los resultados.
+
+    \textit{Acción:} comisionar una auditoría técnica externa sobre el
+    pipeline de análisis; validación de precisión y recall sobre un conjunto
+    de contratos con \textit{gold standard} anotado por especialistas;
+    publicación de informe de certificación como aval institucional.
+
+    \item \textbf{Extensión a nuevos dominios contractuales}
+
+    \textit{Motivación:} la arquitectura multi-agente con RAG híbrido es
+    generalizable a cualquier tipo de contrato de alta complejidad.
+
+    \textit{Dominios priorizados:}
+    \begin{itemize}
+        \item \textbf{Contratos de obra pública (OSCE):} bajo Ley de
+        Contrataciones del Estado; alta densidad de plazos y penalidades.
+        \item \textbf{Concesiones mineras:} contratos de estabilidad
+        jurídica y convenios de inversión con el Estado peruano.
+        \item \textbf{Contratos de suministro de energía (COES/OSINERGMIN):}
+        formulación financiera compleja; alto impacto regulatorio.
+        \item \textbf{Contratos bilaterales de inversión (BIT):}
+        documentos en inglés o español técnico-diplomático.
+    \end{itemize}
+
+    \textit{Adaptaciones requeridas:} prompts específicos por tipo de
+    contrato; base normativa sectorial; esquemas de clasificación de
+    hallazgos adaptados.
+
+\end{enumerate}
+
+\section*{Visión a 18+ meses: ContractIA como Plataforma SaaS}
+
+En el horizonte de 18 meses y más, ContractIA tiene el potencial de
+evolucionar desde una herramienta institucional interna hacia una
+\textbf{plataforma SaaS de auditoría contractual} orientada a entidades
+públicas y privadas de la región:
+
+\begin{itemize}
+    \item \textbf{Modelo de negocio:} suscripción por volumen de análisis
+    (contratos/mes); acceso API para integración con sistemas de terceros.
+    \item \textbf{Expansión regional:} Colombia (ANI), Chile (MOP), México
+    (SCT), con base normativa y prompts adaptados a cada marco legal nacional.
+    \item \textbf{Marketplace de módulos normativos:} organizaciones que
+    generan sus propias bases normativas y las comparten en el ecosistema.
+    \item \textbf{Integración con firmas legales y consultoras:} como
+    herramienta de due diligence acelerada en fusiones y adquisiciones.
+\end{itemize}
+
+\section*{Resumen del Roadmap}
+
+\begin{table}[H]
+\centering
+\caption{Resumen del roadmap de trabajo futuro}
+\label{tab:roadmap}
+\begin{tabular}{p{1.5cm} p{3cm} p{4cm} p{4.5cm}}
+\toprule
+\textbf{Plazo} & \textbf{Foco} & \textbf{Iniciativas clave} & \textbf{Impacto esperado} \\
+\midrule
+0--3 m &
+    Robustez y cobertura &
+    Scout agéntico; multi-contrato; Claude; concurrencia$\times$3; base normativa &
+    Precisión $+5\%$; recall $+3\%$; evaluación de 4 modelos LLM \\
+3--6 m &
+    Plataforma multiusuario &
+    Validador dual; roles; diff versiones; scoring; integración documental &
+    FP ALTA $< 5\%$; dashboard directivo; análisis automático \\
+6--12 m &
+    Escalabilidad y certificación &
+    Kubernetes; FinOps IA; modelos predictivos; certificación; nuevos dominios &
+    100+ análisis/año; costo $-40\%$; aval institucional \\
+18+ m &
+    Plataforma regional &
+    SaaS; expansión regional; marketplace normativo &
+    Monetización; impacto en 3+ países \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,46 @@
+\chapter*{\center \Large \vspace{-4.5cm} RESUMEN}
+\addcontentsline{toc}{section}{RESUMEN}
+\markboth{RESUMEN}{RESUMEN} 
+\noindent
+
+La revisión técnico-legal de contratos de concesión de infraestructura en el Perú 
+enfrenta desafíos críticos de eficiencia y consistencia debido a la complejidad de 
+los documentos. En \enquote{ProInversión}, la agencia del Estado responsable de 
+promover y estructurar proyectos de inversión privada, los contratos típicos superan 
+las 200 páginas con múltiples capítulos, anexos y referencias cruzadas complejas. 
+El análisis del proceso actual, basado en entrevistas con especialistas de la 
+institución, indica que la revisión manual requiere en promedio más de 
+\enquote{320 horas} de trabajo de equipos multidisciplinarios por contrato. Este 
+proceso presenta alta variabilidad en criterios de evaluación, detección tardía de 
+inconsistencias y dificultades para mantener trazabilidad completa de las decisiones.
+
+Este trabajo diseña, implementa y evalúa un \enquote{sistema multi-agente de 
+inteligencia artificial} especializado en \enquote{auditoría automatizada de contratos 
+de concesión}, mediante una \enquote{arquitectura híbrida} que combina \textit{Large 
+Language Models} (LLMs) con \textit{Retrieval-Augmented Generation} híbrido (FAISS, 
+BM25 y Cohere Reranker) y \textit{grafos de conocimiento} (GraphRAG). El sistema 
+despliega tres agentes especializados en paralelo —Jurista, Auditor y Cronista— sobre 
+\textit{Gemini 2.5 Pro} de Google, coordinados por un orquestador que integra 
+segmentación automática de documentos mediante detección robusta de títulos y filtrado 
+anti-TOC, indexación multinivel con índices de Secciones, Global de Cláusulas y Local, 
+construcción dinámica de un grafo de conocimiento contractual con hasta 477 nodos y 
+617 relaciones semánticas, y detección de inconsistencias con trazabilidad completa 
+hasta cláusula y párrafo específico. El sistema se despliega en producción mediante 
+\textit{Google Cloud Run} con interfaz web (\textit{Next.js}) y bot conversacional 
+(\textit{Telegram}), accesible bajo el dominio \texttt{contractia.pe}.
+
+La evaluación sobre el \enquote{Contrato A} (324 
+páginas, 41 secciones, 448 cláusulas) demostró una reducción del tiempo de 
+\textit{screening} inicial de \enquote{320 horas a aproximadamente 1 hora}, detectando 
+\enquote{119 hallazgos} con clasificación automática por severidad (57\% alta, 33\% 
+media, 10\% baja) y trazabilidad completa. Se realizó además una evaluación comparativa 
+entre \textit{Gemini 2.5 Pro} y \textit{Gemini 3.1 Pro Preview}, evidenciando que 
+el primero ofrece mayor cobertura (119 frente a 67 hallazgos) con una velocidad 2.3 
+veces superior, mientras que el segundo construye grafos de conocimiento 
+significativamente más ricos (477 nodos frente a 208), lo que constituye una línea 
+de mejora para versiones futuras del sistema. \\
+
+\noindent \textbf{Palabras clave:}\\
+\noindent Agente IA; Arquitectura Multi-agente; Auditoría Contractual; RAG Híbrido; 
+GraphRAG; Indexación Automática; Detección de Inconsistencias; LLM; Contratos de 
+Concesión; ProInversión.

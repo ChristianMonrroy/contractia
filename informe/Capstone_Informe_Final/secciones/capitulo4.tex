@@ -1,0 +1,145 @@
+\chapter{Marco Metodológico}
+
+El presente proyecto combina tres marcos metodológicos complementarios que
+operan en distintas capas del proceso de desarrollo: \textit{Lean Startup}
+para la gestión del producto y la validación de valor, el ciclo de vida de
+ciencia de datos (CRISP-DM) para el desarrollo técnico del sistema, y
+metodología ágil para la organización del trabajo en equipo. La combinación
+de estos tres marcos no es accidental: responde a la naturaleza híbrida del
+proyecto, que es simultáneamente un producto de software, un sistema de
+inteligencia artificial y una herramienta institucional.
+
+\section{Lean Startup y ciclo Build–Measure–Learn}
+
+El enfoque \textit{Lean Startup} se adoptó como marco de gestión del producto,
+priorizando la validación empírica de hipótesis sobre la planificación extensa
+previa. El principio central aplicado fue: \textit{construir el producto mínimo
+que permita aprender, no el producto perfecto}.
+
+El ciclo \textbf{Build--Measure--Learn} se aplicó en cuatro iteraciones
+principales del proyecto:
+
+\begin{enumerate}
+    \item \textbf{Build:} Prototipo en notebook (Google Colab) con un único
+    agente y pipeline básico de segmentación + FAISS.\\
+    \textbf{Measure:} 35 inconsistencias detectadas en 47 minutos sobre el
+    Contrato A (314 páginas).\\
+    \textbf{Learn:} La hipótesis central es técnicamente válida; el cuello de
+    botella es la cobertura semántica, no la velocidad.
+
+    \item \textbf{Build:} Arquitectura multi-agente con Jurista, Auditor y
+    Cronista en paralelo (v5--v7). Orquestador con \texttt{asyncio.gather}.\\
+    \textbf{Measure:} Incremento de cobertura y calidad de hallazgos por
+    especialización de prompts.\\
+    \textbf{Learn:} Los agentes especializados superan al agente único; los
+    esquemas Pydantic son críticos para reproducibilidad.
+
+    \item \textbf{Build:} RAG híbrido (FAISS + BM25 + Cohere Reranker) y
+    GraphRAG con extracción de tripletas (v8--v9).\\
+    \textbf{Measure:} Mejora en precisión de recuperación normativa y
+    enriquecimiento del análisis cruzado entre secciones.\\
+    \textbf{Learn:} El grafo más rico no implica más hallazgos (paradoja
+    Gemini 3.1); el BM25 es esencial para recuperar cláusulas por número exacto.
+
+    \item \textbf{Build:} Despliegue en producción: Cloud Run, API REST,
+    frontend Next.js, bot Telegram, panel de diagnóstico (v9.5--v9.8).\\
+    \textbf{Measure:} 119 hallazgos en $\sim$1h 15min sobre Contrato A
+    (324 páginas, MVP completo).\\
+    \textbf{Learn:} El Cloud Run no soporta SSE nativo; polling cada 5s es
+    más robusto. Los \texttt{ContextVar} no propagan en threads de
+    \texttt{run\_in\_executor}.
+\end{enumerate}
+
+\section{Ciclo de Vida de Ciencia de Datos (CRISP-DM)}
+
+El desarrollo técnico del sistema siguió el proceso estándar de ciencia de
+datos CRISP-DM (\textit{Cross-Industry Standard Process for Data Mining}),
+adaptado a proyectos de inteligencia artificial generativa:
+
+\begin{table}[H]
+\centering
+\caption{Aplicación del ciclo CRISP-DM al proyecto ContractIA}
+\label{tab:crispdm}
+\begin{tabular}{p{4cm}p{9.5cm}}
+\toprule
+\textbf{Fase CRISP-DM} & \textbf{Aplicación en ContractIA} \\
+\midrule
+\textbf{1. Comprensión del negocio} &
+Entrevistas con 6 especialistas de ProInversión (oct. 2025). Mapeo del
+proceso AS-IS. Definición de KPIs SMART. Identificación de la pregunta
+central: reducir de 320h a $<$1h. \\
+\midrule
+\textbf{2. Comprensión de los datos} &
+Análisis de 17 contratos de concesión (200--400 páginas). Identificación
+de patrones estructurales: numeración jerárquica, referencias cruzadas
+densas, tablas de contenido como fuente de falsos positivos. \\
+\midrule
+\textbf{3. Preparación de los datos} &
+Pipeline de extracción (pypdf + pdfminer), normalización UTF-8,
+segmentación anti-TOC, indexación multinivel (Secciones, Global,
+Local), vectorización con FAISS + BM25 y embeddings
+\textit{text-embedding-004}. \\
+\midrule
+\textbf{4. Modelado} &
+Diseño de prompts especializados por agente. Construcción del DiGraph
+de conocimiento con NetworkX. Calibración del Cohere Reranker.
+Esquemas Pydantic para salida estructurada. Evaluación comparativa
+Gemini 2.5 Pro vs.\ Gemini 3.1 Pro Preview. \\
+\midrule
+\textbf{5. Evaluación} &
+Validación sobre contrato real (Contrato A, 324 páginas).
+Revisión manual de muestra de 30 hallazgos ALTA por especialistas.
+Métricas: precisión 89\%, recall 94\%, cobertura 100\%. \\
+\midrule
+\textbf{6. Despliegue} &
+Containerización Docker. CI/CD con GitHub Actions. Despliegue en
+Cloud Run. Interfaces web (Next.js) y conversacional (Telegram).
+Disponible en \texttt{contractia.pe}. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El ciclo CRISP-DM no se ejecutó de forma lineal sino iterativa: los hallazgos
+de la fase de evaluación realimentaron tanto la preparación de datos (mejoras
+en el segmentador) como el modelado (refinamiento de prompts), siguiendo la
+naturaleza cíclica del proceso.
+
+\section{Desarrollo Ágil}
+
+La gestión operativa del proyecto adoptó prácticas ágiles adaptadas al
+contexto de un equipo pequeño (dos integrantes) con restricciones de tiempo
+académico:
+
+\begin{itemize}
+    \item \textbf{Sprints de dos semanas} con objetivos funcionales claros y
+    entregables demostrables al finalizar cada sprint.
+    \item \textbf{Versionado semántico} del sistema (v1.0 a v9.8.0) que
+    permite trazabilidad precisa de cada funcionalidad incorporada.
+    \item \textbf{Integración continua (CI/CD)} mediante GitHub Actions con
+    despliegue automático en Google Cloud Run al fusionar cambios en la rama
+    principal.
+    \item \textbf{Feature flags por variable de entorno} para activar
+    funcionalidades experimentales (RAG agéntico, modelos alternativos) sin
+    afectar el comportamiento base del sistema.
+\end{itemize}
+
+\section{Justificación de la Combinación Metodológica}
+
+La elección de esta combinación responde a tres necesidades concretas del
+proyecto:
+
+\begin{enumerate}
+    \item \textbf{Lean Startup} aborda la incertidumbre de valor: no se sabía
+    a priori si un sistema basado en LLMs podría procesar contratos de 300+
+    páginas con suficiente precisión para ser útil. El prototipo temprano
+    permitió validar esta hipótesis antes de invertir en infraestructura.
+    \item \textbf{CRISP-DM} estructura el trabajo técnico en un dominio de
+    alta especialización (Legal NLP) donde la calidad de los datos y la
+    pertinencia del modelado son determinantes del éxito. Sin este marco,
+    el riesgo de construir un sistema técnicamente correcto pero semánticamente
+    débil habría sido elevado.
+    \item \textbf{Ágil} permite absorber los aprendizajes de cada ciclo
+    Build--Measure--Learn de forma ordenada, sin bloquear el desarrollo por
+    planificación excesiva en un dominio donde los requisitos evolucionan con
+    el conocimiento del problema.
+\end{enumerate}

@@ -1,0 +1,476 @@
+\chapter{Contexto del Problema}
+
+\section{Contexto Organizacional}
+
+ProInversión (Agencia de Promoción de la Inversión Privada) es el organismo técnico
+especializado adscrito al Ministerio de Economía y Finanzas del Perú, responsable
+de promover, estructurar y adjudicar proyectos de inversión privada en infraestructura
+y servicios públicos mediante Asociaciones Público-Privadas (APP) y Proyectos en
+Activos. Su cartera activa supera los USD~50{,}000 millones en valor de proyectos,
+incluyendo concesiones en infraestructura de transporte, saneamiento, energía y
+telecomunicaciones que impactan directamente la calidad de vida de millones de
+ciudadanos peruanos.
+
+En este contexto, los contratos de concesión constituyen el instrumento jurídico
+central que regula la relación entre el Estado y el concesionario privado durante
+períodos de entre 20 y 40 años. Cada contrato define con precisión las obligaciones
+técnicas, financieras, ambientales y operativas de ambas partes, los mecanismos de
+renegociación, los indicadores de desempeño exigibles y los procedimientos de
+resolución de disputas. Dada la magnitud económica y el horizonte temporal de estos
+instrumentos, su revisión técnico-legal constituye una fase crítica del ciclo de
+adjudicación: un error no detectado en una cláusula puede derivar en contingencias
+fiscales de gran escala, arbitrajes internacionales costosos o retrasos que afectan
+la competitividad del país como destino de inversión.
+
+\section{Descripción del Problema}
+
+\subsection{Problema central}
+
+La revisión técnico-legal de contratos de concesión de infraestructura en ProInversión
+enfrenta un problema central de escala y eficiencia que puede formularse como la
+siguiente pregunta de investigación:
+
+\begin{quote}
+\textit{¿Cómo reducir de 320 horas a menos de 1 hora el \textit{screening} inicial de contratos de concesión APP, manteniendo trazabilidad completa y sin reemplazar el juicio experto del analista?}
+\end{quote}
+
+El punto de partida de este problema es concreto y medible. El análisis del proceso
+actual, basado en entrevistas con seis especialistas de ProInversión realizadas en
+octubre de 2025, indica que la revisión completa de un contrato de complejidad media
+requiere en promedio \textbf{320 horas} de trabajo multidisciplinario (rango:
+280--400 horas según complejidad), distribuidas entre cuatro equipos:
+
+\begin{table}[H]
+\centering
+\caption{Distribución del esfuerzo de revisión manual por equipo}
+\label{tab:esfuerzo_revision}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Equipo} & \textbf{Horas} & \textbf{\%} \\
+\midrule
+Revisión legal de cláusulas         & 120 h & 37.5\% \\
+Validación técnica de especificaciones & 80 h & 25.0\% \\
+Lectura y familiarización inicial   & 40 h & 12.5\% \\
+Revisión económico-financiera       & 40 h & 12.5\% \\
+Consolidación entre áreas           & 40 h & 12.5\% \\
+\midrule
+\textbf{Total}                      & \textbf{320 h} & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{landscape}
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    % ── Estilos base ──
+    box/.style={
+        rectangle, draw=gray!60, thick, rounded corners=3pt,
+        minimum height=1.1cm, align=center, text width=3.2cm,
+        font=\small
+    },
+    yellow box/.style={box, fill=orange!12, draw=orange!50},
+    green box/.style={box, fill=green!12, draw=green!50},
+    blue box/.style={box, fill=cyan!8, draw=cyan!40},
+    white box/.style={box, fill=white, draw=gray!50},
+    opinion box/.style={box, fill=green!18, draw=green!45, rounded corners=5pt},
+    final box/.style={box, fill=green!22, draw=green!55, font=\small\bfseries},
+    % ── Swimlane ──
+    lane bg/.style={draw=gray!30, rounded corners=8pt, inner sep=14pt,
+                    fill=#1, fill opacity=0.06, draw opacity=0.4},
+    lane label/.style={font=\small\bfseries\sffamily, fill=white,
+                       draw=gray!35, rounded corners=3pt,
+                       inner xsep=6pt, inner ysep=3pt},
+    % ── Flechas ──
+    arrow/.style={-Latex, thick, color=gray!55},
+    % ── Días ──
+    dias/.style={font=\scriptsize, text=gray!60}
+]
+
+% ════════════════════════════════════════════════════════════
+% CAPA 0  — Inicio (izquierda, fila inferior)
+% ════════════════════════════════════════════════════════════
+\node[yellow box] (elab) at (0, 0)
+    {Elaboración del\\proyecto VIC\\\dias{\ding{168}~42 días}};
+\node[white box]  (opnf) at (5, 0)
+    {Opiniones no formales\\(Sector/OR/MEF)\\\dias{\ding{168}~21 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 1  — PROINVERSIÓN (fila central)
+% ════════════════════════════════════════════════════════════
+\node[blue box] (solSR)  at (12.5, 0)
+    {Solicita opinión a\\Sector/OR\\\dias{\ding{168}~1 día}};
+\node[blue box] (solMEF) at (19.5, 0)
+    {Solicita opinión\\al MEF\\\dias{\ding{168}~1 día}};
+\node[blue box] (solCGR) at (26.5, 0)
+    {Solicita Informe Previo\\a la CGR\\\dias{\ding{168}~3 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 2  — Comité (arriba-izquierda)
+% ════════════════════════════════════════════════════════════
+\node[green box] (comite) at (8.5, 4.5)
+    {Autoriza solicitar\\opiniones\\\dias{\ding{168}~8 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 2  — Sector y OR (arriba-centro)
+% ════════════════════════════════════════════════════════════
+\node[white box]   (reqSR) at (13.5, 3)
+    {Requerimiento/\\atención de info\\\dias{\ding{168}~1 día}};
+\node[opinion box] (opSR)  at (17, 3)
+    {Opinión Sector/OR\\\dias{\ding{168}~21 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 2  — MEF (arriba-derecha)
+% ════════════════════════════════════════════════════════════
+\node[white box]   (reqMEF) at (20.5, 3)
+    {Requerimiento/\\atención de info\\\dias{\ding{168}~1 día}};
+\node[opinion box] (opMEF)  at (24, 3)
+    {Opinión MEF\\\dias{\ding{168}~19 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 2  — CGR (arriba-derecha lejana)
+% ════════════════════════════════════════════════════════════
+\node[white box] (reqCGR)  at (27.5, 3)
+    {Requerimiento/\\atención de info\\\dias{\ding{168}~1 día}};
+\node[white box] (infPrev) at (31, 3)
+    {Informe Previo\\a la VIC\\\dias{\ding{168}~21 días}};
+
+% ════════════════════════════════════════════════════════════
+% CAPA 3  — Dirección Ejecutiva (arriba-extremo derecho)
+% ════════════════════════════════════════════════════════════
+\node[yellow box] (aprueba) at (34.5, 4.5)
+    {Aprueba DI-VIC\\\dias{\ding{168}~3 días}};
+\node[yellow box] (ratifica) at (38, 4.5)
+    {Ratifica DI-VIC\\\dias{\ding{168}~5 días}};
+
+% ════════════════════════════════════════════════════════════
+% Nodo final
+% ════════════════════════════════════════════════════════════
+\node[final box] (vic) at (41.5, 4.5) {VIC\\ratificada};
+
+% ════════════════════════════════════════════════════════════
+% Swimlane backgrounds  (on background layer)
+% ════════════════════════════════════════════════════════════
+\begin{scope}[on background layer]
+    \node[lane bg=orange!15, fit=(reqSR)(opSR)]  (laneSR)  {};
+    \node[lane bg=blue!15,   fit=(reqMEF)(opMEF)] (laneMEF) {};
+    \node[lane bg=gray!15,   fit=(reqCGR)(infPrev)] (laneCGR) {};
+    \node[lane bg=yellow!15, fit=(aprueba)(ratifica)] (laneDE) {};
+    % Fondo PROINVERSIÓN
+    \node[lane bg=cyan!8,
+          fit=(solSR)(solMEF)(solCGR),
+          inner xsep=20pt, inner ysep=18pt] (lanePRO) {};
+\end{scope}
+
+% ════════════════════════════════════════════════════════════
+% Swimlane labels
+% ════════════════════════════════════════════════════════════
+\node[lane label] at (comite.north)  [above=4pt] {Comité};
+\node[lane label] at (laneSR.north)  [above=4pt] {Sector y OR};
+\node[lane label] at (laneMEF.north) [above=4pt] {MEF};
+\node[lane label] at (laneCGR.north) [above=4pt] {CGR};
+\node[lane label] at (laneDE.north)  [above=4pt] {Dirección Ejecutiva};
+\node[lane label] at (lanePRO.south) [below=4pt] {PROINVERSIÓN};
+
+% ════════════════════════════════════════════════════════════
+% Flechas del flujo
+% ════════════════════════════════════════════════════════════
+% Inicio
+\draw[arrow] (elab)  -- (opnf);
+% Opiniones → Comité (sube)
+\draw[arrow] (opnf.north) -- ++(0,0.8) -| (comite.south);
+% Comité → Solicita Sector/OR (baja)
+\draw[arrow] (comite.south) ++(0.8,0) -- ++(0,-1.2) -| (solSR.north);
+% Solicita → Sector y OR (sube)
+\draw[arrow] (solSR.north) ++(0.3,0) -- ++(0,0.6) -| (reqSR.south);
+\draw[arrow] (reqSR) -- (opSR);
+% Solicita → Solicita MEF (horizontal)
+\draw[arrow] (solSR.east) -- (solMEF.west);
+% Solicita MEF → MEF (sube)
+\draw[arrow] (solMEF.north) ++(0.3,0) -- ++(0,0.6) -| (reqMEF.south);
+\draw[arrow] (reqMEF) -- (opMEF);
+% Solicita MEF → Solicita CGR (horizontal)
+\draw[arrow] (solMEF.east) -- (solCGR.west);
+% Solicita CGR → CGR (sube)
+\draw[arrow] (solCGR.north) ++(0.3,0) -- ++(0,0.6) -| (reqCGR.south);
+\draw[arrow] (reqCGR) -- (infPrev);
+% Informe Previo → Aprueba
+\draw[arrow] (infPrev.east) -- ++(0.8,0) |- (aprueba.west);
+% Aprueba → Ratifica → VIC
+\draw[arrow] (aprueba) -- (ratifica);
+\draw[arrow] (ratifica) -- (vic);
+
+\end{tikzpicture}%
+}
+\caption{Proceso de aprobación de la Versión Inicial del Contrato (VIC). Las fases de
+\textit{Elaboración del proyecto VIC} (42 días) y \textit{Opiniones no formales} (21 días)
+concentran el esfuerzo de revisión manual descrito en la Tabla~\ref{tab:esfuerzo_revision}.}
+\label{fig:proceso_vic}
+\end{figure}
+\end{landscape}
+
+Este volumen convierte el \textit{screening} inicial en el principal cuello de botella
+del ciclo de adjudicación, impactando directamente los cronogramas de proyectos de
+inversión pública de alto impacto económico y social.
+
+\subsection{Factores que agravan el problema}
+
+El problema central de tiempo se ve agravado por cuatro factores secundarios que
+reducen adicionalmente la eficacia del proceso:
+
+\begin{itemize}
+    \item \textbf{Coordinación multidisciplinaria.} La sincronización de cuatro
+    equipos especializados multiplica los esfuerzos y genera retrasos adicionales
+    difíciles de planificar, al ser necesario resolver discrepancias entre criterios
+    de distintas especialidades antes de consolidar observaciones.
+
+    \item \textbf{Inconsistencias detectadas tardíamente.} Referencias cruzadas
+    inválidas, contradicciones procedimentales y ambigüedades frecuentemente se
+    identifican en etapas avanzadas del ciclo de adjudicación o durante la ejecución
+    contractual, generando costos de corrección elevados y riesgo de arbitrajes
+    internacionales.
+
+    \item \textbf{Variabilidad analítica entre revisores.} La calidad del análisis
+    depende del criterio individual de cada especialista, sin estándares uniformes
+    aplicados, lo que genera inconsistencias entre contratos y riesgo de omisiones
+    en revisores menos experimentados.
+
+    \item \textbf{Trazabilidad limitada.} El proceso carece de mecanismos para
+    documentar sistemáticamente la cadena de decisiones, dificultando auditorías
+    posteriores y limitando la transferencia de conocimiento institucional.
+\end{itemize}
+
+Estos factores no son el problema en sí, sino las condiciones que hacen que la
+solución deba ir más allá de simplemente acelerar el proceso: debe también elevar
+su consistencia, cobertura y transparencia, sin prescindir del criterio experto
+en la etapa de interpretación y decisión.
+
+\subsection{Complejidad estructural del documento objeto}
+
+La magnitud del problema de tiempo se explica en parte por la complejidad inherente
+del documento que debe revisarse. El Contrato de Concesión A, caso de evaluación
+de este proyecto, tiene las siguientes características:
+
+\begin{itemize}
+    \item \textbf{Extensión:} 324 páginas de contenido técnico-legal especializado.
+    \item \textbf{Estructura:} 41 secciones (capítulos y anexos), con jerarquías
+    de hasta tres niveles de numeración.
+    \item \textbf{Cláusulas:} 448 cláusulas únicas, con hasta 60 por capítulo.
+    \item \textbf{Referencias cruzadas:} Más de 200 referencias internas entre
+    cláusulas y secciones, además de citas a normativa sectorial externa.
+    \item \textbf{Contenido mixto:} Texto legal, especificaciones técnicas de
+    ingeniería, fórmulas financieras y matrices de obligaciones.
+\end{itemize}
+
+Detectar una referencia cruzada inválida en el capítulo 3 que afecta una obligación
+definida en el capítulo 18 requiere mantener en memoria activa el contenido completo
+del documento, una capacidad que supera los límites prácticos de la revisión humana
+sin apoyo sistemático.
+
+\section{Antecedentes de Automatización en ProInversión}
+
+Hasta la fecha, ProInversión ha utilizado principalmente herramientas de productividad
+estándar para la gestión del proceso de revisión: procesadores de texto con funciones
+básicas de búsqueda y control de cambios, hojas de cálculo para seguimiento de
+observaciones y sistemas de gestión documental para almacenamiento y control de
+versiones. No se han implementado sistemas automatizados específicos para la detección
+de inconsistencias, validación de referencias cruzadas o análisis semántico de
+coherencia contractual en documentos de esta complejidad.
+
+Los intentos previos de digitalización se han limitado a la automatización de procesos
+administrativos y flujos de aprobación, sin abordar el núcleo analítico del trabajo de
+revisión técnico-legal. Esta situación contrasta con desarrollos recientes en el sector
+financiero y legal internacional, donde se han comenzado a aplicar técnicas de
+inteligencia artificial para análisis contractual, aunque con enfoques y dominios
+diferentes al contexto específico de concesiones de infraestructura pública peruana.
+
+\section{Estado del Arte y Trabajos Relacionados}
+
+La aplicación de \textit{Natural Language Processing} (NLP) e inteligencia artificial
+al análisis contractual ha experimentado un crecimiento significativo en los últimos
+años. A continuación se presentan los antecedentes más relevantes:
+
+\subsection{Iniciativas académicas}
+
+El dataset \textbf{CUAD} (\textit{Contract Understanding Atticus Dataset})
+\cite{hendrycks2021cuad} se consolidó como referente para revisión legal automatizada,
+con anotaciones de expertos sobre 510 contratos comerciales en inglés y tareas de
+localización de cláusulas específicas. Si bien establece un benchmark valioso,
+sus contratos son de naturaleza comercial anglosajona, de extensión significativamente
+menor que los contratos de concesión de infraestructura peruana, y no incluyen
+referencias cruzadas densas ni normativa sectorial local.
+
+\textbf{ContractNLI} \cite{koreeda2021contractnli} planteó el problema de inferencia
+a nivel de documento para contratos de confidencialidad (NDA), habilitando la
+detección de contradicciones y verificaciones lógicas entre secciones. Este enfoque
+es conceptualmente cercano al módulo de coherencia de ContractIA, aunque aplicado
+a un tipo de documento radicalmente más simple.
+
+Revisiones sistemáticas recientes \cite{singh2025survey} confirman el crecimiento
+de la clasificación y extracción en contratos como subcampo de Legal NLP, con
+conjuntos de datos y tareas cada vez más estandarizadas que respaldan la madurez
+tecnológica para casos de uso productivos.
+
+\subsection*{Iniciativas industriales}
+
+\textbf{Google Cloud Contract DocAI} \cite{google_contract_docai_2021,google_document_ai}
+ofrece parsers especializados para extracción de campos y cláusulas relevantes en
+contratos, con foco en flujos de \textit{Contract Lifecycle Management} (CLM). Su
+diseño está optimizado para contratos comerciales estándar de menor extensión y no
+incorpora análisis de coherencia interna ni validación de referencias cruzadas.
+
+El ecosistema de \textbf{IBM watsonx} \cite{ibm_contracts_ai_aws,ibm_watsonx_contracts_2024}
+promueve soluciones de Contract Management AI que integran extracción de cláusulas,
+detección de riesgos y validaciones de consistencia. Sin embargo, estas soluciones
+están orientadas al mercado anglosajón y no pueden incorporar la normativa sectorial
+específica del Perú (Ley de APP, TUO de Contrataciones del Estado, normas del
+OSITRAN, OSINERGMIN, SUNASS, entre otras).
+
+\subsection*{Brecha identificada}
+
+Una revisión exhaustiva de la literatura y las soluciones disponibles revela una
+brecha clara: \textbf{no existe ningún sistema diseñado específicamente para la
+auditoría de contratos de concesión de infraestructura bajo el marco normativo
+peruano}. Los contratos de APP peruanos presentan características que los diferencian
+fundamentalmente de los documentos abordados por las soluciones existentes:
+
+\begin{itemize}
+    \item Mayor complejidad estructural: hasta 41 secciones con jerarquías multinivel.
+    \item Mayor extensión: 200--400 páginas frente a los 10--50 de contratos comerciales.
+    \item Combinación de aspectos técnicos de ingeniería con aspectos legales y financieros.
+    \item Referencias densas a normativa sectorial específica del contexto peruano.
+    \item Mecanismos particulares de renegociación, riesgo compartido y resolución de
+    disputas propios del modelo concesional.
+\end{itemize}
+
+Esta brecha de adaptación constituye la motivación central del presente proyecto.
+
+\section{Stakeholders}
+
+\begin{table}[H]
+\centering
+\caption{Stakeholders identificados, rol y necesidad principal}
+\label{tab:stakeholders}
+\begin{tabular}{p{4cm}p{3.5cm}p{6cm}}
+\toprule
+\textbf{Perfil} & \textbf{Rol} & \textbf{Necesidad principal} \\
+\midrule
+Especialista Legal      & Usuario primario   & Detección de inconsistencias jurídicas y omisiones normativas \\
+Especialista Técnico    & Usuario primario   & Validación de especificaciones técnicas y plazos \\
+Especialista Ambiental  & Usuario primario   & Cumplimiento de normativa ambiental sectorial \\
+Analista Económico      & Usuario primario   & Consistencia de fórmulas y obligaciones financieras \\
+Director de ProInversión & Usuario secundario & Reporte ejecutivo de riesgos por proyecto \\
+Auditor Externo         & Usuario secundario & Evidencia trazable y verificable de cada hallazgo \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Relevancia e Impacto Esperado}
+
+La relevancia del problema se puede cuantificar en tres dimensiones:
+
+\begin{itemize}
+    \item \textbf{Eficiencia operacional.} Reducir el tiempo de \textit{screening}
+    inicial libera capacidad de los equipos especializados para enfocarse en análisis
+    de mayor valor agregado: interpretación jurídica, negociación estratégica y
+    gestión de riesgos complejos que requieren genuinamente juicio experto humano.
+    \item \textbf{Calidad y consistencia.} La detección sistemática y uniforme de
+    inconsistencias reduce la variabilidad analítica entre revisores y disminuye la
+    probabilidad de que problemas críticos escapen a la revisión, protegiendo al Estado
+    de contingencias fiscales durante la ejecución contractual.
+    \item \textbf{Gestión del conocimiento institucional.} La trazabilidad automática
+    de hallazgos crea un repositorio estructurado de precedentes y criterios de
+    revisión que facilita la capacitación de nuevos especialistas y fortalece la
+    memoria institucional de ProInversión.
+\end{itemize}
+
+\section*{Usuarios y Casos de Uso}
+
+\subsection{Perfiles de usuario}
+
+Durante el levantamiento de requisitos (octubre de 2025) se identificaron dos
+categorías de usuarios según su frecuencia e intensidad de interacción con el sistema.
+
+\textbf{Usuarios primarios} — interactúan diariamente con el sistema como parte
+central de su flujo de trabajo de revisión contractual:
+
+\begin{table}[H]
+\centering
+\caption{Perfiles de usuarios primarios y su interacción con el sistema}
+\label{tab:usuarios_primarios}
+\begin{tabular}{p{3.5cm}p{4.5cm}p{5cm}}
+\toprule
+\textbf{Perfil} & \textbf{Foco de revisión} & \textbf{Necesidad principal del sistema} \\
+\midrule
+Especialista Legal &
+Cláusulas, referencias cruzadas, coherencia jurídica &
+Detección automática de referencias rotas y contradicciones procedimentales \\
+Especialista Técnico &
+Especificaciones de ingeniería, normas técnicas &
+Validación de referencias a estándares (ISO, ASTM) y consistencia técnica \\
+Especialista Ambiental &
+Compromisos EIA, normativa ambiental &
+Identificación de obligaciones ambientales dispersas y verificación de cumplimiento \\
+Analista Económico-Financiero &
+Fórmulas de reajuste, garantías, mecanismos de equilibrio &
+Consistencia de fórmulas financieras y detección de ambigüedades económicas \\
+Director / Gerente &
+Riesgos estratégicos del contrato &
+Reporte ejecutivo con hallazgos priorizados por severidad \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Usuarios secundarios} — acceden de forma intermitente para propósitos
+específicos de gobernanza y control:
+
+\begin{itemize}
+    \item \textbf{Auditores externos} (Contraloría, firmas independientes): requieren
+    trazabilidad completa e inmutable de todas las decisiones del proceso de revisión,
+    incluyendo versiones analizadas, hallazgos identificados y criterios aplicados.
+    \item \textbf{Equipos de supervisión del concedente}: durante la ejecución
+    contractual (15--30 años), consultan cláusulas específicas y acceden a los
+    fundamentos de la revisión para mantener coherencia interpretativa.
+\end{itemize}
+
+\subsection{User stories prioritarias (MUST have)}
+
+Las necesidades de los usuarios se expresan mediante \textit{user stories}
+priorizadas con metodología MoSCoW. Las siguientes cuatro historias de prioridad
+\textbf{MUST} definen el núcleo funcional del MVP (el catálogo completo se
+detalla en la Sección~6):
+
+\begin{enumerate}
+    \item \textbf{US-LEG-01 — Detección de referencias cruzadas rotas.}\\
+    \textit{``Como especialista legal, quiero que el sistema identifique
+    automáticamente todas las referencias cruzadas inválidas o inexistentes en el
+    contrato, para no tener que verificar manualmente las 400--1{,}000 citas
+    potenciales.''}\\
+    \textit{Criterio de aceptación clave:} detección al 100\% de referencias a
+    secciones inexistentes; precisión $\geq 90\%$ en referencias a cláusulas;
+    tiempo de análisis $< 1$ hora para contratos de 300 páginas.
+
+    \item \textbf{US-LEG-02 — Detección de contradicciones procedimentales.}\\
+    \textit{``Como especialista legal, quiero que el sistema identifique cláusulas
+    con procedimientos o plazos contradictorios, para resolver ambigüedades antes
+    de la firma y prevenir disputas durante la ejecución.''}\\
+    \textit{Criterio de aceptación clave:} precisión en detección $\geq 85\%$;
+    cada hallazgo incluye cita textual de ambas cláusulas conflictivas.
+
+    \item \textbf{US-TEC-01 — Validación de referencias a normas técnicas.}\\
+    \textit{``Como especialista técnico, quiero verificar que todas las normas
+    técnicas citadas (ISO, ASTM, normas nacionales) estén correctamente
+    referenciadas, para asegurar que las especificaciones son ejecutables con
+    estándares válidos.''}\\
+    \textit{Criterio de aceptación clave:} identificación de todas las citas a
+    normas técnicas con sus ubicaciones exactas; alerta sobre formatos incorrectos.
+
+    \item \textbf{US-DIR-01 — Reporte ejecutivo con hallazgos priorizados.}\\
+    \textit{``Como director, quiero recibir un reporte consolidado de inconsistencias
+    ordenadas por severidad, para tomar decisiones de aprobación o corrección sin
+    revisar manualmente el documento completo.''}\\
+    \textit{Criterio de aceptación clave:} reporte generado en formato estructurado
+    con clasificación automática alta/media/baja; tiempo de generación incluido en
+    el tiempo total de análisis $< 1$ hora.
+\end{enumerate}

@@ -1,0 +1,45 @@
+\chapter*{\center \Large \vspace{-4.5cm} ABSTRACT}
+\addcontentsline{toc}{section}{ABSTRACT}
+\markboth{ABSTRACT}{ABSTRACT} 
+\noindent
+
+The technical and legal review of infrastructure concession contracts in Peru faces 
+critical challenges of efficiency and consistency due to the complexity of the 
+documents involved. At \enquote{ProInversión}, the government agency responsible for 
+promoting and structuring private investment projects, typical contracts exceed 200 
+pages with multiple chapters, annexes, and complex cross-references. Analysis of the 
+current process, based on interviews with institutional specialists, indicates that 
+manual review requires an average of more than \enquote{320 hours} of work by 
+multidisciplinary teams per contract. This process exhibits high variability in 
+evaluation criteria, late detection of inconsistencies, and difficulties in maintaining 
+complete traceability of decisions.
+
+This work designs, implements, and evaluates a \enquote{multi-agent artificial 
+intelligence system} specialized in \enquote{automated auditing of concession 
+contracts}, through a \enquote{hybrid architecture} that combines \textit{Large 
+Language Models} (LLMs) with hybrid \textit{Retrieval-Augmented Generation} (FAISS, 
+BM25, and Cohere Reranker) and \textit{knowledge graphs} (GraphRAG). The system 
+deploys three specialized agents in parallel —Jurist, Auditor, and Chronologist— 
+powered by Google's \textit{Gemini 2.5 Pro}, coordinated by an orchestrator that 
+integrates automatic document segmentation through robust title detection and 
+anti-TOC filtering, multilevel indexing with Section, Global Clause, and Local 
+indices, dynamic construction of a contractual knowledge graph with up to 477 nodes 
+and 617 semantic relations, and inconsistency detection with full traceability down 
+to the specific clause and paragraph. The system is deployed in production via 
+\textit{Google Cloud Run} with a web interface (\textit{Next.js}) and a conversational 
+bot (\textit{Telegram}), accessible at \texttt{contractia.pe}.
+
+Evaluation on the \enquote{A Contract} (324 pages, 41 
+sections, 448 clauses) demonstrated a reduction in initial screening time from 
+\enquote{320 hours to approximately 1 hour}, detecting \enquote{119 findings} with 
+automatic severity classification (57\% high, 33\% medium, 10\% low) and complete 
+traceability. A comparative evaluation between \textit{Gemini 2.5 Pro} and 
+\textit{Gemini 3.1 Pro Preview} was also conducted, showing that the former offers 
+broader coverage (119 versus 67 findings) at 2.3 times the speed, while the latter 
+constructs significantly richer knowledge graphs (477 versus 208 nodes), representing 
+a key improvement direction for future versions of the system. \\
+
+\noindent \textbf{Keywords:}\\
+\noindent AI Agent; Multi-agent Architecture; Contract Auditing; Hybrid RAG; 
+GraphRAG; Automatic Indexing; Inconsistency Detection; LLM; Concession Contracts; 
+ProInversión.

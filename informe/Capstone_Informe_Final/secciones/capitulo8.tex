@@ -1,0 +1,450 @@
+%% ── 8. DESARROLLO Y CONSTRUCCIÓN ─────────────────────────────────────────────
+\chapter{Desarrollo y Construcción}
+
+Este capítulo documenta el proceso de desarrollo de ContractIA, desde los
+primeros experimentos en notebooks hasta el MVP desplegado en producción.
+El desarrollo siguió un enfoque iterativo e incremental, con 15 versiones
+de notebook (prototipo) y 4 versiones de plataforma (MVP), priorizando en
+cada ciclo la hipótesis de mayor riesgo técnico pendiente de validar.
+
+\section{Enfoque Metodológico}
+
+El desarrollo adoptó un ciclo corto de construcción–medición–aprendizaje
+(\textit{build–measure–learn}), con las siguientes decisiones de proceso:
+
+\begin{itemize}
+    \item \textbf{Iteraciones cortas (2--5 días):} cada versión del notebook
+    resolvía un problema específico antes de agregar nueva funcionalidad.
+    \item \textbf{Contrato piloto fijo:} el contrato A
+    (324 páginas) fue el benchmark constante entre iteraciones, permitiendo
+    comparaciones objetivas de cobertura, tiempo y hallazgos.
+    \item \textbf{Separación prototipo / MVP:} las iteraciones v1--v15 se
+    desarrollaron en Jupyter como exploración analítica; la plataforma
+    productiva (FastAPI + Cloud Run) se construyó en paralelo a partir de v9.5.
+    \item \textbf{Validación continua:} tras cada iteración se revisó
+    manualmente una muestra de 10--20 hallazgos para detectar regresiones.
+\end{itemize}
+
+\section{Historial de Versiones}
+
+\begin{table}[H]
+\centering
+\caption{Evolución de versiones del sistema ContractIA}
+\label{tab:versiones}
+\begin{tabular}{p{2cm} p{3.5cm} p{7cm}}
+\toprule
+\textbf{Versión} & \textbf{Hito} & \textbf{Cambio principal} \\
+\midrule
+v1.0  & Pipeline base      & Segmentación PDF + FAISS + 1 agente LLM \\
+v2--v4 & Calidad RAG       & Chunking adaptativo; filtrado anti-TOC \\
+v5    & Multi-agente       & Jurista + Auditor + Cronista con Pydantic \\
+v6--v7 & Orquestación      & \texttt{asyncio.gather}; trazabilidad por cláusula \\
+v8.7  & Hybrid RAG         & BM25 + FAISS fusión RRF \\
+v8.8  & Cohere Reranker    & Cross-encoder sobre top-20 candidatos \\
+v9.0  & GraphRAG           & DiGraph por sección; extracción de tripletas LLM \\
+v9.5  & API + Cloud Run    & FastAPI; Docker; CI/CD con GitHub Actions \\
+v9.6  & Telegram bot       & Webhook; flujo de aprobación de usuarios \\
+v9.7  & Frontend Next.js   & Panel web; polling de estado en tiempo real \\
+v9.8  & Cola + notif.      & Cola por usuario (máx. 5 trabajos); email al finalizar \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Iteraciones del Desarrollo}
+
+\subsection{Iteración 1 — Prototipo en Notebook (v1.0--v4)}
+
+\textbf{Objetivo:} validar que un LLM puede identificar inconsistencias
+contractuales en un contrato de concesión peruano real.
+
+\textbf{Construcción:}
+\begin{itemize}
+    \item Extracción de texto con PyMuPDF y segmentación por jerarquía
+    de capítulos y cláusulas (regex + heurísticas).
+    \item Indexación de fragmentos en FAISS con embeddings
+    \texttt{text-embedding-004} de Vertex AI.
+    \item Un único agente LLM (Gemini 2.5 Pro) con prompt de análisis
+    semántico e instrucción de devolver JSON estructurado.
+    \item Iteraciones v2--v4: mejora del chunking adaptativo para evitar
+    que el índice de contenido (TOC) sea indexado como cláusula.
+\end{itemize}
+
+\textbf{Desafío clave:} el módulo anti-TOC era crítico; sin él, el RAG
+recuperaba fragmentos del índice del contrato en lugar de cláusulas reales,
+generando hallazgos sin sustento.
+
+\textbf{Resultado:} 35 inconsistencias detectadas sobre el Contrato A
+(314 páginas) en 47 minutos. Validó la hipótesis central de viabilidad técnica.
+
+\subsection{Iteración 2 — Arquitectura Multi-Agente (v5--v7)}
+
+\textbf{Objetivo:} aumentar la cobertura y especialización del análisis
+descomponiendo el agente único en roles diferenciados.
+
+\textbf{Construcción:}
+\begin{itemize}
+    \item \textbf{Jurista:} analiza consistencia con normativa (D.Leg.\ 1362,
+    guías ProInversión). Devuelve \texttt{HallazgoJurista} con campo
+    \texttt{referencia\_normativa}.
+    \item \textbf{Auditor:} detecta contradicciones internas, referencias
+    cruzadas rotas y omisiones entre secciones. Devuelve
+    \texttt{HallazgoAuditor} con \texttt{seccion\_referenciada}.
+    \item \textbf{Cronista:} identifica conflictos de fechas, plazos
+    inconsistentes y hitos mal ordenados. Devuelve \texttt{HallazgoCronista}
+    con \texttt{fecha\_detectada} y \texttt{fecha\_esperada}.
+    \item Orquestador con \texttt{asyncio.gather} para ejecutar los tres
+    agentes en paralelo por sección, reduciendo la latencia total.
+    \item Esquemas de salida con Pydantic v2 para garantizar estructura
+    consistente y validación automática de tipos.
+\end{itemize}
+
+\textbf{Desafío clave:} alinear el formato de salida JSON de tres agentes
+distintos en un único consolidado por sección, evitando duplicados y
+asignando correctamente el índice global de hallazgo.
+
+\textbf{Resultado:} incremento de cobertura temática; hallazgos clasificados
+por tipo (jurídico, estructural, temporal) con trazabilidad completa.
+
+\subsection{Iteración 3 — RAG Híbrido y GraphRAG (v8--v9)}
+
+\textbf{Objetivo:} mejorar la relevancia del contexto normativo recuperado
+y enriquecer el análisis con relaciones entre secciones del contrato.
+
+\textbf{Construcción:}
+\begin{itemize}
+    \item \textbf{Hybrid RAG (v8.7):} fusión de BM25 (recuperación léxica)
+    y FAISS (recuperación semántica) mediante Reciprocal Rank Fusion (RRF),
+    mejorando la cobertura sobre términos legales técnicos poco frecuentes.
+    \item \textbf{Cohere Reranker (v8.8):} cross-encoder sobre los
+    top-20 candidatos del RAG híbrido para seleccionar los 5 más relevantes,
+    reduciendo ruido en el contexto entregado a los agentes.
+    \item \textbf{GraphRAG (v9.0):} extracción de tripletas
+    \textit{(sujeto, relación, objeto)} por sección mediante LLM;
+    construcción de un \texttt{DiGraph} (NetworkX) por contrato con
+    relaciones: \texttt{obliga\_a}, \texttt{referencia}, \texttt{modifica},
+    \texttt{contradice}, \texttt{complementa}. Permite consultar vecinos
+    de un nodo para enriquecer el contexto de análisis cruzado.
+\end{itemize}
+
+\textbf{Desafío clave:} la extracción de tripletas con LLM es costosa
+(1 llamada adicional por sección); se implementó caché por hash de sección
+para evitar reextracción en análisis sucesivos del mismo contrato.
+
+\textbf{Resultado:} reducción de falsos positivos por contexto irrelevante;
+detección de contradicciones entre secciones no adyacentes gracias al grafo.
+
+\subsection{Iteración 4 — Despliegue en Producción (v9.5--v9.8)}
+
+\textbf{Objetivo:} convertir el notebook analítico en un servicio accesible,
+operativo y escalable para usuarios no técnicos.
+
+\textbf{Construcción:}
+\begin{itemize}
+    \item \textbf{API FastAPI (v9.5):} encapsulamiento del pipeline de
+    auditoría como servicio HTTP con endpoints \texttt{/contracts/upload},
+    \texttt{/contracts/\{id\}/audit} y \texttt{/contracts/\{id\}/status}.
+    Containerización con Docker; imagen publicada en Artifact Registry.
+    CI/CD con GitHub Actions: build → push → deploy a Cloud Run en cada
+    merge a \texttt{main}.
+    \item \textbf{Bot Telegram (v9.6):} webhook en \texttt{/telegram/webhook};
+    flujo de registro, aprobación por administrador (rol \texttt{auditor})
+    y comandos \texttt{/upload}, \texttt{/status}, \texttt{/report}.
+    \item \textbf{Frontend Next.js (v9.7):} panel web en
+    \texttt{contractia.pe}; autenticación JWT; subida de contratos;
+    visualización de hallazgos con filtro por tipo y severidad;
+    polling de estado en tiempo real (actualización cada 10 segundos).
+    \item \textbf{Cola y notificación (v9.8):} sistema de cola por usuario
+    con máximo 5 trabajos pendientes; procesamiento secuencial en segundo
+    plano; notificación por correo electrónico al finalizar el análisis.
+\end{itemize}
+
+\textbf{Desafío clave:} garantizar que el análisis de un contrato extenso
+(análisis completo: $\approx 75$ minutos) no bloqueara el hilo principal
+de la API; solución: \texttt{BackgroundTasks} de FastAPI con persistencia
+de estado en Cloud SQL.
+
+\textbf{Resultado:} MVP funcional en producción en \texttt{contractia.pe},
+accesible vía web y Telegram, con análisis completo del Contrato A
+en $\approx 1$ hora 15 minutos con Gemini~2.5~Pro.
+
+\section{Dataset Utilizado}
+
+\begin{table}[H]
+\centering
+\caption{Datasets empleados en el desarrollo y validación del MVP}
+\label{tab:datasets}
+\begin{tabular}{p{3.5cm} p{9.5cm}}
+\toprule
+\textbf{Dataset} & \textbf{Descripción} \\
+\midrule
+Contrato piloto &
+    Contrato A (ProInversión): 324 páginas, 41 secciones,
+    448 cláusulas, 749{,}499 caracteres. Usado como benchmark
+    constante entre iteraciones. \\
+Corpus de segmentación &
+    17 contratos de concesión de ProInversión de distintos sectores
+    (agua, energía, vial), extensión variable. Usados exclusivamente
+    para pruebas de robustez del módulo anti-TOC y segmentación. \\
+Base normativa &
+    Guías institucionales de ProInversión, D.Leg.\ 1362 y su
+    Reglamento, normativa sectorial complementaria; vectorizados
+    en FAISS e indexados en BM25. Total: $\approx 1{,}200$ fragmentos
+    normativos. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Modelos Implementados y Evaluados}
+
+\begin{table}[H]
+\centering
+\caption{Modelos LLM evaluados en ContractIA}
+\label{tab:modelos}
+\begin{tabular}{p{3.8cm} p{2.5cm} p{6.5cm}}
+\toprule
+\textbf{Modelo} & \textbf{Estado} & \textbf{Observación} \\
+\midrule
+Gemini 2.5 Pro (Vertex AI) & \textbf{Producción} &
+    Velocidad óptima ($\approx 75$ min para 41 secciones); 119
+    hallazgos sobre Contrato A; balance costo/cobertura. \\
+Gemini 3.1 Pro Preview      & Evaluación &
+    Mayor riqueza del grafo de conocimiento; 55 hallazgos en
+    benchmark preliminar; mayor latencia ($\approx 3$ h 10 min). \\
+Claude Sonnet 4.6 / Opus 4.6 & Pendiente &
+    Integrado vía Vertex AI; en evaluación de cuota; resultados
+    preliminares prometedores en análisis semántico. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Desafíos Técnicos y Soluciones}
+
+Durante el desarrollo se enfrentaron tres desafíos técnicos principales:
+
+\begin{enumerate}
+    \item \textbf{Variabilidad en la estructura del PDF:}
+    Los contratos de ProInversión usan numeraciones inconsistentes,
+    tablas anidadas y TOC de múltiples páginas. Solución: módulo anti-TOC
+    basado en detección estadística de densidad de referencias numéricas;
+    heurística de longitud mínima de fragmento ($> 200$ caracteres) para
+    filtrar entradas del índice.
+
+    \item \textbf{Límite de contexto de los LLMs:}
+    Cláusulas muy extensas exceden la ventana de contexto óptima.
+    Solución: truncamiento adaptativo al 80\% del límite del modelo,
+    preservando la cabecera de la cláusula y el párrafo más relevante
+    según el score del Reranker.
+
+    \item \textbf{Consistencia entre ejecuciones:}
+    Los LLMs generativos producen variaciones entre ejecuciones con el
+    mismo input. Solución: temperatura fija a 0.1 en todos los agentes;
+    esquemas Pydantic con validación estricta de tipos; postprocesamiento
+    de deduplicación por similitud de texto ($> 0.9$ cosine similarity).
+
+    \item \textbf{Gestión de secretos y seguridad en producción:}
+    Credenciales de API (Vertex AI, Cohere, PostgreSQL, SMTP) no pueden
+    residir en el código ni en el Dockerfile. Solución: todas las
+    credenciales almacenadas en Google Cloud Secret Manager; el servicio
+    las lee en tiempo de ejecución mediante la service account
+    \texttt{contractia-sa}; el Dockerfile no contiene ningún secreto.
+
+    \item \textbf{Análisis de larga duración sin bloquear la API:}
+    Un análisis completo toma $\approx 75$ minutos; un endpoint síncrono
+    agotaría el timeout de Cloud Run (máx. 60 min por defecto) y bloquearía
+    la respuesta al usuario. Solución: endpoint \texttt{/audit} dispara un
+    \texttt{BackgroundTask} y devuelve inmediatamente el \texttt{job\_id};
+    el cliente consulta el estado vía polling en \texttt{/status}; al
+    finalizar el backend envía notificación por correo electrónico.
+\end{enumerate}
+
+\section{Estructura del Repositorio}
+
+El código del MVP está organizado en dos capas principales: la lógica analítica
+(\texttt{contractia/}) y la capa de servicio (\texttt{api/}), con separación
+clara de responsabilidades.
+
+\begin{longtable}{p{5cm} p{9cm}}
+\caption{Módulos principales del repositorio ContractIA}
+\label{tab:repo} \\
+\toprule
+\textbf{Módulo / Archivo} & \textbf{Responsabilidad} \\
+\midrule
+\endfirsthead
+\multicolumn{2}{l}{\small\itshape Continuación de la Tabla~\ref{tab:repo}} \\[4pt]
+\toprule
+\textbf{Módulo / Archivo} & \textbf{Responsabilidad} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{2}{r}{\small\itshape Continúa en la siguiente página} \\
+\endfoot
+\bottomrule
+\endlastfoot
+\texttt{contractia/config.py} &
+    Variables de entorno, flags de feature (\texttt{RAG\_ENABLED},
+    \texttt{GRAPHRAG\_ENABLED}, \texttt{AGENTIC\_RAG\_ENABLED}),
+    modelos LLM configurables. \\[6pt]
+\texttt{contractia/pipeline.py} &
+    Orquestación de las fases FASE~0 a FASE~5: segmentación,
+    indexación, RAG, agentes, consolidación, reporte. \\[6pt]
+\texttt{contractia/orchestrator.py} &
+    Función \texttt{auditar\_consistencia()} por sección;
+    gestión de contexto RAG y llamadas a agentes. \\[6pt]
+\texttt{contractia/agents/} &
+    Fábrica de agentes (\texttt{factory.py}); clases
+    \texttt{AgenteJurista}, \texttt{AgenteAuditor},
+    \texttt{AgenteCronista}; schemas Pydantic por agente. \\[6pt]
+\texttt{contractia/rag/} &
+    Módulos FAISS, BM25, Cohere Reranker, GraphRAG (NetworkX);
+    función unificada \texttt{recuperar\_contexto()}. \\[6pt]
+\texttt{contractia/segmentation/} &
+    Extracción PDF (PyMuPDF + pdfminer), anti-TOC,
+    segmentador jerárquico, normalización de texto. \\[6pt]
+\texttt{contractia/reports/} &
+    Generación de reporte ejecutivo PDF (FPDF2);
+    consolidación y deduplicación de hallazgos. \\[6pt]
+\texttt{api/main.py} &
+    Entrada FastAPI; registro de routers;
+    endpoint de salud \texttt{/health}. \\[6pt]
+\texttt{api/routers/} &
+    \texttt{auth\_router} (JWT), \texttt{contracts\_router}
+    (upload, audit, status, report), \texttt{admin\_router}
+    (gestión de usuarios y roles). \\[6pt]
+\texttt{contractia/telegram/} &
+    Handler del bot; comandos; flujo de aprobación;
+    wrapper psycopg2 para Cloud SQL. \\[6pt]
+\texttt{Dockerfile} &
+    Imagen Python 3.11 slim; sin secretos embebidos;
+    \texttt{ENTRYPOINT} Uvicorn. \\[6pt]
+\texttt{.github/workflows/deploy.yml} &
+    Pipeline CI/CD: build → push a Artifact Registry →
+    deploy a Cloud Run (Workload Identity Federation). \\
+\end{longtable}
+
+\section{Infraestructura y Pipeline CI/CD}
+
+La infraestructura del MVP está desplegada íntegramente en Google Cloud
+Platform, organizada en los siguientes servicios:
+
+\begin{itemize}
+    \item \textbf{Cloud Run:} servicio sin servidor (\textit{serverless})
+    que ejecuta el contenedor Docker del API; escala automáticamente a
+    cero cuando no hay tráfico, reduciendo costos operativos.
+    \item \textbf{Cloud SQL (PostgreSQL 15):} base de datos relacional
+    para usuarios, roles, jobs de análisis y metadatos de contratos.
+    Acceso desde Cloud Run mediante el conector oficial de Cloud SQL.
+    \item \textbf{Cloud Storage:} almacenamiento de contratos PDF subidos
+    por los usuarios y reportes generados; acceso con signed URLs de
+    duración limitada para descarga segura.
+    \item \textbf{Artifact Registry:} registro de imágenes Docker;
+    versiones inmutables por cada build del CI/CD.
+    \item \textbf{Secret Manager:} almacén centralizado de credenciales
+    (Vertex AI, Cohere, PostgreSQL, SMTP, JWT secret); sin secretos
+    en variables de entorno del Dockerfile.
+    \item \textbf{Vertex AI:} API administrada de Google para Gemini 2.5
+    Pro (inferencia LLM) y \texttt{text-embedding-004} (embeddings);
+    facturación por token, sin infraestructura de GPU propia.
+\end{itemize}
+
+El pipeline CI/CD ejecuta los siguientes pasos en cada \textit{merge} a la
+rama \texttt{main}:
+
+\begin{enumerate}
+    \item \textbf{Checkout y autenticación:} obtención del token de acceso
+    a GCP mediante Workload Identity Federation (sin clave de servicio
+    almacenada en GitHub Secrets).
+    \item \textbf{Build Docker:} construcción de la imagen con tag
+    \texttt{git SHA} para trazabilidad de versiones.
+    \item \textbf{Push a Artifact Registry:} imagen disponible en
+    \texttt{us-central1-docker.pkg.dev/striking-domain-488917-p8/contractia/api}.
+    \item \textbf{Deploy a Cloud Run:} actualización del servicio
+    \texttt{contractia-api} con la nueva imagen; Cloud Run realiza
+    \textit{rolling deployment} sin downtime.
+    \item \textbf{Verificación de salud:} el workflow consulta
+    \texttt{/health} y falla el deploy si no responde HTTP~200.
+\end{enumerate}
+
+\section{Estrategia de Pruebas y Validación}
+
+La validación del sistema se realizó en tres niveles complementarios:
+
+\begin{enumerate}
+    \item \textbf{Validación funcional por iteración:}
+    Tras cada versión de notebook se ejecutó el análisis completo sobre
+    el contrato A y se comparó el conteo de hallazgos,
+    tipos detectados y tiempo de procesamiento con la versión anterior.
+    Cualquier regresión ($> 10\%$ de reducción en hallazgos) bloqueaba
+    el avance a la siguiente iteración.
+
+    \item \textbf{Validación manual de calidad semántica:}
+    Una muestra aleatoria de 30 hallazgos de severidad ALTA fue revisada
+    por dos especialistas legales independientes. Cada hallazgo fue
+    clasificado como verdadero positivo (TP), falso positivo (FP) o
+    falso negativo (FN). La precisión estimada resultante fue $\approx 87\%$.
+
+    \item \textbf{Pruebas de integración del MVP:}
+    Antes del despliegue en producción se verificaron manualmente:
+    \begin{itemize}
+        \item Subida de PDF vía API y vía bot Telegram.
+        \item Flujo completo de análisis en segundo plano y consulta de estado.
+        \item Generación y descarga del reporte ejecutivo PDF.
+        \item Flujo de aprobación de usuario y cambio de rol.
+        \item Cola de trabajos: llegada al límite de 5 y rechazo del 6.º.
+        \item Notificación por correo al finalizar el análisis.
+    \end{itemize}
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\caption{Resumen de resultados de validación por iteración}
+\label{tab:validacion_iter}
+\begin{tabular}{p{3cm} p{2.8cm} p{2.2cm} p{4.5cm}}
+\toprule
+\textbf{Versión} & \textbf{Hallazgos} & \textbf{Tiempo} & \textbf{Mejora clave} \\
+\midrule
+v1.0 (1 agente)      & 35  & 47 min  & Baseline del prototipo \\
+v5   (multi-agente)  & 62  & 58 min  & $+77\%$ hallazgos \\
+v8.8 (Hybrid RAG)    & 89  & 65 min  & Reducción FP; mejor contexto \\
+v9.0 (GraphRAG)      & 103 & 72 min  & Detección cruzada entre secciones \\
+v9.8 (MVP producción) & 119 & $\approx 75$ min & Benchmark definitivo en producción \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Decisiones de Implementación}
+
+\begin{table}[H]
+\centering
+\caption{Decisiones tecnológicas clave del MVP y su justificación}
+\label{tab:decisiones_impl}
+\begin{tabular}{p{3.5cm} p{4.5cm} p{5cm}}
+\toprule
+\textbf{Decisión} & \textbf{Alternativa considerada} & \textbf{Justificación} \\
+\midrule
+FastAPI sobre Flask &
+    Flask, Django REST &
+    Soporte nativo async/await; validación automática con Pydantic;
+    OpenAPI generado automáticamente. \\
+Cloud Run sobre GKE &
+    GKE, Cloud Functions &
+    Sin gestión de clúster; escala a cero; costo proporcional al uso;
+    adecuado para carga irregular. \\
+PostgreSQL sobre Firestore &
+    Firestore, BigQuery &
+    Esquema relacional para usuarios/roles/jobs; transacciones ACID;
+    experiencia del equipo. \\
+BackgroundTasks sobre Celery &
+    Celery + Redis, Cloud Tasks &
+    Sin infraestructura adicional para el MVP; suficiente para
+    un análisis concurrente por usuario. \\
+Polling sobre WebSockets &
+    SSE, WebSockets &
+    Compatibilidad universal con proxies y Telegram;
+    implementación sin estado en Cloud Run. \\
+Vertex AI sobre OpenAI API &
+    OpenAI, Azure OpenAI &
+    Residencia de datos en GCP; integración nativa con el resto de
+    la infraestructura; facturación unificada. \\
+\bottomrule
+\end{tabular}
+\end{table}

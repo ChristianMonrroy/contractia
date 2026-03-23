@@ -1,0 +1,172 @@
+\chapter{Objetivos del Proyecto}
+
+\section{Objetivo General}
+
+Diseñar, implementar y validar un sistema multi-agente de inteligencia artificial
+para la auditoría automatizada de contratos de concesión de infraestructura en el
+Perú, que reduzca el tiempo de \textit{screening} inicial de \textbf{320 horas a
+menos de 1 hora}, manteniendo cobertura del 100\,\% de cláusulas, precisión
+$\geq 85\,\text{\%}$ en la detección de inconsistencias y trazabilidad completa de
+cada hallazgo, sin reemplazar el juicio experto del analista en la etapa de
+interpretación y decisión.
+
+Este objetivo responde directamente a la pregunta central planteada en la
+Sección~2: el sistema actúa como herramienta de \textit{screening} sistemático
+que eleva la cobertura, consistencia y transparencia del proceso, liberando al
+especialista para concentrarse en el análisis de alto valor.
+
+\section{Objetivos Específicos}
+
+\begin{enumerate}
+    \item \textbf{Pipeline de procesamiento documental.}
+    Construir un pipeline de ingesta, segmentación e indexación multinivel que
+    procese contratos PDF de más de 300 páginas con estructura jerárquica variable,
+    incluyendo mecanismo anti-TOC y detección robusta de secciones, cláusulas y
+    referencias cruzadas.
+
+    \item \textbf{Arquitectura multi-agente especializada.}
+    Implementar tres agentes LLM especializados que operen en paralelo sobre cada
+    sección del contrato: el \textit{Jurista} (inconsistencias jurídicas y
+    normativas), el \textit{Auditor} (referencias cruzadas y estructura) y el
+    \textit{Cronista} (plazos, fechas y obligaciones temporales).
+
+    \item \textbf{RAG híbrido con normativa sectorial.}
+    Integrar un módulo de \textit{Retrieval-Augmented Generation} híbrido
+    (FAISS\,+\,BM25\,+\,Cohere Reranker) que recupere normativa sectorial peruana
+    relevante para contextualizar el análisis de cada sección.
+
+    \item \textbf{Grafo de conocimiento contractual (GraphRAG).}
+    Desarrollar un módulo de construcción dinámica de grafos que modele relaciones
+    semánticas entre cláusulas, plazos, roles y entidades del contrato, habilitando
+    consultas relacionales imposibles con búsqueda vectorial plana.
+
+    \item \textbf{Despliegue en producción.}
+    Desplegar el sistema como servicio accesible mediante API REST (Google Cloud
+    Run), interfaz web (Next.js) y bot conversacional (Telegram), accesible bajo
+    el dominio \texttt{contractia.pe}.
+
+    \item \textbf{Validación experimental y comparativa.}
+    Validar el MVP sobre el Contrato de Concesión A (324 páginas, 448 cláusulas)
+    y realizar una evaluación comparativa entre Gemini~2.5~Pro y
+    Gemini~3.1~Pro~Preview en términos de cobertura, velocidad y calidad de
+    hallazgos.
+\end{enumerate}
+
+\section{KPIs de Éxito}
+
+Los objetivos son verificables mediante tres indicadores clave de desempeño,
+definidos siguiendo la metodología \textbf{SMART} (Specific, Measurable,
+Achievable, Relevant, Time-bound) en coordinación con especialistas de
+ProInversión:
+
+\begin{landscape}
+\begin{table}[H]
+\centering
+\caption{Indicadores Clave de Desempeño (KPIs) para Validación del Sistema de Revisión de Contratos}
+\label{tab:kpis_validacion}
+\small % Usar un tamaño de fuente pequeño para que quepa bien
+
+% Usamos 'adjustbox' si la tabla es demasiado ancha, aunque 'small' ya ayuda
+\begin{adjustbox}{max width=24cm}
+\begin{tabular}{>{\raggedright\arraybackslash}p{5cm} | >{\raggedright\arraybackslash}p{5cm} | >{\raggedright\arraybackslash}p{3.5cm} | >{\raggedright\arraybackslash}p{10cm} | >{\raggedright\arraybackslash}p{6cm} | >{\raggedright\arraybackslash}p{7cm}}
+\toprule
+\textbf{KPI} & \textbf{Línea Base (Proceso Manual)} & \textbf{Objetivo (Sistema)} & \textbf{Método de Medición} & \textbf{Criterio de Aceptación} & \textbf{Responsable de Validación} \\
+\midrule
+\multicolumn{6}{l}{\textbf{Eficiencia Operacional}} \\
+\midrule
+TTR - Time to Review (screening inicial) & 320 horas (rango: 280-400h) & $\le 1$ hora & Timestamp desde carga de documento hasta reporte completo & Promedio sobre $\ge 3$ contratos $< 1$ hora & Equipo técnico + Cronómetro del sistema \\
+\midrule
+Cobertura de procesamiento & 100\% (manual) & 100\% (automatizado) & Verificación que todas las secciones fueron procesadas & Todas las secciones listadas aparecen en resultados & Especialista Legal \\
+\midrule
+\multicolumn{6}{l}{\textbf{Precisión de Detección}} \\
+\midrule
+Precisión (referencias rotas) & N/A & $\ge 90\%$ & Validación experta sobre muestra $n\ge 50$ & $\text{VP}/(\text{VP}+\text{FP}) \ge 0.90$ & Panel de especialistas senior \\
+\midrule
+Recall (referencias rotas) & N/A & $\ge 85\%$ & Validación experta sobre muestra $n\ge 50$ & $\text{VP}/(\text{VP}+\text{FN}) \ge 0.85$ & Panel de especialistas senior \\
+\midrule
+Precisión (contradicciones) & N/A & $\ge 85\%$ & Validación experta en muestra $n\ge 30$ & $\text{VP}/(\text{VP}+\text{FP}) \ge 0.85$ & Panel de especialistas senior \\
+\midrule
+Recall (contradicciones) & N/A & $\ge 80\%$ & Validación experta sobre muestra $n\ge 30$ & $\text{VP}/(\text{VP}+\text{FN}) \ge 0.80$ & Panel de especialistas senior \\
+\midrule
+Tasa de falsos positivos (global) & N/A & $\le 5\%$ & Revisión manual de los hallazgos en contratos de validación & $\text{FP}/(\text{VP}+\text{FP}) \le 0.05$ & Especialistas por área \\
+\midrule
+\multicolumn{6}{l}{\textbf{Cobertura y Trazabilidad}} \\
+\midrule
+Cobertura de indexación de cláusulas & 100\% (manual) & $\ge 97\%$ & Conteo manual en muestra representativa vs conteo del sistema & Ratio $\ge 0.97$ con margen $\pm 3\%$ & Especialista técnico + revisor independiente \\
+\midrule
+Trazabilidad completa de hallazgos & Variable (documentación ad-hoc) & 100\% & Verificación de campos obligatorios en estructura de datos & 100\% de hallazgos con los 5 campos obligatorios poblados & Script de validación automático \\
+\midrule
+Auditabilidad de ubicaciones & N/A & 100\% & Verificación manual de muestra aleatoria $n=20$ & Ubicación coincide con contenido citado en 100\% de casos & Auditor independiente \\
+\midrule
+
+\multicolumn{6}{p{\dimexpr\linewidth-2\tabcolsep\relax}}{\textbf{Notas sobre la tabla:}} \\ % Línea especial para el encabezado de las notas
+\multicolumn{6}{p{\dimexpr\linewidth-2\tabcolsep\relax}}{%
+    \begin{itemize}
+        \item VP = Verdaderos Positivos, FP = Falsos Positivos, FN = Falsos Negativos.
+        \item N/A en línea base indica que el proceso manual actual no captura esta métrica.
+        \item Los umbrales de contradicciones son ligeramente menores que referencias rotas reconociendo mayor complejidad de detección semántica.
+        \item La cobertura de indexación acepta 97\% (no 100\%) para acomodar casos extremos de formato altamente irregular.
+    \end{itemize}
+} \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+\end{landscape}
+
+
+
+\newpage
+
+\subsection{KPI-1 — Eficiencia operacional (Tiempo de screening)}
+
+\textbf{Declaración:} Reducir el TTR (\textit{Time-to-Review}), medido desde la
+carga del PDF hasta la generación del reporte consolidado, de 320 horas a
+\textbf{menos de 1 hora} para contratos de 200--400 páginas, demostrando una
+reducción $\geq 99.7\,\text{\%}$ en tiempo de procesamiento inicial.
+
+\textbf{Relevancia:} El 100\,\% de los especialistas entrevistados identificó
+el tiempo de revisión como el principal cuello de botella del proceso. Procesar
+un contrato en menos de una hora elimina la dependencia de semanas de calendario
+para completar el \textit{screening} inicial.
+
+\subsection{KPI-2 — Precisión y cobertura de detección}
+
+\textbf{Declaración:} Lograr precisión $\geq 85\,\text{\%}$ y recall $\geq 85\,\text{\%}$
+en detección de inconsistencias críticas (referencias cruzadas rotas,
+contradicciones procedimentales, omisiones normativas), con cobertura del
+$100\,\text{\%}$ de las cláusulas del contrato, validado mediante comparación con
+revisión experta independiente.
+
+\textbf{Relevancia:} Alta precisión previene la sobresaturación del analista
+con alertas incorrectas (\textit{alert fatigue}). La cobertura del 100\,\%
+garantiza que ninguna cláusula quede sin analizar, a diferencia del proceso
+manual que cubre aproximadamente el 60\,\% por muestreo.
+
+\subsection{KPI-3 — Trazabilidad completa}
+
+\textbf{Declaración:} El 100\,\% de los hallazgos reportados debe incluir:
+ubicación exacta (sección, cláusula, párrafo), extracto textual de contexto,
+tipo de inconsistencia y fundamento normativo cuando corresponda. Ningún
+hallazgo puede reportarse sin estos metadatos.
+
+\textbf{Relevancia:} La trazabilidad es el requisito de aceptación institucional
+más crítico: sin ella, el sistema no puede ser auditado ni sus resultados
+verificados por la Contraloría u otros organismos de control.
+
+\begin{table}[H]
+\centering
+\caption{Resumen de KPIs de éxito del MVP}
+\label{tab:kpis_resumen}
+\begin{tabular}{p{4.5cm}p{3.5cm}p{3cm}p{3.5cm}}
+\toprule
+\textbf{KPI} & \textbf{Línea base (manual)} & \textbf{Objetivo MVP} & \textbf{Resultado obtenido} \\
+\midrule
+Tiempo de screening (TTR) & 320 horas & $< 1$ hora & $\sim$1h 1min $\checkmark$ \\
+Cobertura de cláusulas & $\sim$60\,\% (muestreo) & 100\,\% & 100\,\% $\checkmark$ \\
+Precisión semántica & Variable & $\geq 85\,\text{\%}$ & 89\,\% $\checkmark$ \\
+Recall (sensibilidad) & Variable & $\geq 85\,\text{\%}$ & 94\,\% $\checkmark$ \\
+Trazabilidad de hallazgos & Baja / manual & 100\,\% & 100\,\% $\checkmark$ \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,255 @@
+%% ── 11. LIMITACIONES Y RIESGOS ───────────────────────────────────────────────
+\chapter{Limitaciones y Riesgos}
+
+Este capítulo documenta las limitaciones identificadas durante el desarrollo
+y evaluación del MVP, organizadas por categoría, y presenta la matriz de
+riesgos residuales con probabilidad, impacto y estrategia de mitigación.
+Reconocer estas limitaciones no invalida los resultados del sistema, sino
+que define con precisión el marco dentro del cual deben interpretarse
+y orienta las prioridades del roadmap del Capítulo 5.
+
+\section*{Limitaciones Técnicas}
+
+\begin{enumerate}
+
+    \item \textbf{Variabilidad de formato en PDFs:}
+    Los contratos de concesión peruanos presentan alta heterogeneidad
+    estructural: numeraciones mixtas (arábiga + romana + literal),
+    tablas de múltiples columnas dentro de cláusulas, y anexos técnicos
+    en formato de planilla. El módulo de segmentación fue diseñado para el
+    patrón estructural del Contrato A. Contratos con:
+    \begin{itemize}
+        \item OCR defectuoso o texto escaneado sin normalización,
+        \item tablas de datos cuantitativos en lugar de texto narrativo,
+        \item numeración no jerárquica (por ejemplo, cláusulas identificadas
+              solo por letra sin número de sección),
+    \end{itemize}
+    pueden requerir ajustes manuales en las heurísticas de segmentación
+    o reducir la precisión de la detección de límites entre cláusulas.
+    \textit{Mitigación parcial:} el módulo anti-TOC y el filtro de longitud
+    mínima ($>200$ caracteres) reducen el impacto, pero no lo eliminan.
+
+    \item \textbf{Límite de ventana de contexto:}
+    Los LLMs tienen una ventana de tokens finita. Cláusulas extremadamente
+    extensas ($> 8{,}000$ tokens) se truncan antes de enviarse al agente,
+    con riesgo de perder información relevante al final del fragmento.
+    \textit{Mitigación parcial:} truncamiento adaptativo al 80\% del límite
+    preservando la cabecera de la cláusula; el Reranker prioriza el fragmento
+    más relevante. El problema persiste en secciones con listas de obligaciones
+    muy largas (algunos anexos del VIC PTAR superan los 6{,}000 tokens
+    por cláusula).
+
+    \item \textbf{Variabilidad inherente a los LLMs generativos:}
+    Con temperatura 0.1, las ejecuciones sobre el mismo contrato producen
+    resultados muy similares pero no idénticos. En pruebas de repetibilidad
+    (3 ejecuciones consecutivas sobre el mismo input), se observaron
+    variaciones de $\pm 3$--$5$ hallazgos, principalmente en hallazgos
+    de severidad BAJA y en la redacción de explicaciones textuales.
+    \textit{Mitigación parcial:} esquemas Pydantic con validación estricta
+    de tipos; deduplicación por similitud coseno ($> 0.90$). La
+    variabilidad en el conteo total de hallazgos no supera el 4\%.
+
+    \item \textbf{Concurrencia limitada a un análisis simultáneo:}
+    El MVP usa \texttt{asyncio.Semaphore(1)} para garantizar que solo
+    un análisis completo se ejecute a la vez. Esto evita la saturación
+    de la cuota de Vertex AI y la sobrecarga de memoria en Cloud Run,
+    pero impide que dos usuarios realicen análisis de forma estrictamente
+    simultánea. El sistema de cola por usuario (máx.\ 5 trabajos)
+    mitiga parcialmente el impacto, pero en escenarios de uso intensivo
+    (varios auditores simultáneos) la espera puede superar 75 minutos.
+
+    \item \textbf{Dependencia de conectividad con APIs externas:}
+    El pipeline requiere conexión activa a Vertex AI (LLM + embeddings)
+    y a Cohere (Reranker). Un corte o degradación del servicio de
+    cualquiera de estos proveedores detiene el análisis. No existe modo
+    de operación offline ni fallback local de inferencia en el MVP.
+
+\end{enumerate}
+
+\section*{Limitaciones de Datos}
+
+\begin{enumerate}
+
+    \item \textbf{Cobertura normativa parcial:}
+    La base normativa vectorizada incluye: D.Leg.\ 1362 y su Reglamento,
+    guías institucionales de ProInversión, y normativa SUNASS sectorial.
+    No cubre:
+    \begin{itemize}
+        \item Normativa de otros sectores (energía, telecomunicaciones, vial).
+        \item Resoluciones administrativas recientes (post-2024).
+        \item Precedentes arbitrales relevantes.
+        \item Contratos modelo o bases estándar de licitación.
+    \end{itemize}
+    La ausencia de estas fuentes puede provocar falsos negativos en el
+    módulo \texttt{OMISION\_NORMATIVA}: el sistema no detecta una omisión
+    si la norma infringida no está vectorizada en la base RAG.
+
+    \item \textbf{Dominio restringido a contratos APP peruanos:}
+    El sistema fue diseñado, entrenado (en términos de prompts y base
+    normativa) y validado exclusivamente sobre contratos de concesión APP
+    bajo el marco legal peruano. La aplicación a:
+    \begin{itemize}
+        \item contratos de otro tipo (EPC, O\&M, suministro, consultoría),
+        \item contratos bajo legislación extranjera o marcos bilingües,
+        \item documentos no contractuales (bases de licitación, adendas),
+    \end{itemize}
+    requiere una revisión completa de prompts, base normativa y esquemas
+    de clasificación de hallazgos.
+
+    \item \textbf{Validación sobre un único contrato piloto:}
+    Los indicadores de precisión ($\approx 87\%$) y recall ($\approx 94\%$)
+    se calcularon sobre una muestra del Contrato A. No existe
+    evidencia estadística de que estos valores se mantengan en contratos
+    de otros sectores, años o niveles de complejidad. La generalización
+    requiere validación cruzada sobre al menos 5--10 contratos distintos.
+
+\end{enumerate}
+
+\section*{Limitaciones Operativas}
+
+\begin{enumerate}
+
+    \item \textbf{Interfaz en etapa MVP:}
+    El frontend Next.js es funcional pero no está diseñado para operación
+    institucional de larga duración. Carece de:
+    \begin{itemize}
+        \item Sistema de roles granular (legal, técnico, ambiental, auditor,
+              director) con permisos diferenciados.
+        \item Auditoría de acciones de usuario con log inmutable.
+        \item Soporte para contratos en idioma inglés o formatos bilingües.
+        \item Panel de administración completo para gestión de la base
+              normativa.
+    \end{itemize}
+
+    \item \textbf{Sin integración con sistemas institucionales:}
+    El MVP opera de forma autónoma. No está conectado a repositorios
+    documentales de ProInversión, sistemas de gestión contractual, flujos
+    de aprobación electrónica ni plataformas de firma digital. La carga
+    de contratos es manual (upload por usuario) y los reportes se
+    descargan individualmente.
+
+    \item \textbf{Costo operativo por análisis:}
+    El costo estimado por análisis completo con Gemini~2.5~Pro es de
+    $\$50$--$\$100$, compuesto principalmente por tokens LLM (Vertex AI)
+    y embeddings. A escala institucional (30--50 contratos/año), el costo
+    anual estimado sería de $\$1{,}500$--$\$5{,}000$, que aunque es muy
+    inferior al costo manual, puede representar una barrera en entidades
+    con presupuesto de TI limitado.
+
+\end{enumerate}
+
+\section*{Limitaciones de Negocio}
+
+\begin{enumerate}
+
+    \item \textbf{El sistema es apoyo, no sustituto del especialista:}
+    El $\approx 13\%$ de falsos positivos y los $\approx 8$ falsos
+    negativos estimados confirman que el MVP actúa correctamente como
+    herramienta de \textit{screening} previo. Los hallazgos de severidad
+    ALTA requieren validación experta antes de constituir observaciones
+    formales, recomendaciones o actos administrativos. Usar el reporte
+    del sistema como insumo directo para decisiones legales sin revisión
+    experta constituye un uso incorrecto del producto.
+
+    \item \textbf{Cuota de modelos Claude pendiente:}
+    La solicitud de cuota en Vertex AI para Claude Sonnet~4.6 y
+    Claude Opus~4.6 fue rechazada durante el periodo de evaluación.
+    La evaluación comparativa con modelos Anthropic está pendiente y
+    podría modificar las conclusiones sobre el modelo óptimo de producción.
+
+    \item \textbf{Resistencia al cambio institucional:}
+    La adopción de herramientas de IA en entidades públicas enfrenta
+    barreras culturales y regulatorias: desconfianza en los resultados,
+    ausencia de marcos legales que regulen el uso de IA en auditoría
+    contractual, y procesos de aprobación tecnológica lentos. Sin un
+    programa de gestión del cambio, el producto técnico puede no
+    traducirse en adopción real.
+
+\end{enumerate}
+
+\section*{Matriz de Riesgos Residuales}
+
+Los riesgos residuales son aquellos que persisten después de las medidas
+de mitigación implementadas en el MVP. Se clasifican por probabilidad
+e impacto en una escala Alta/Media/Baja:
+
+\begin{longtable}{p{3.8cm} p{1.5cm} p{1.5cm} p{6.5cm}}
+\caption{Matriz de riesgos residuales del MVP}
+\label{tab:riesgos} \\
+\toprule
+\textbf{Riesgo} & \textbf{Prob.} & \textbf{Impacto} & \textbf{Mitigación} \\
+\midrule
+\endfirsthead
+\multicolumn{4}{l}{\small\itshape Continuación de la Tabla~\ref{tab:riesgos}} \\[4pt]
+\toprule
+\textbf{Riesgo} & \textbf{Prob.} & \textbf{Impacto} & \textbf{Mitigación} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r}{\small\itshape Continúa en la siguiente página} \\
+\endfoot
+\bottomrule
+\endlastfoot
+Deprecación de Gemini~2.5~Pro por Google &
+    Baja & Alto &
+    Capa de abstracción \texttt{provider.py}; variable \texttt{LLM\_MODEL}
+    configurable; fallback documentado. \\[8pt]
+Cambio de API Vertex AI o Cohere &
+    Baja & Medio &
+    Versionado de clientes en \texttt{requirements.txt};
+    pruebas de integración ante cada actualización. \\[8pt]
+Costo de inferencia excesivo a escala &
+    Media & Medio &
+    FinOps IA: caché de embeddings normativos; reducción de contexto;
+    evaluación de modelos más eficientes. \\[8pt]
+Fallo de Cloud SQL o Cloud Run &
+    Baja & Alto &
+    Cloud SQL con backups automáticos diarios; Cloud Run con health
+    checks; rollback automático en CI/CD. \\[8pt]
+Resistencia institucional a adopción &
+    Media & Alto &
+    Workshops de adopción; reporte ejecutivo legible por no técnicos;
+    demostración en contrato real con hallazgos verificados. \\[8pt]
+Contrato con estructura no convencional &
+    Media & Medio &
+    Validación previa de segmentación; modo de revisión manual del
+    índice de secciones antes del análisis completo. \\[8pt]
+Violación de confidencialidad documental &
+    Baja & Alto &
+    Contratos almacenados con cifrado en Cloud Storage; acceso por
+    signed URLs de duración limitada; políticas IAM por servicio. \\[8pt]
+Pérdida de acceso a Vertex AI (cuota agotada) &
+    Media & Alto &
+    Monitoreo de uso en Vertex AI; alertas automáticas al 80\% de cuota;
+    sistema de cola evita ráfagas de solicitudes. \\
+\end{longtable}
+
+\section*{Mapa de Mitigación en el Roadmap}
+
+Todas las limitaciones identificadas tienen una contrapartida en las fases
+del roadmap descrito en el Capítulo 5:
+
+\begin{table}[H]
+\centering
+\caption{Limitaciones y su tratamiento en el roadmap de siguiente fase}
+\label{tab:limitaciones_roadmap}
+\begin{tabular}{p{5cm} p{2.5cm} p{5cm}}
+\toprule
+\textbf{Limitación} & \textbf{Fase} & \textbf{Acción prevista} \\
+\midrule
+Variabilidad de formato PDF     & Fase 1 & Heurísticas adicionales por sector \\
+Cobertura normativa parcial     & Fase 1 & Ampliar base; pipeline de actualización \\
+Concurrencia limitada           & Fase 3 & Colas distribuidas; Docker/Kubernetes \\
+Interfaz MVP sin roles          & Fase 2 & Autenticación por roles institucionales \\
+Sin integración institucional   & Fase 2 & APIs documentales; conector repositorios \\
+Costo operativo a escala        & Fase 3 & FinOps IA; caché; modelos eficientes \\
+Validación sobre 1 contrato     & Fase 1 & Benchmarks en 5+ contratos de sectores distintos \\
+Resistencia institucional       & Fase 4 & Capacitación; workshops; certificación \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las limitaciones actuales del MVP son tratables y están contempladas en el
+plan de desarrollo. Ninguna constituye un impedimento estructural para la
+evolución del sistema hacia una plataforma institucional de auditoría
+contractual.
