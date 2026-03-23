@@ -1,20 +1,29 @@
-# ContractIA v10.2.0
+# ContractIA v10.3.0
 
-Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente en paralelo, GraphRAG, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
+Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gemini 2.5 Pro), con arquitectura multi-agente en paralelo, GraphRAG con recuperación de JSON truncado, defensa contra prompt injection en 2 capas, cache de grafos en GCS, y acceso via web y Telegram.
 
 **Producción:** [contractia.pe](https://contractia.pe) | **API:** [contractia-api-444429430547.us-central1.run.app](https://contractia-api-444429430547.us-central1.run.app/docs)
 
 ---
 
-## Benchmark v10.2.0
+## Benchmark v10.3.0
 
 | Métrica | Resultado |
 |---------|-----------|
-| **F1-Score** | **76-83%** |
-| **Recall** | 77-80% (55-57 de 71 hallazgos de referencia) |
-| **Precisión** | 74-86% (9-19 falsos positivos) |
+| **F1-Score** | **78-83%** |
+| **Recall** | 80-82% (57-58 de 71 hallazgos de referencia) |
+| **Precisión** | 74-86% (9-20 falsos positivos) |
 | **Tiempo de auditoría** | ~24 min (324 págs, 41 secciones, 448 cláusulas) |
 | **Contrato de prueba** | VIC PTAR San Martín (concesión de saneamiento, 324 páginas) |
+| **Grafo GraphRAG** | ~280 relaciones, 38/41 secciones con tripletas |
+
+## Novedades v10.3.0
+
+| Área | Cambio |
+|------|--------|
+| **parse_json con reparación de truncados** | Restaurada recuperación de JSON truncado por `max_output_tokens=8192`. Secciones largas (Cap IX, XII, XVII) que antes daban 0 tripletas ahora generan 3-26 tripletas. Grafo pasa de ~196 a ~280 relaciones |
+| **Grafo más completo** | De 19 secciones con 0 tripletas a solo 3 (Anexo 2, 14, 16 — documentos formales sin estructura relacional). 5 hallazgos del "núcleo duro" de omisiones resueltos por contexto de grafo adicional |
+| **Imagen del grafo: 500 nodos** | Límite de nodos en el PDF técnico aumentado de 80 a 500 para visualización completa |
 
 ## Novedades v10.2.0
 
@@ -22,8 +31,7 @@ Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gem
 |------|--------|
 | **Agentes en paralelo** | Los 3 agentes (Jurista, Auditor, Cronista) se ejecutan simultáneamente con `ThreadPoolExecutor(max_workers=3)`. Reduce el tiempo de auditoría de ~72 min a ~24 min sin pérdida de calidad |
 | **Timeout 600s** | Timeout del LLM aumentado de 180s a 600s (idéntico al notebook vs18). Permite a Gemini razonar más profundamente: tiempo por agente sube de ~12s a ~34s, pero F1 sube de 61% a 83% |
-| **Sin structured output** | Eliminado `with_structured_output(Pydantic)` de los agentes. Se usa texto libre + `parse_json_seguro` (idéntico al notebook). El modo estructurado restringía la generación del LLM |
-| **parse_json idéntico a notebook** | Eliminada reparación de JSON truncado y tags `<razonamiento>`. Produce grafos más pequeños y estables (~235 nodos vs ~400) |
+| **Sin structured output** | Eliminado `with_structured_output(Pydantic)` de los agentes. Se usa texto libre + `parse_json_seguro`. El modo estructurado restringía la generación del LLM |
 | **PyPDFLoader** | Extracción de texto idéntica al notebook (antes PdfReader + OCR producía ~2,000 chars extras que desestabilizaban el grafo) |
 | **Prompts idénticos a notebook vs18** | Sin `contexto_rag`, sin TIPOS PERMITIDOS, sin salvaguardas anti-FP. El LLM elige tipos libremente |
 
