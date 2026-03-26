@@ -6,17 +6,6 @@ Sistema de auditoría inteligente de contratos, impulsado por IA generativa (Gem
 
 ---
 
-## Benchmark v10.3.0
-
-| Métrica | Resultado |
-|---------|-----------|
-| **F1-Score** | **78-83%** |
-| **Recall** | 80-82% (57-58 de 71 hallazgos de referencia) |
-| **Precisión** | 74-86% (9-20 falsos positivos) |
-| **Tiempo de auditoría** | ~24 min (324 págs, 41 secciones, 448 cláusulas) |
-| **Contrato de prueba** | VIC PTAR San Martín (concesión de saneamiento, 324 páginas) |
-| **Grafo GraphRAG** | ~280 relaciones, 38/41 secciones con tripletas |
-
 ## Novedades v10.3.0
 
 | Área | Cambio |
