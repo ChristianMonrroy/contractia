@@ -18,7 +18,6 @@ v9.3.2: Reducción de falsos positivos y duplicados
 """
 
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Callable, Dict, List, Optional
 
@@ -140,8 +139,6 @@ def auditar_consistencia(
     por lo que se ejecutan simultáneamente para reducir el tiempo
     de auditoría de ~72 min a ~25 min sin afectar calidad.
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
     if not ENABLE_LLM or llm is None:
         return []
 
@@ -183,18 +180,11 @@ def auditar_consistencia(
         return []
 
     hallazgos_totales = []
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {
-            pool.submit(_run_jurista): "Jurista",
-            pool.submit(_run_auditor): "Auditor",
-            pool.submit(_run_cronista): "Cronista",
-        }
-        for fut in as_completed(futures):
-            nombre = futures[fut]
-            try:
-                hallazgos_totales.extend(fut.result())
-            except Exception as e:
-                print(f"⚠️ Error {nombre}: {e}")
+    for runner, nombre in [(_run_jurista, "Jurista"), (_run_auditor, "Auditor"), (_run_cronista, "Cronista")]:
+        try:
+            hallazgos_totales.extend(runner())
+        except Exception as e:
+            print(f"⚠️ Error {nombre}: {e}")
 
     return hallazgos_totales
 
